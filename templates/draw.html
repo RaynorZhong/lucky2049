@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Draw {{ draw[0] }} Numbers</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        a { color: #007bff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .white-balls {
+            background: radial-gradient(circle at 50% 25%, #fff, #bbb);
+            border: none;
+            perspective: 600px;
+            perspective-origin: 50% 50%;
+            display: flex;
+            flex: 1 0 3rem;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            max-width: 3rem;
+            height: 3rem;
+            aspect-ratio: 1;
+            border-radius: 100%;
+            padding: 0;
+            font-family: proxima-nova;
+            font-weight: 700;
+            font-style: normal;
+            text-align: center;
+            color: #101820;
+            font-size: 1.25rem;
+        }
+        .powerball {
+            background: radial-gradient(circle at 50% 25%, #ff4d4d, #c8102e);
+            color: #fff;
+        }
+        .d-flex {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>Draw {{ draw.id }} Numbers</h1>
+    <p>
+        <a href="/draw/{{ draw.id - 1 }}">Previous Draw</a> | 
+        <a href="/draw/{{ draw.id + 1 }}">Next Draw</a> | 
+        <a href="/">Back to Home</a> | 
+        <a href="/stats">View Statistics</a>
+    </p>
+    <table>
+        <tr>
+            <th>Draw No.</th>
+            <th>Front Area Numbers</th>
+            <th>Back Area Number</th>
+            <th>Blockchain Heights</th>
+            <th>Draw Time</th>
+        </tr>
+        <tr>
+            <td>No. {{ draw.id }}</td>
+            <td><div class="d-flex">{% for white_ball in draw.front_list %}
+                <div class="white-balls">{{ white_ball }}</div>
+            {% endfor %}</div></td>
+            <td><div class="white-balls powerball">{{ draw.back_int }}</div></td>
+            <td>{{ draw.start_height }} - {{ draw.end_height }}</td>
+            <td>{{ draw.timestamp }}</td>
+        </tr>
+    </table>
+    <h2>Information About The 144 Bitcoin Blocks</h2>
+    <table>
+        <tr>
+            <th>Height</th>
+            <th>Hash</th>
+            <th>Time</th>
+        </tr>
+        {% for bitcoin in bitcoins %}
+        <tr>
+            <td><a href="https://www.blockchain.com/explorer/blocks/btc/{{ bitcoin.height }}" target="_blank">{{ bitcoin.height }}</a></td>
+            <td><a href="https://www.blockchain.com/explorer/blocks/btc/{{ bitcoin.hash }}" target="_blank">{{ bitcoin.hash }}</a></td>
+            <td>{{ bitcoin.timestamp }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

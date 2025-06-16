@@ -1,0 +1,34 @@
+# Ignores Python bytecode cache directories.
+# Ignores compiled Python files.
+# Ignores optimized Python files.
+__pycache__/
+*.pyc 
+*.pyo
+*.egg-info
+
+# Ignores virtual environment directories.
+# Ignores environment variable files.
+# Ignores database files.
+.env
+.venv/
+*.db
+*.sqlite
+
+# Ignores log files.
+*.log
+
+# Ignores swap files.
+*.swp
+*.swo
+
+# Ignores idea and vscode directories.
+*.idea/
+*.vscode/
+
+# Ignores MacOS system files.
+*.DS_Store
+
+# Ignores output directories.
+output/
+BACKUP.md
+lucky.py

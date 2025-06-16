@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Lottery Draw System</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        a { color: #007bff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .white-balls {
+            background: radial-gradient(circle at 50% 25%, #fff, #bbb);
+            border: none;
+            perspective: 600px;
+            perspective-origin: 50% 50%;
+            display: flex;
+            flex: 1 0 3rem;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            max-width: 3rem;
+            height: 3rem;
+            aspect-ratio: 1;
+            border-radius: 100%;
+            padding: 0;
+            font-family: proxima-nova;
+            font-weight: 700;
+            font-style: normal;
+            text-align: center;
+            color: #101820;
+            font-size: 1.25rem;
+        }
+        .powerball {
+            background: radial-gradient(circle at 50% 25%, #ff4d4d, #c8102e);
+            color: #fff;
+        }
+        .d-flex {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>Lottery Draw System</h1>
+    <p>Numbers generated based on 144 Bitcoin block hashes (total {{ num_trials }} draws).</p>
+    <p>Last draw height: {{ last_draw_height }}, Current height: {{ current_height }}, Next draw height: {{ last_draw_height + 144 }} (need {{ last_draw_height + 144 - current_height }})</p>
+    <h2>Latest 20 Draw Numbers</h2>
+    <table>
+        <tr>
+            <th>Draw No.</th>
+            <th>Front Area Numbers</th>
+            <th>Back Area Number</th>
+            <th>Blockchain Heights</th>
+            <th>Draw Time</th>
+        </tr>
+        {% for draw in draws %}
+        <tr>
+            <td><a href="/draw/{{ draw.id }}">No. {{ draw.id }}</a></td>
+            <td><div class="d-flex">{% for white_ball in draw.front_list %}
+                <div class="white-balls">{{ white_ball }}</div>
+            {% endfor %}</div></td>
+            <td><div class="white-balls powerball">{{ draw.back_int }}</div></td>
+            <td>{{ draw.start_height }} - {{ draw.end_height }}</td>
+            <td>{{ draw.timestamp }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    <p><a href="/stats">View Statistics</a> | 
+        <a href="/logs" rel="nofollow">Log Viewer</a> |
+        <a href="/trigger-draw" rel="nofollow" target="_blank">Trigger Draw</a> | 
+        <a href="/refresh-statistics" rel="nofollow" target="_blank">Refresh Statistics</a></p>
+</body>
+</html>

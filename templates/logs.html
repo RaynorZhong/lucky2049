@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="X-DNS-Prefetch-Control" content="off">
+    <title>Log Viewer - Double Chromosphere Lottery System</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        a, button { color: #007bff; text-decoration: none; cursor: pointer; }
+        a:hover, button:hover { text-decoration: underline; }
+        .pagination { margin: 20px 0; }
+        .pagination a { margin: 0 5px; }
+    </style>
+</head>
+<body>
+    <h1>Lottery System - Log Viewer</h1>
+    <p><a href="/" rel="nofollow">Back to Home</a> | <a href="/stats" rel="nofollow">View Statistics</a></p>
+    
+    <table>
+        <tr>
+            <th>Time</th>
+            <th>Level</th>
+            <th>Logger</th>
+            <th>Message</th>
+        </tr>
+        {% for log in logs %}
+        <tr>
+            <td>{{ log.timestamp }}</td>
+            <td>{{ log.level }}</td>
+            <td>{{ log.logger_name }}</td>
+            <td>{{ log.message }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <div class="pagination">
+        {% if page > 1 %}
+        <a href="/logs?page={{ page - 1 }}" rel="nofollow">Previous</a>
+        {% endif %}
+        <span>Page {{ page }} / {{ total_pages }}</span>
+        {% if page < total_pages %}
+        <a href="/logs?page={{ page + 1 }}" rel="nofollow">Next</a>
+        {% endif %}
+    </div>
+</body>
+</html>
