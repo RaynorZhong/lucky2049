@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Statistics Results</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        iframe { width: 100%; height: 500px; border: none; }
+        a { color: #007bff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <h1>Statistics Results ({{ statistics.draws }} draws)</h1>
+    <h2>Front Area Chi-Square Test</h2>
+    <p><strong>Chi-square Statistic:</strong> {{ statistics.front_chi2 }}</p>
+    <p><strong>p-value:</strong> {{ statistics.front_p_value }}</p>
+    <p><strong>Conclusion:</strong> {{ statistics.front_conclusion }}</p>
+    <h3>Front Area Frequency Distribution</h3>
+    <iframe src="/static/front_plot.html"></iframe>
+    
+    <h2>Back Area Chi-Square Test</h2>
+    <p><strong>Chi-square Statistic:</strong> {{ statistics.back_chi2 }}</p>
+    <p><strong>p-value:</strong> {{ statistics.back_p_value }}</p>
+    <p><strong>Conclusion:</strong> {{ statistics.back_conclusion }}</p>
+    <h3>Back Area Frequency Distribution</h3>
+    <iframe src="/static/back_plot.html"></iframe>
+    
+    <p><a href="/">Back to Home</a></p>
+</body>
+</html>
