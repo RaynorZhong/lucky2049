@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from contextlib import asynccontextmanager
@@ -41,6 +42,22 @@ if not os.path.exists("static"):
 
 # Initialize the database
 init_db()
+
+# CORS configuration
+origins = [
+    "http://localhost",
+    "http://localhost:3000",
+    "https://bit-lotto.vercel.app",
+    ]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 @app.get("/")
 async def index(request: Request):
@@ -100,8 +117,34 @@ async def logs(request: Request, page: int = 1):
         "total_pages": total_pages
     })
 
+@app.get("/api/index")
+async def api_index():
+    """API endpoint to get the latest 20 lottery draws"""
+    recent_draws = get_limit_draws()
+    last_draw_height = recent_draws[0].end_height if recent_draws else 0
+    current_height = get_max_bitcoin_height()
+    return {
+        "draws": recent_draws,
+        "num_trials": get_max_draw_id() + 1,
+        "last_draw_height": last_draw_height,
+        "current_height": current_height
+    }
+
 @app.get("/api/draws")
 async def api_draws():
     """API endpoint to get all lottery draws"""
     draws = get_all_draws()
     return {"draws": draws}
+
+@app.get("/api/draw/{trial_id}")
+async def api_get_draw(trial_id: int):
+    """API endpoint to get a specific lottery draw by trial ID"""
+    draw = get_draw_by_id(trial_id)
+    heights = get_heights_by_draw_id(trial_id)
+    bitcoins = select_bitcoin_by_height(heights)
+    if draw:
+        return {
+            "bitcoins": bitcoins,
+            "draw": draw
+        }
+    return {"error": "Invalid draw number"}
