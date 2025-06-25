@@ -11,7 +11,20 @@
         a { color: #007bff; text-decoration: none; }
         a:hover { text-decoration: underline; }
         .white-balls {
-            background: radial-gradient(circle at 50% 25%, #fff, #bbb);
+            border-radius: 50%; /* Ensure circle shape */
+            background: radial-gradient(
+                circle at 30% 20%, /* Light source position, slightly offset to top left */
+                #FFFFFF 0%, /* Pure white highlight */
+                #F5F5F5 30%, /* Bright white transition */
+                #E0E0E0 60%, /* Light gray for layering */
+                #CCCCCC 100% /* Darker gray for shadow */
+            );
+            /* Add outer shadow for 3D effect */
+            box-shadow: 
+                5px 5px 15px rgba(0, 0, 0, 0.3), /* Outer shadow */
+                -3px -3px 10px rgba(255, 255, 255, 0.3); /* Highlight effect */
+            /* Optional: inner shadow for more depth */
+            /* box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.2); */
             border: none;
             perspective: 600px;
             perspective-origin: 50% 50%;
@@ -29,12 +42,20 @@
             font-weight: 700;
             font-style: normal;
             text-align: center;
-            color: #101820;
+            color: #151d25;
             font-size: 1.25rem;
         }
         .powerball {
-            background: radial-gradient(circle at 50% 25%, #ff4d4d, #c8102e);
-            color: #fff;
+            border-radius: 50%; /* Ensure circle shape */
+            background: radial-gradient(
+                circle at 30% 20%, /* Light source position, slightly offset to top left */
+                #FFD700 0%, /* Highlight, light gold for brightness */
+                #FFAA33 20%, /* Transition to bright orange */
+                #F7931A 50%, /* Bitcoin main color */
+                #E69500 80%, /* Darker orange */
+                #D87A00 100% /* Even darker shadow color */
+            );
+            color: #fff6ef;
         }
         .d-flex {
             display: flex;
