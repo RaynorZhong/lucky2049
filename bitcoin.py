@@ -205,18 +205,19 @@ def fetch_bitcoins_by_mempool_space(start_height: int, count: int) -> List[Dict[
         raise
 
 def fetch_height() -> int:
-    height = min(
-        # fetch_height_by_blockcypher(),
-        fetch_height_by_mempool_space(),
-        fetch_height_by_blockchair_v2()
-    )
+    # height = min(
+    #     # fetch_height_by_blockcypher(),
+    #     fetch_height_by_mempool_space(),
+    #     # fetch_height_by_blockchair_v2()
+    # )
+    height = fetch_height_by_mempool_space()
     if height is None:
         raise ValueError("Failed to fetch the latest block height from all sources")
     return height
 
 def fetch_bitcoins(start_height: int, count: int) -> List[Dict[str, str]]:
     list_bitcoins = [
-        fetch_bitcoins_by_blockchair_v2(start_height, count),
+        # fetch_bitcoins_by_blockchair_v2(start_height, count),
         # fetch_bitcoins_by_blockcypher(start_height, count),
         fetch_bitcoins_by_mempool_space(start_height, count)
     ]
