@@ -226,6 +226,6 @@ def get_log_entries(page=1, page_size=50):
         return logs, total_pages
 
 def init_db():
-    logger.info("Initializing database...")
     create_db_and_tables()
+    logger.info("Initializing database...")
     create_bitcoin()
