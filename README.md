@@ -102,12 +102,12 @@ Uncomment the timestamp lines in `generate_lotto_numbers_bitcoin` and provide a 
 
 ## How It Works
 
-(1) Concatenate 144 hex hashes into a string (optionally + timestamp).
-(2) SHA-256 hash to derive a 32-byte seed.
-(3) Generate 6 large random numbers using HMAC with counter.
-(4) Draw white balls by indexing and popping from a pool (ensures uniqueness).
-(5) Draw Powerball via modulo operation.
-(6) Sort and return.
+- (1) Concatenate 144 hex hashes into a string (optionally + timestamp).
+- (2) SHA-256 hash to derive a 32-byte seed.
+- (3) Generate 6 large random numbers using HMAC with counter.
+- (4) Draw white balls by indexing and popping from a pool (ensures uniqueness).
+- (5) Draw Powerball via modulo operation.
+- (6) Sort and return.
 
 This method minimizes bias and ensures cryptographic strength.
 
