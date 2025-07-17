@@ -11,6 +11,8 @@ This tool is ideal for simulations, educational purposes, or exploring cryptogra
 
 **Repository:** [https://github.com/RaynorZhong/lucky2049](https://github.com/RaynorZhong/lucky2049)
 
+**Demo:** [lucky2049](http://www.lucky2049.com:8000/)
+
 **Note:** This is for entertainment only. Gambling laws apply; do not use for real betting. Always verify official Powerball results.
 
 ## Features
