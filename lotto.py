@@ -11,19 +11,12 @@ from bitcoin import update_bitcoins
 # from bitcoinlib.services.services import Service
 
 NUM_BLOCKCHAIN = 144  # Number of blockchain hashes per group
-# BLUE_BALL_MAX = 36
-# RED_BALL_MAX = 12
-BLUE_BALL_MAX = 69
-RED_BALL_MAX = 26
+BLUE_BALL_MAX = 35
+RED_BALL_MAX = 12
+BLUE_BALL_NUM = 5
+RED_BALL_NUM = 2
 IS_UPDATE_DRAW = True  # Whether to update the draw automatically
 IS_UPDATE_BITCOIN = True  # Whether to update the Bitcoin blocks automatically
-
-# def getBitcoinBlockList(filename):
-#     csv_blockchain = pd.read_csv(f'./input/{filename}.csv', dtype=str)
-#     list_blockchain = list(csv_blockchain['hash'])
-#     time_blockchain = list(csv_blockchain['timestamp'])
-#     return list_blockchain, time_blockchain
-
 
 def deterministic_rng(seed: bytes, count: int) -> List[int]:
     """
@@ -46,7 +39,7 @@ def deterministic_rng(seed: bytes, count: int) -> List[int]:
         counter += 1
     return random_numbers
 
-def generate_lotto_numbers_bitcoin(hashes: List[str]) -> Tuple[List[int], int]:
+def generate_lotto_numbers_bitcoin(hashes: List[str]) -> Tuple[List[int], List[int]]:
     """
     Generate lottery numbers using 144 Bitcoin block hashes.
     
@@ -55,7 +48,7 @@ def generate_lotto_numbers_bitcoin(hashes: List[str]) -> Tuple[List[int], int]:
         # timestamp: Optional timestamp (string format) as extra entropy.
     
     Returns:
-        Tuple[List[int], int]: Front area numbers (5 sorted integers from 1 to BLUE_BALL_MAX), back area number (1 integer from 1 to RED_BALL_MAX).
+        Tuple[List[int], List[int]]: Front area numbers (5 sorted integers from 1 to BLUE_BALL_MAX), back area numbers (2 sorted integers from 1 to RED_BALL_MAX).
     """
     if len(hashes) != NUM_BLOCKCHAIN:
         raise ValueError(f"{NUM_BLOCKCHAIN} block hashes must be provided")
@@ -71,36 +64,41 @@ def generate_lotto_numbers_bitcoin(hashes: List[str]) -> Tuple[List[int], int]:
     seed = hashlib.sha256(combined.encode('utf-8')).digest() 
         
     # Step 4: Generate random numbers
-    random_numbers = deterministic_rng(seed, 6)  # Need 6 random numbers (5 front + 1 back)
-    
+    random_numbers = deterministic_rng(seed, BLUE_BALL_NUM + RED_BALL_NUM)  # Need 7 random numbers (5 front + 2 back)
+
     # Step 5: Generate front area numbers (5 unique numbers from 1 to BLUE_BALL_MAX)
     front_pool = list(range(1, BLUE_BALL_MAX+1))
     front_numbers = []
-    for i in range(5):
+    for i in range(BLUE_BALL_NUM):
         index = random_numbers[i] % len(front_pool)
         front_numbers.append(front_pool.pop(index))
     front_numbers.sort()
     
-    # Step 6: Generate back area number (1 number from 1 to RED_BALL_MAX)
-    back_number = (random_numbers[5] % RED_BALL_MAX) + 1
+    # Step 6: Generate back area numbers (2 unique numbers from 1 to RED_BALL_MAX)
+    back_pool = list(range(1, RED_BALL_MAX+1))
+    back_numbers = []
+    for i in range(RED_BALL_NUM):
+        index = random_numbers[BLUE_BALL_NUM + i] % len(back_pool)
+        back_numbers.append(back_pool.pop(index))
+    back_numbers.sort()
     
-    return front_numbers, back_number
+    return front_numbers, back_numbers
 
-def verify_lotto_numbers(hashes: List[str], front: List[int], back: int) -> bool:
+def verify_lotto_numbers(hashes: List[str], front: List[int], back: List[int]) -> bool:
     """
     Verify if the lottery numbers are generated from the given block hashes.
     
     Args:
         hashes: 144 block hashes.
         front: Front area numbers.
-        back: Back area number.
+        back: Back area numbers.
         # timestamp: Optional timestamp.
     
     Returns:
-        bool: Whether the verification passed.
+        bool: True if the numbers are generated from the hashes, False otherwise.
     """
     expected_front, expected_back = generate_lotto_numbers_bitcoin(hashes)
-    return expected_front == front and expected_back == back
+    return front == expected_front and back == expected_back
 
 
 # Chi-square test function
@@ -135,7 +133,7 @@ def plot_distribution(front_all, back_all, total_draws):
         temp: Number of draws.
     """
     # Front area chi-square test
-    front_expected_freq = (total_draws * 5) / BLUE_BALL_MAX  # 5 numbers per draw, BLUE_BALL_MAX total numbers
+    front_expected_freq = (total_draws * BLUE_BALL_NUM) / BLUE_BALL_MAX  # 5 numbers per draw, BLUE_BALL_MAX total numbers
     front_chi2, front_p = chi_square_test(front_all, BLUE_BALL_MAX, front_expected_freq)
     front_stats = {
         "chi2": round(front_chi2, 2),
@@ -143,9 +141,8 @@ def plot_distribution(front_all, back_all, total_draws):
         "conclusion": "Uniform distribution (good randomness)" if front_p > 0.05 else "Non-uniform distribution (possible bias)"
     }
 
-    
     # Back area chi-square test
-    back_expected_freq = total_draws / RED_BALL_MAX  # 1 number per draw, RED_BALL_MAX total numbers
+    back_expected_freq = (total_draws * RED_BALL_NUM) / RED_BALL_MAX  # 2 numbers per draw, RED_BALL_MAX total numbers
     back_chi2, back_p = chi_square_test(back_all, RED_BALL_MAX, back_expected_freq)
     back_stats = {
         "chi2": round(back_chi2, 2),
@@ -181,48 +178,6 @@ def plot_distribution(front_all, back_all, total_draws):
 
     return front_stats, back_stats
 
-
-# def generate_lottery_numbers():
-#     """
-#     Generate lottery numbers.
-    
-#     Returns:
-#         Tuple[List[int], int]: Front area numbers (5 sorted integers from 1 to BLUE_BALL_MAX), back area number (1 integer from 1 to RED_BALL_MAX).
-#     """
-#     blockchain = []
-#     time_blockchain = []
-#     blockchain, time_blockchain = getBitcoinBlockList('blockchain_timeup898560')
-
-#     total_draws = int(len(blockchain) / NUM_BLOCKCHAIN)
-
-#     list_lotto = []
-    
-#     for i in range(0, total_draws):    
-#         hashes = blockchain[i * NUM_BLOCKCHAIN: (i + 1) * NUM_BLOCKCHAIN]        
-#         # Generate numbers
-#         front, back = generate_lotto_numbers_bitcoin(hashes)
-#         list_lotto.append((i, front, back, time_blockchain[(i + 1) * NUM_BLOCKCHAIN - 1]))
-
-#     front_all = [num for lotto in list_lotto for num in lotto[1]]
-#     back_all = [lotto[2] for lotto in list_lotto]
-#     # Plot number distribution charts
-#     front_stats, back_stats = plot_distribution(front_all, back_all, total_draws)
-
-#     return list_lotto, front_stats, back_stats
-
-
-# def get_draw_id_by_height(height: int) -> int:
-#     """
-#     Get the lottery draw ID by blockchain height.
-    
-#     Args:
-#         blockchain_height: Blockchain height.
-    
-#     Returns:
-#         int: Lottery draw ID.
-#     """
-#     draw_id = height // NUM_BLOCKCHAIN + 1
-#     return draw_id
 
 def get_heights_by_draw_id(draw_id: int) -> List[int]:
     """
@@ -282,7 +237,7 @@ def update_statistics():
         return False
 
     front_all = [num for draw in draws for num in draw.front_list]
-    back_all = [draw.back_int for draw in draws]
+    back_all = [num for draw in draws for num in draw.back_list]
     # Plot number distribution charts and get stats
     front_stats, back_stats = plot_distribution(front_all, back_all, len(draws))
 

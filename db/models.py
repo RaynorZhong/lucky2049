@@ -30,9 +30,9 @@ class Draw(SQLModel, table=True):
         return ast.literal_eval(self.front)
     
     @property
-    def back_int(self) -> int:
-        return int(self.back)
-
+    def back_list(self) -> List[int]:
+        return ast.literal_eval(self.back)
+    
 class Statistics(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     draws: int

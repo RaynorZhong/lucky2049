@@ -14,15 +14,17 @@
             border-radius: 50%; /* Ensure circle shape */
             background: radial-gradient(
                 circle at 30% 20%, /* Light source position, slightly offset to top left */
-                #FFFFFF 0%, /* Pure white highlight */
-                #F5F5F5 30%, /* Bright white transition */
-                #E0E0E0 60%, /* Light gray for layering */
-                #CCCCCC 100% /* Darker gray for shadow */
+                #8FB4D8 0%, /* Light Litecoin blue highlight */
+                #5A87C7 25%, /* Medium Litecoin blue transition */
+                #345D9D 50%, /* Main Litecoin blue color */
+                #2A4B7F 75%, /* Deep Litecoin blue */
+                #1E3A66 100% /* Dark Litecoin blue shadow */
             );
             /* Add outer shadow for 3D effect */
             box-shadow: 
-                5px 5px 15px rgba(0, 0, 0, 0.3), /* Outer shadow */
-                -3px -3px 10px rgba(255, 255, 255, 0.3); /* Highlight effect */
+                4px 4px 12px rgba(30, 58, 102, 0.4), /* Litecoin blue outer shadow */
+                -2px -2px 8px rgba(143, 180, 216, 0.5), /* Light Litecoin blue highlight */
+                inset 0 1px 3px rgba(255, 255, 255, 0.3); /* Inner highlight for depth */
             /* Optional: inner shadow for more depth */
             /* box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.2); */
             border: none;
@@ -42,7 +44,7 @@
             font-weight: 700;
             font-style: normal;
             text-align: center;
-            color: #151d25;
+            color: #FFFFFF;
             font-size: 1.25rem;
         }
         .powerball {
@@ -76,7 +78,7 @@
         <tr>
             <th>Draw No.</th>
             <th>Front Area Numbers</th>
-            <th>Back Area Number</th>
+            <th>Back Area Numbers</th>
             <th>Blockchain Heights</th>
             <th>Draw Time</th>
         </tr>
@@ -85,7 +87,9 @@
             <td><div class="d-flex">{% for white_ball in draw.front_list %}
                 <div class="white-balls">{{ white_ball }}</div>
             {% endfor %}</div></td>
-            <td><div class="white-balls powerball">{{ draw.back_int }}</div></td>
+            <td><div class="d-flex">{% for back_ball in draw.back_list %}
+                <div class="white-balls powerball">{{ back_ball }}</div>
+            {% endfor %}</div></td>
             <td>{{ draw.start_height }} - {{ draw.end_height }}</td>
             <td>{{ draw.timestamp }}</td>
         </tr>
