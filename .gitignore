@@ -32,4 +32,5 @@ __pycache__/
 output/
 BACKUP.md
 lucky.py
-static/
+static/back_plot.html
+static/front_plot.html

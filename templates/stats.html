@@ -1,31 +1,86 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Statistics Results</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
     <style>
-        body { font-family: Arial, sans-serif; margin: 40px; }
-        iframe { width: 100%; height: 500px; border: none; }
-        a { color: #007bff; text-decoration: none; }
-        a:hover { text-decoration: underline; }
+        iframe {
+            width: 100%;
+            height: 500px;
+            border: none;
+            border-radius: var(--radius-md);
+            background: rgba(255, 255, 255, 0.05);
+            /* Slight background for iframes */
+        }
     </style>
 </head>
+
 <body>
-    <h1>Statistics Results ({{ statistics.draws }} draws)</h1>
-    <h2>Front Area Chi-Square Test</h2>
-    <p><strong>Chi-square Statistic:</strong> {{ statistics.front_chi2 }}</p>
-    <p><strong>p-value:</strong> {{ statistics.front_p_value }}</p>
-    <p><strong>Conclusion:</strong> {{ statistics.front_conclusion }}</p>
-    <h3>Front Area Frequency Distribution</h3>
-    <iframe src="/static/front_plot.html"></iframe>
-    
-    <h2>Back Area Chi-Square Test</h2>
-    <p><strong>Chi-square Statistic:</strong> {{ statistics.back_chi2 }}</p>
-    <p><strong>p-value:</strong> {{ statistics.back_p_value }}</p>
-    <p><strong>Conclusion:</strong> {{ statistics.back_conclusion }}</p>
-    <h3>Back Area Frequency Distribution</h3>
-    <iframe src="/static/back_plot.html"></iframe>
-    
-    <p><a href="/">Back to Home</a></p>
+    <div class="container">
+        <header>
+            <h1>Statistics Results</h1>
+            <p>Analysis based on {{ statistics.draws }} total draws</p>
+        </header>
+
+        <section class="glass-panel">
+            <h2>Front Area Chi-Square Test</h2>
+            <div
+                style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: var(--radius-sm);">
+                    <div style="font-size: 0.9rem; color: var(--text-secondary);">Chi-square Statistic</div>
+                    <div style="font-size: 1.5rem; font-weight: 700;">{{ statistics.front_chi2 }}</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: var(--radius-sm);">
+                    <div style="font-size: 0.9rem; color: var(--text-secondary);">p-value</div>
+                    <div
+                        style="font-size: 1.5rem; font-weight: 700; color: {{ 'var(--accent-color)' if statistics.front_p_value > 0.05 else '#ef4444' }};">
+                        {{ statistics.front_p_value }}</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: var(--radius-sm);">
+                    <div style="font-size: 0.9rem; color: var(--text-secondary);">Conclusion</div>
+                    <div style="font-weight: 600;">{{ statistics.front_conclusion }}</div>
+                </div>
+            </div>
+
+            <h3>Front Area Frequency Distribution</h3>
+            <iframe src="/static/front_plot.html"></iframe>
+        </section>
+
+        <section class="glass-panel">
+            <h2>Back Area Chi-Square Test</h2>
+            <div
+                style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: var(--radius-sm);">
+                    <div style="font-size: 0.9rem; color: var(--text-secondary);">Chi-square Statistic</div>
+                    <div style="font-size: 1.5rem; font-weight: 700;">{{ statistics.back_chi2 }}</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: var(--radius-sm);">
+                    <div style="font-size: 0.9rem; color: var(--text-secondary);">p-value</div>
+                    <div
+                        style="font-size: 1.5rem; font-weight: 700; color: {{ 'var(--accent-color)' if statistics.back_p_value > 0.05 else '#ef4444' }};">
+                        {{ statistics.back_p_value }}</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: var(--radius-sm);">
+                    <div style="font-size: 0.9rem; color: var(--text-secondary);">Conclusion</div>
+                    <div style="font-weight: 600;">{{ statistics.back_conclusion }}</div>
+                </div>
+            </div>
+
+            <h3>Back Area Frequency Distribution</h3>
+            <iframe src="/static/back_plot.html"></iframe>
+        </section>
+
+        <div style="text-align: center; margin-top: 2rem;">
+            <a href="/" class="btn">Back to Home</a>
+        </div>
+    </div>
 </body>
+
 </html>
