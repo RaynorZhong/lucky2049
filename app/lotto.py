@@ -269,20 +269,13 @@ def chi_square_test(numbers: List[int], num_categories: int, expected_freq: floa
     return chi2_stat, p_value
 
 # Plotting function
-def plot_distribution(front_all, back_all, total_draws):
-    """
-    Plot number distribution charts.
-    
-    Args:
-        front_all: List of all front area numbers.
-        back_all: List of all back area numbers.
-        temp: Number of draws.
-    """
-    import numpy as np
-    import plotly.graph_objects as go
+def compute_distribution_stats(front_all, back_all, total_draws):
+    """Chi-square uniformity test over the front/back number frequencies.
 
-    # Front area chi-square test
-    front_expected_freq = (total_draws * BLUE_BALL_NUM) / BLUE_BALL_MAX  # 5 numbers per draw, BLUE_BALL_MAX total numbers
+    Returns (front_stats, back_stats) dicts (chi2, p_value, conclusion). No charts:
+    the heavy plotly frequency plots were removed; /stats shows the numbers only.
+    """
+    front_expected_freq = (total_draws * BLUE_BALL_NUM) / BLUE_BALL_MAX  # 5 numbers per draw
     front_chi2, front_p = chi_square_test(front_all, BLUE_BALL_MAX, front_expected_freq)
     front_stats = {
         "chi2": round(front_chi2, 2),
@@ -290,40 +283,13 @@ def plot_distribution(front_all, back_all, total_draws):
         "conclusion": "Uniform distribution (good randomness)" if front_p > 0.05 else "Non-uniform distribution (possible bias)"
     }
 
-    # Back area chi-square test
-    back_expected_freq = (total_draws * RED_BALL_NUM) / RED_BALL_MAX  # 2 numbers per draw, RED_BALL_MAX total numbers
+    back_expected_freq = (total_draws * RED_BALL_NUM) / RED_BALL_MAX  # 2 numbers per draw
     back_chi2, back_p = chi_square_test(back_all, RED_BALL_MAX, back_expected_freq)
     back_stats = {
         "chi2": round(back_chi2, 2),
         "p_value": round(back_p, 4),
         "conclusion": "Uniform distribution (good randomness)" if back_p > 0.05 else "Non-uniform distribution (possible bias)"
     }
-
-    # Generate front area Plotly chart
-    front_freq, _ = np.histogram(front_all, bins=BLUE_BALL_MAX, range=(1, BLUE_BALL_MAX+1))
-    fig_front = go.Figure()
-    fig_front.add_trace(go.Bar(x=list(range(1, BLUE_BALL_MAX+1)), y=front_freq, name='Observed Frequency'))
-    fig_front.add_hline(y=front_expected_freq, line_dash="dash", line_color="red", annotation_text="Expected Frequency")
-    fig_front.update_layout(
-        title="Front Area Number Frequency Distribution",
-        xaxis_title="Number",
-        yaxis_title="Frequency",
-        showlegend=True
-    )
-    fig_front.write_html("static/front_plot.html", full_html=False)
-
-    # Generate back area Plotly chart
-    back_freq, _ = np.histogram(back_all, bins=RED_BALL_MAX, range=(1, RED_BALL_MAX+1))
-    fig_back = go.Figure()
-    fig_back.add_trace(go.Bar(x=list(range(1, RED_BALL_MAX+1)), y=back_freq, name='Observed Frequency'))
-    fig_back.add_hline(y=back_expected_freq, line_dash="dash", line_color="red", annotation_text="Expected Frequency")
-    fig_back.update_layout(
-        title="Back Area Number Frequency Distribution",
-        xaxis_title="Number",
-        yaxis_title="Frequency",
-        showlegend=True
-    )
-    fig_back.write_html("static/back_plot.html", full_html=False)
 
     return front_stats, back_stats
 
@@ -409,8 +375,8 @@ def update_statistics():
 
     front_all = [num for draw in draws for num in draw.front_list]
     back_all = [num for draw in draws for num in draw.back_list]
-    # Plot number distribution charts and get stats
-    front_stats, back_stats = plot_distribution(front_all, back_all, len(draws))
+    # Compute chi-square distribution stats (numbers only; charts removed)
+    front_stats, back_stats = compute_distribution_stats(front_all, back_all, len(draws))
 
     # Update statistics in the database
     create_statistics([(len(draws), front_stats['chi2'], front_stats['p_value'], front_stats['conclusion'],

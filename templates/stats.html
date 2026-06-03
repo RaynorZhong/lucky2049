@@ -10,16 +10,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;700&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
-    <style>
-        iframe {
-            width: 100%;
-            height: 500px;
-            border: none;
-            border-radius: var(--radius-md);
-            background: rgba(255, 255, 255, 0.05);
-            /* Slight background for iframes */
-        }
-    </style>
 </head>
 
 <body>
@@ -48,9 +38,6 @@
                     <div style="font-weight: 600;">{{ statistics.front_conclusion }}</div>
                 </div>
             </div>
-
-            <h3>Front Area Frequency Distribution</h3>
-            <iframe src="/static/front_plot.html"></iframe>
         </section>
 
         <section class="glass-panel">
@@ -72,9 +59,6 @@
                     <div style="font-weight: 600;">{{ statistics.back_conclusion }}</div>
                 </div>
             </div>
-
-            <h3>Back Area Frequency Distribution</h3>
-            <iframe src="/static/back_plot.html"></iframe>
         </section>
 
         <div style="text-align: center; margin-top: 2rem;">

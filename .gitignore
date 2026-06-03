@@ -42,5 +42,3 @@ coverage.xml
 output/
 BACKUP.md
 lucky.py
-static/back_plot.html
-static/front_plot.html
