@@ -81,15 +81,21 @@ export LOTTO_SEED_CSV_URL="https://github.com/RaynorZhong/lucky2049/releases/dow
 
 ---
 
-## 路径 C:GitHub Actions 当"开奖机"(未实现,设计备忘)
+## 路径 C:GitHub Actions 自动刷新(已实现 —— 无需服务器)
 
-定时 cron 拉块、算号、发布,适合不想养服务器的人。**暂未实现**,原因是
-GitHub 托管的 runner 没有那个数据库(已 gitignored),而从链上重算全部历史不现实
-(6600+ 期 × 144 块的抓取会被限流)。可行做法二选一:
-- **自托管 runner**(机器上有库):cron 跑 `update_draws` + `./scripts/publish-pages.sh`。
-- 让**路径 A 的常驻服务**当开奖机(它已每 10 分钟自动开奖),再定期跑 `publish-pages.sh` 刷新 Pages 快照。
+[`.github/workflows/refresh-pages.yml`](../.github/workflows/refresh-pages.yml) 每天定时
+(也可手动 `workflow_dispatch`)运行 [`scripts/extend_pages.py`](../scripts/extend_pages.py):
+checkout `gh-pages` 上当前的 `index.json` → 对**新确认的 144 区块窗口**从 mempool.space
+抓哈希、用 `verify.py` 续算并接上承诺链 → 推回 `gh-pages` → Pages 自动重建。
 
-当前推荐:路径 A(开奖)+ 路径 B(发布静态站),已完全可用。
+**不需要数据库、不需要服务器、纯 stdlib**(`extend_pages.py` 复用 `verify.py` 的算法,
+GitHub 托管 runner 即可跑)。这让整套"开奖 + 发布"完全跑在 GitHub 上,**用不着 Render**。
+
+> 单一发布源:启用本 cron 后,gh-pages 上的 `index.json` 就是权威快照。**别再本地跑
+> `publish-pages.sh`**(它会用本地库的导出覆盖,可能与 cron 续算冲突)。要么只用 cron,
+> 要么只用本地 publish,二选一。
+>
+> 注:`refresh-pages.yml` 与跑测试的 `tests.yml` 是两个独立 workflow,互不影响。
 
 ---
 

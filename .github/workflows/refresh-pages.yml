@@ -1,0 +1,52 @@
+name: refresh-pages
+
+# Server-less "drawer + publisher": on a schedule, extend the published snapshot
+# with any newly-confirmed draws straight from the chain (no DB, stdlib only),
+# then republish to gh-pages. This is what keeps the GitHub Pages site fresh
+# without any external host.
+on:
+  schedule:
+    - cron: "20 1 * * *"   # daily ~01:20 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-pages
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4          # main: verify.py, scripts, web/, static/
+      - uses: actions/checkout@v4          # current published snapshot
+        with:
+          ref: gh-pages
+          path: _published
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Extend snapshot from the chain (stdlib only, no DB)
+        run: |
+          mkdir -p site
+          cp _published/index.json site/index.json
+          python scripts/extend_pages.py site/index.json
+          cp web/index.html web/verify.html site/
+          cp static/verify.js static/style.css site/
+          touch site/.nojekyll
+
+      - name: Publish to gh-pages
+        run: |
+          cd site
+          git init -q
+          git checkout -q -b gh-pages
+          git add -A
+          git -c user.email=pages@users.noreply.github.com -c user.name="lucky2049 pages bot" \
+            commit -q -m "Refresh static snapshot"
+          git push -f -q "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
