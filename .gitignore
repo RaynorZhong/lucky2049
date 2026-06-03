@@ -15,6 +15,12 @@ __pycache__/
 *.db-journal
 *.sqlite
 
+# Ignores test / coverage artifacts.
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
 # Ignores log files.
 *.log
 

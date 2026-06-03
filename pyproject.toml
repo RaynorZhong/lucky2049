@@ -1,0 +1,21 @@
+# Tooling config only (pytest + coverage). The project ships via requirements.txt
+# and the Dockerfile; this file does not define a build/package.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Quiet by default; -ra shows a summary of skips/xfails. Coverage is opt-in
+# (see `make cov`) so the red-green watch loop stays fast.
+addopts = "-q -ra"
+
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "tests/*",
+    ".venv/*",
+    "*/site-packages/*",
+    "lucky.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false

@@ -1,0 +1,5 @@
+# Development / test tooling (not needed at runtime — keep out of the prod image).
+# Install with:  pip install -r requirements-dev.txt
+pytest==9.0.3
+pytest-cov==7.1.0
+pytest-watcher==0.6.3
