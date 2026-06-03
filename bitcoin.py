@@ -46,120 +46,6 @@ def parse_timestamp(timestamp_input) -> str:
     except (ValueError, TypeError):
         raise ValueError(f"Cannot parse timestamp: {timestamp_input}")
 
-# Blockchair V2 API
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=60, min=120, max=480))
-def fetch_height_by_blockchair_v2() -> int:
-    HEIGHT_URL = "https://api.blockchair.com/bitcoin/stats"
-    try:
-        response = requests.get(HEIGHT_URL)
-        response.raise_for_status()
-        data = response.json()
-        return data["data"]["blocks"] - 1  # Latest block height
-    except requests.exceptions.RequestException as e:
-        raise ValueError(f"Failed to get latest block height: {str(e)}")
-
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=60, min=120, max=480))
-def fetch_bitcoins_by_blockchair_v2(start_height: int, count: int) -> List[Dict[str, str]]:
-    BITCOINS_URL = "https://api.blockchair.com/bitcoin/blocks"
-    hashes = []
-
-    try:
-        params = {
-            "limit": count,
-            "s": "id(asc)", 
-            "q": f"id({start_height}..)"
-        }
-        try:
-            response = requests.get(BITCOINS_URL, params=params)
-            response.raise_for_status()
-            data = response.json()["data"]
-            if not data:
-                raise ValueError(f"No data retrieved")
-
-            # Extract hash and height
-            for block in data:
-                block_hash = block["hash"]
-                block_height = block["id"]
-                block_time = parse_timestamp(block["time"])
-                if len(block_hash) != 64 or not all(c in "0123456789abcdef" for c in block_hash):
-                    raise ValueError(f"Invalid block hash: {block_hash}")
-                # Only add blocks with height >= start_height
-                if block_height >= start_height:
-                    hashes.append({"height": block_height, "hash": block_hash, "timestamp": block_time})
-
-            # Check if the number of hashes matches the requested count
-            if len(hashes) != count:
-                raise ValueError(f"Number of block hashes retrieved {len(hashes)} does not match requested count {count}")
-
-        except requests.exceptions.HTTPError as e:
-            error_data = response.json() if response.content else {}
-            raise ValueError(f"API request failed: {e.response.status_code} - {json.dumps(error_data)}")
-        except requests.exceptions.RequestException as e:
-            raise ValueError(f"Network connection failed: {str(e)}")
-
-        return sorted(hashes, key=lambda x: x["height"])
-
-    except Exception as e:
-        logger.error(f"Error: {str(e)}")
-        raise
-
-
-# BlockCypher API - always limits reached.
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-def fetch_height_by_blockcypher() -> int:
-    HEIGHT_URL = "https://api.blockcypher.com/v1/btc/main"
-    try:
-        response = requests.get(HEIGHT_URL)
-        response.raise_for_status()
-        data = response.json()
-        return data["height"]
-    except requests.exceptions.RequestException as e:
-        raise ValueError(f"Failed to get latest block height: {str(e)}")
-
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-def fetch_block_by_blockcypher(height: int) -> Dict[str, str]:
-    BLOCK_URL = f"https://api.blockcypher.com/v1/btc/main/blocks/{height}"
-    try:
-        response = requests.get(BLOCK_URL)
-        response.raise_for_status()
-        data = response.json()
-        
-        block =  {
-            "height": data["height"],
-            "hash": data["hash"],
-            "timestamp": parse_timestamp(data["time"])
-        }
-
-        if len(block["hash"]) != 64 or not all(c in "0123456789abcdef" for c in block["hash"]):
-            raise ValueError(f"Invalid block hash: {block['hash']}")
-        
-        return block
-    
-    except requests.exceptions.HTTPError as e:
-        error_data = response.json() if response.content else {}
-        raise ValueError(f"API request failed: {e.response.status_code} - {json.dumps(error_data)}")
-    except requests.exceptions.RequestException as e:
-        raise ValueError(f"Failed to get block {height}: {str(e)}")
-
-def fetch_bitcoins_by_blockcypher(start_height: int, count: int) -> List[Dict[str, str]]:
-    hashes = []
-
-    try:
-        for i in range(start_height, start_height + count):
-            block = fetch_block_by_blockcypher(i)
-            if block["height"] >= start_height:
-                hashes.append(block)
-        # Check if the number of hashes matches the requested count
-        if len(hashes) != count:
-            raise ValueError(f"Number of block hashes retrieved {len(hashes)} does not match requested count {count}")
-
-        return sorted(hashes, key=lambda x: x["height"])
-
-    except Exception as e:
-        logger.error(f"Error: {str(e)}")
-        raise
-
-
 # Mempool.space API
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 def fetch_height_by_mempool_space() -> int:
@@ -233,8 +119,9 @@ def fetch_bitcoins_by_mempool_space(start_height: int, count: int) -> List[Dict[
 #   BITCOIN_RPC_USER / BITCOIN_RPC_PASSWORD / BITCOIN_RPC_HOST / BITCOIN_RPC_PORT
 #
 # When a node is configured it is used as the source of truth; the public
-# explorers above remain as a fallback only (e.g. node temporarily unreachable).
-# Block hashes are objective Bitcoin consensus data, so the node is canonical.
+# explorer above (mempool.space) remains as a fallback only (e.g. node
+# temporarily unreachable). Block hashes are objective Bitcoin consensus data,
+# so the node is canonical.
 # =========================================================================
 def core_rpc_url() -> str:
     url = os.environ.get("BITCOIN_RPC_URL")
@@ -291,11 +178,6 @@ def fetch_height() -> int:
                 return height
         except Exception as e:
             logger.warning(f"Core node height fetch failed, falling back to explorer: {e}")
-    # height = min(
-    #     # fetch_height_by_blockcypher(),
-    #     fetch_height_by_mempool_space(),
-    #     # fetch_height_by_blockchair_v2()
-    # )
     height = fetch_height_by_mempool_space()
     if height is None:
         raise ValueError("Failed to fetch the latest block height from all sources")
@@ -309,8 +191,6 @@ def fetch_bitcoins(start_height: int, count: int) -> List[Dict[str, str]]:
         except Exception as e:
             logger.warning(f"Core node block fetch failed, falling back to explorer: {e}")
     list_bitcoins = [
-        # fetch_bitcoins_by_blockchair_v2(start_height, count),
-        # fetch_bitcoins_by_blockcypher(start_height, count),
         fetch_bitcoins_by_mempool_space(start_height, count)
     ]
     ret = list_bitcoins[0]
