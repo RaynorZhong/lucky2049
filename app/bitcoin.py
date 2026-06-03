@@ -220,7 +220,9 @@ def update_bitcoins():
     MAX_BLOCKCHAINS = 100
     try:
         start_height = get_max_bitcoin_height()
-        start_height = start_height + 1 if start_height else 0
+        # None → fresh DB, start at genesis (0). Otherwise next height. (Using
+        # `if start_height` would wrongly re-fetch from 0 when only block 0 exists.)
+        start_height = 0 if start_height is None else start_height + 1
         # Only ingest up to the confirmed tip, never the raw chain tip, so a
         # later shallow reorg can't strand a stale hash in our append-only store.
         latest_height = confirmed_tip(fetch_height())

@@ -47,7 +47,6 @@ if not os.path.exists("static"):
 origins = [
     "http://localhost",
     "http://localhost:3000",
-    "https://bit-lotto.vercel.app",
     ]
 
 app.add_middleware(

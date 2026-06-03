@@ -1,9 +1,8 @@
 from sqlmodel import Field, Session, SQLModel, create_engine, select
-from sqlalchemy import inspect as sa_inspect, text
+from sqlalchemy import inspect as sa_inspect, text, func
 from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 from typing import List
-import pandas as pd
 import logging
 import ast
 import os
@@ -65,7 +64,7 @@ class DatabaseHandler(logging.Handler):
         :param record: Log record to be emitted.
         """
         log_entry = LogEntry(
-            timestamp=datetime.now(),
+            timestamp=datetime.now().isoformat(sep=" ", timespec="seconds"),
             level=record.levelname,
             logger_name=record.name,
             message=record.getMessage()
@@ -169,6 +168,7 @@ def create_bitcoin():
         except Exception as e:
             logger.warning("Failed to download seed CSV (%s); starting empty.", e)
             return
+    import pandas as pd  # heavy; only needed here (cold-start seeding)
     csv_blockchain = pd.read_csv(csv_file_name, dtype=str)
     records = [
         Bitcoin(height=block[0], hash=block[1], timestamp=block[2])
@@ -307,7 +307,8 @@ def get_log_entries(page=1, page_size=50):
         statement = select(LogEntry).order_by(LogEntry.id.desc()).offset(offset).limit(page_size)
         results = session.exec(statement)
         logs = results.all()
-        total_pages = (len(session.exec(select(LogEntry)).all()) + page_size - 1) // page_size
+        total = session.exec(select(func.count()).select_from(LogEntry)).one()
+        total_pages = (total + page_size - 1) // page_size
         return logs, total_pages
 
 def init_db():

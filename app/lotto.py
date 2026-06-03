@@ -1,13 +1,13 @@
-import pandas as pd
-import numpy as np
 import hashlib
 import hmac
 from typing import List, Tuple
-from scipy.stats import chi2_contingency
-import plotly.graph_objects as go
 from app.models import *
 from app.bitcoin import update_bitcoins
 from verify import commitment_for, GENESIS_PREV  # standalone auditor module at repo root
+
+# numpy/scipy/plotly are only used by the statistics helpers below; they are
+# imported lazily there so the draw engine and API hot paths start fast and
+# don't pull ~700ms of heavy imports they never need.
 
 # from bitcoinlib.services.services import Service
 
@@ -257,6 +257,9 @@ def chi_square_test(numbers: List[int], num_categories: int, expected_freq: floa
     Returns:
         Tuple[float, float]: Chi-square statistic and p-value.
     """
+    import numpy as np
+    from scipy.stats import chi2_contingency
+
     # Count observed frequencies
     observed, _ = np.histogram(numbers, bins=num_categories, range=(1, num_categories + 1))
     expected = np.array([expected_freq] * num_categories)
@@ -275,6 +278,9 @@ def plot_distribution(front_all, back_all, total_draws):
         back_all: List of all back area numbers.
         temp: Number of draws.
     """
+    import numpy as np
+    import plotly.graph_objects as go
+
     # Front area chi-square test
     front_expected_freq = (total_draws * BLUE_BALL_NUM) / BLUE_BALL_MAX  # 5 numbers per draw, BLUE_BALL_MAX total numbers
     front_chi2, front_p = chi_square_test(front_all, BLUE_BALL_MAX, front_expected_freq)
