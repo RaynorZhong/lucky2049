@@ -33,8 +33,12 @@ def db():
 
     Every module bound `engine` to the same object via `from db.models import *`,
     so dropping+recreating tables on it isolates each test without any patching.
+    Skips when the app's deps aren't installed (the stdlib-only CI job).
     """
-    import db.models as models
+    try:
+        import db.models as models
+    except Exception as e:  # pragma: no cover - deps not installed in stdlib CI job
+        pytest.skip(f"app deps not installed: {e}")
     models.SQLModel.metadata.drop_all(models.engine)
     models.SQLModel.metadata.create_all(models.engine)
     yield models.engine
@@ -47,8 +51,11 @@ def client(db):
 
     Instantiated without `with`, so Starlette does NOT run the lifespan
     (init_db / scheduler / CSV seeding); the `db` fixture has already provided
-    migrated, empty tables.
+    migrated, empty tables. Skips when the app's deps aren't installed.
     """
-    from fastapi.testclient import TestClient
-    import main
+    try:
+        from fastapi.testclient import TestClient
+        import main
+    except Exception as e:  # pragma: no cover - deps not installed in stdlib CI job
+        pytest.skip(f"app deps not installed: {e}")
     return TestClient(main.app)

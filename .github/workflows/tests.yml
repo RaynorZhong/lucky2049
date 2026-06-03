@@ -7,8 +7,8 @@ on:
 
 jobs:
   # Fast, dependency-free guard for the FROZEN draw algorithm (SPEC.md).
-  # Uses only the standard library, so it can never be broken by a flaky dep
-  # install — if this job is red, the algorithm or its golden vectors changed.
+  # Installs only pytest; tests that need the app's heavy deps self-skip, so a
+  # red here means the algorithm, its golden vectors, or the JS verifier changed.
   algorithm-lock:
     runs-on: ubuntu-latest
     steps:
@@ -16,12 +16,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Run spec lock tests (stdlib only)
-        run: python -m unittest discover -s tests -v
+      - name: Install pytest only (no app deps)
+        run: pip install pytest==9.0.3
+      - name: Run spec lock tests (deps-requiring tests self-skip)
+        run: pytest -ra
 
-  # Full suite with project deps installed, so the lotto.py <-> verify.py
-  # bit-for-bit consistency test actually runs (it self-skips without pandas).
-  full-consistency:
+  # Full suite with all deps, so the DB / endpoint / consistency tests run.
+  # Enforces a coverage floor (well below current ~40%) to catch big regressions.
+  full:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,6 +32,6 @@ jobs:
           python-version: "3.13"
           cache: pip
       - name: Install dependencies
-        run: pip install -r requirements.txt
-      - name: Run full test suite
-        run: python -m unittest discover -s tests -v
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run full test suite with coverage
+        run: pytest --cov --cov-report=term-missing --cov-report=xml --cov-fail-under=35
