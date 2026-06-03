@@ -75,8 +75,10 @@ class DatabaseHandler(logging.Handler):
             session.commit()
 
 base_dir = os.path.dirname(os.path.abspath(__file__))
-sqlite_file_name = os.path.join(base_dir, SQLITE_NAME)
-csv_file_name = os.path.join(base_dir, CSV_NAME)
+# Data files live in the repo-root data/ dir (sibling of the app/ package).
+data_dir = os.path.join(os.path.dirname(base_dir), "data")
+sqlite_file_name = os.path.join(data_dir, SQLITE_NAME)
+csv_file_name = os.path.join(data_dir, CSV_NAME)
 # DB location is env-overridable (LOTTO_DB_URL) so tests can point at a
 # throwaway database instead of the bundled one. Defaults to the SQLite file.
 sqlite_url = os.environ.get("LOTTO_DB_URL", f"sqlite:///{sqlite_file_name}")

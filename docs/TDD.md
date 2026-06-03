@@ -43,7 +43,7 @@ both run under pytest, so use whichever fits.
 
 ```python
 def test_something_with_db(db):
-    from db.models import create_draw, get_draw_by_id
+    from app.models import create_draw, get_draw_by_id
     create_draw([(0, [1,2,3,4,5], [1,2], "t", 0, 143)])
     assert get_draw_by_id(0).front_list == [1, 2, 3, 4, 5]
 
@@ -58,7 +58,7 @@ def test_an_endpoint(client):
 1. The test asserted `GET /healthz` returns 200 with `status: "ok"` and an
    empty-DB snapshot (`draws == 0`, genesis commitment head). Running it gave
    `404` / `KeyError` — **red**.
-2. A four-line route in `main.py` (built on the existing `get_commitment_head()`)
+2. A four-line route in `app/main.py` (built on the existing `get_commitment_head()`)
    made it **green**.
 
 Use it as the template for the next feature.

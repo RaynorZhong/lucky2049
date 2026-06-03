@@ -61,7 +61,7 @@ class TestCommitmentGolden(unittest.TestCase):
 class TestLottoUsesSameCommitment(unittest.TestCase):
     def test_lotto_imports_the_same_function(self):
         try:
-            import lotto
+            import app.lotto as lotto
         except Exception as e:  # pragma: no cover - deps not installed in stdlib CI job
             self.skipTest(f"lotto.py not importable (deps missing): {e}")
         self.assertIs(lotto.commitment_for, verify.commitment_for)

@@ -107,7 +107,7 @@ class TestImplementationsAgree(unittest.TestCase):
 
     def test_lotto_equals_verify_on_synthetic_input(self):
         try:
-            import lotto
+            import app.lotto as lotto
         except Exception as e:  # pragma: no cover - deps not installed in CI
             self.skipTest(f"lotto.py not importable (deps missing): {e}")
 

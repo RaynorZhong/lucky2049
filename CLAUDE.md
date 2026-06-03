@@ -13,7 +13,7 @@ to avoid legal risk). Don't add gambling/business features here.
 ## ⚠️ The algorithm is FROZEN (read before touching draw logic)
 
 `SPEC.md` is the normative, frozen spec (`ALGO_VERSION = "v1"`). The number
-generation in `lotto.py` (`generate_lotto_numbers_bitcoin`), the standalone
+generation in `app/lotto.py` (`generate_lotto_numbers_bitcoin`), the standalone
 `verify.py`, and the in-browser `static/verify.js` must stay **bit-for-bit
 identical** and match `SPEC.md`.
 
@@ -23,13 +23,13 @@ identical** and match `SPEC.md`.
 - Golden-vector tests (`tests/test_spec_v1.py`, `tests/test_commitment.py`) are
   **guardrails, not TODOs**. If a change turns them red, the change is wrong.
 - The commitment formula lives once in `verify.py` (`commitment_for`) and is
-  reused by `lotto.py`; keep it that way.
+  reused by `app/lotto.py`; keep it that way.
 
 ## Run
 
 ```shell
 pip install -r requirements.txt
-uvicorn main:app           # serves on :8000 (Docker: docker compose up)
+uvicorn app.main:app       # serves on :8000 (Docker: docker compose up)
 ```
 Local preview/launch config: `.claude/launch.json` (port 8011). The scheduler
 auto-draws every 10 min on startup; DB init runs in the FastAPI lifespan.
@@ -48,19 +48,22 @@ Write tests first — see `docs/TDD.md` and the `/healthz` example
 
 ## Key files
 
-- `lotto.py` — draw engine, manifest, commitment chain (`backfill_commitments`,
+Code lives in the `app/` package; `verify.py` stays at the repo root (standalone
+auditor). Data files live in `data/`.
+
+- `app/lotto.py` — draw engine, manifest, commitment chain (`backfill_commitments`,
   `get_commitment_head`), stats.
 - `verify.py` — standalone stdlib verifier (numbers + commitment chain); CLI.
 - `static/verify.js` — pure-JS in-browser verifier for the `/verify` page.
-- `bitcoin.py` — block-hash fetch: Bitcoin Core RPC (primary) + mempool.space
+- `app/bitcoin.py` — block-hash fetch: Bitcoin Core RPC (primary) + mempool.space
   (fallback). `CONFIRMATIONS` (env `DRAW_CONFIRMATIONS`, default 6) reorg buffer.
-- `db/models.py` — SQLModel/SQLite. DB URL via env `LOTTO_DB_URL`; idempotent
+- `app/models.py` — SQLModel/SQLite. DB URL via env `LOTTO_DB_URL`; idempotent
   `run_lightweight_migrations()` adds missing columns on startup.
-- `main.py` — FastAPI routes + scheduler. `SPEC.md` / `README.md` / `docs/TDD.md`.
+- `app/main.py` — FastAPI routes + scheduler. `SPEC.md` / `README.md` / `docs/TDD.md`.
 
 ## Gotchas
 
-- `db/database.db` (~170MB) and `db/blockchain_timeup898560.csv` (~86MB, the
+- `data/database.db` (~170MB) and `data/blockchain_timeup898560.csv` (~86MB, the
   cold-start seed) are gitignored / large; don't commit DB artifacts.
 - After deploying commitment changes, run `lotto.backfill_commitments()` once.
 - Anchor `get_commitment_head()` externally (OpenTimestamps / git tag) to make

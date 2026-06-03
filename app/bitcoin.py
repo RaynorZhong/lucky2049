@@ -2,7 +2,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from typing import List, Dict
 from datetime import datetime
 from dateutil import parser
-from db.models import *
+from app.models import *
 import requests
 import logging
 import pytz

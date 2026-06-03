@@ -22,7 +22,7 @@ Examples
   python verify.py 6315 --source core
 
   # Offline check against the local database:
-  python verify.py 6315 --source db --db db/database.db
+  python verify.py 6315 --source db --db data/database.db
 """
 import argparse
 import hashlib
@@ -177,7 +177,7 @@ def main():
         default=("core" if (os.environ.get("BITCOIN_RPC_URL") or os.environ.get("BITCOIN_RPC_USER")) else "mempool"),
         help="block-hash source (default: core if RPC env is set, else mempool)",
     )
-    ap.add_argument("--db", default="db/database.db", help="sqlite path for --source db")
+    ap.add_argument("--db", default="data/database.db", help="sqlite path for --source db")
     ap.add_argument("--site", help="base URL of a running site to fetch the published result, e.g. http://host:8000")
     args = ap.parse_args()
 

@@ -45,7 +45,7 @@
 docker compose up --build       # http://localhost:8000
 # 或本地：
 pip install -r requirements.txt
-fastapi run main.py             # 或 uvicorn main:app
+uvicorn app.main:app            # 或 fastapi run app/main.py
 ```
 
 应用启动后每 10 分钟检查新区块、自动出新一期（APScheduler）。
@@ -92,7 +92,7 @@ export BITCOIN_RPC_URL="http://user:pass@127.0.0.1:8332"
 python verify.py 6315 --source core
 
 # 离线对本地数据库
-python verify.py 6315 --source db --db db/database.db
+python verify.py 6315 --source db --db data/database.db
 ```
 
 加上 `--site` 时，`verify.py` 还会重算该期的**承诺链**并校验它正确链到上一期（`CHAIN MATCH`）。
@@ -115,15 +115,23 @@ commitment = SHA256( 上一期承诺 | 期号 | 算法版本 | 种子 | 前区 |
 
 ## 代码结构 / Structure
 
-- `main.py` — FastAPI 应用、路由（含 `/verify`、`/api/commitments/head`）、定时调度（每 10 分钟）。
-- `lotto.py` — 开奖引擎：`generate_lotto_numbers_bitcoin`、`build_draw_manifest`、`get_spec`、承诺链（`backfill_commitments`、`get_commitment_head`）、`ALGO_VERSION`、卡方统计。
-- `bitcoin.py` — 区块哈希抓取：全节点 RPC（主）+ 公开浏览器（备援）；`CONFIRMATIONS` 确认缓冲。
-- `db/models.py` — SQLModel/SQLite 模型与读写（`Draw` 含 `algo_version`、`commitment` 列）+ 幂等轻量迁移。
-- `verify.py` — 独立验证脚本（标准库）：号码复算 + 承诺链校验。
-- `static/verify.js` — 浏览器内验证器（自带 SHA-256/HMAC，无外部脚本），`/verify` 页面使用。
-- `SPEC.md` — 冻结算法规范 v1。
-- `tests/` — 锁定 v1 算法/承诺的回归测试（`python -m unittest discover -s tests`），CI 见 `.github/workflows/tests.yml`。
-- `lucky.py` — **独立的经济/奖金模拟器**（自带一套 69/26 示例参数），**不是开奖引擎**，与本系统开号无关。
+```
+app/            应用包（FastAPI 服务 + 开奖引擎）
+  main.py       路由（含 /verify、/healthz、/api/commitments/head）+ 调度（每 10 分钟）
+  lotto.py      开奖引擎：generate_lotto_numbers_bitcoin、build_draw_manifest、
+                承诺链（backfill_commitments、get_commitment_head）、ALGO_VERSION、统计
+  bitcoin.py    区块哈希抓取：全节点 RPC（主）+ mempool.space（备援）；CONFIRMATIONS 确认缓冲
+  models.py     SQLModel/SQLite（Draw 含 algo_version、commitment 列）+ 幂等轻量迁移
+verify.py       独立验证脚本（标准库，留在根目录便于单文件复制）：号码复算 + 承诺链校验
+static/         style.css、verify.js（浏览器内验证器，自带 SHA-256/HMAC、无外部脚本）
+templates/      Jinja2 页面（index/draw/stats/logs/verify）
+data/           blockchain_timeup898560.csv（冷启动播种）、database.db（运行时，gitignored）
+tests/          回归测试 + conftest（隔离 fixture）；CI 见 .github/workflows/tests.yml
+SPEC.md         冻结算法规范 v1        docs/TDD.md   TDD 工作流
+```
+
+> 运行：`uvicorn app.main:app`（Docker：`docker compose up`）。
+> `lucky.py`（gitignored）是独立的经济/奖金模拟器，**不是开奖引擎**，与本系统开号无关。
 
 ## 测试 / Tests
 

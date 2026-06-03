@@ -5,8 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from contextlib import asynccontextmanager
-from lotto import update_draws, get_heights_by_draw_id, build_draw_manifest, get_spec, get_commitment_head
-from db.models import *
+from app.lotto import update_draws, get_heights_by_draw_id, build_draw_manifest, get_spec, get_commitment_head
+from app.models import *
 import logging
 import os
 

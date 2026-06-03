@@ -2,10 +2,10 @@
 Pytest fixtures for fast, isolated tests.
 
 The most important lines run at import time, BEFORE any test module imports
-db.models / lotto / bitcoin / main: they point the database at a throwaway file
-and disable the DB log handler. So nothing in the suite can touch the real
-170MB database, and `from db.models import *` everywhere shares this one
-throwaway engine.
+app.models / app.lotto / app.bitcoin / app.main: they point the database at a
+throwaway file and disable the DB log handler. So nothing in the suite can touch
+the real 170MB database, and `from app.models import *` everywhere shares this
+one throwaway engine.
 
 Fixtures:
   db      - pristine, empty tables for one test (drop+create on the shared engine)
@@ -16,12 +16,12 @@ import os
 import sys
 import tempfile
 
-# Must be set before db.models is imported anywhere.
+# Must be set before app.models is imported anywhere.
 os.environ.setdefault("LOTTO_DISABLE_DB_LOG", "1")
 _TMP_DIR = tempfile.mkdtemp(prefix="lucky2049-tests-")
 os.environ.setdefault("LOTTO_DB_URL", "sqlite:///" + os.path.join(_TMP_DIR, "default.db"))
 
-# Make the repo root importable (verify, lotto, bitcoin, main, db).
+# Make the repo root importable (the `app` package and the root-level `verify`).
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
@@ -31,12 +31,12 @@ import pytest
 def db():
     """Give the test a pristine, empty database on the shared throwaway engine.
 
-    Every module bound `engine` to the same object via `from db.models import *`,
+    Every module bound `engine` to the same object via `from app.models import *`,
     so dropping+recreating tables on it isolates each test without any patching.
     Skips when the app's deps aren't installed (the stdlib-only CI job).
     """
     try:
-        import db.models as models
+        import app.models as models
     except Exception as e:  # pragma: no cover - deps not installed in stdlib CI job
         pytest.skip(f"app deps not installed: {e}")
     models.SQLModel.metadata.drop_all(models.engine)
@@ -55,7 +55,7 @@ def client(db):
     """
     try:
         from fastapi.testclient import TestClient
-        import main
+        import app.main as main
     except Exception as e:  # pragma: no cover - deps not installed in stdlib CI job
         pytest.skip(f"app deps not installed: {e}")
     return TestClient(main.app)

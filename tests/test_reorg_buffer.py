@@ -17,7 +17,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO_ROOT)
 
 try:
-    import bitcoin
+    import app.bitcoin as bitcoin
     HAVE_DEPS = True
 except Exception as e:  # pragma: no cover - deps not installed in stdlib CI job
     HAVE_DEPS = False

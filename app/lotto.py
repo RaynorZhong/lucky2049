@@ -5,9 +5,9 @@ import hmac
 from typing import List, Tuple
 from scipy.stats import chi2_contingency
 import plotly.graph_objects as go
-from db.models import *
-from bitcoin import update_bitcoins
-from verify import commitment_for, GENESIS_PREV
+from app.models import *
+from app.bitcoin import update_bitcoins
+from verify import commitment_for, GENESIS_PREV  # standalone auditor module at repo root
 
 # from bitcoinlib.services.services import Service
 
