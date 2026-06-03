@@ -128,8 +128,16 @@ commitment = SHA256( 上一期承诺 | 期号 | 算法版本 | 种子 | 前区 |
 ## 测试 / Tests
 
 ```shell
-python -m unittest discover -s tests   # 标准库即可跑核心算法锁；装了依赖会额外跑一致性/迁移测试
+make install-dev   # pytest + pytest-cov + pytest-watcher 装进 venv
+make test          # 跑一次
+make watch         # 存盘即自动重跑（TDD 红-绿循环）
+make cov           # 带覆盖率报告
+# 不装 pytest 也行：python -m unittest discover -s tests（仅标准库即可跑核心算法锁）
 ```
+
+测试隔离：`tests/conftest.py` 把数据库指向临时文件，提供 `db`（每个测试一份干净表）与
+`client`（无 lifespan 副作用的 TestClient）两个 fixture，测试永远碰不到真实库。
+TDD 工作流与"测试先行"示例见 [`docs/TDD.md`](docs/TDD.md)。
 
 CI（GitHub Actions）对每次 push/PR 运行：一个零依赖的「算法锁」任务（黄金测试向量），加一个装全依赖的完整任务。
 

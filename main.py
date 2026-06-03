@@ -163,3 +163,15 @@ async def api_commitment_head():
     `python verify.py <id> --site <this site>`.
     """
     return get_commitment_head()
+
+@app.get("/healthz")
+async def healthz():
+    """Liveness/health check: confirms the app is up and reports draw state."""
+    head = get_commitment_head()
+    return {
+        "status": "ok",
+        "algo_version": get_spec()["algo_version"],
+        "draws": head["count"],
+        "latest_draw_id": head["draw_id"],
+        "commitment_head": head["head"],
+    }
