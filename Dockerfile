@@ -16,8 +16,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # the application crashes without emitting any logs due to buffering.
 ENV PYTHONUNBUFFERED=1
 
-# 设置 Matplotlib 缓存目录和静态文件路径
-ENV MPLCONFIGDIR=/app/matplotlib_cache
+# 静态文件路径
 ENV STATIC_DIR=/app/static
 
 WORKDIR /app
@@ -33,7 +32,7 @@ RUN adduser \
     --no-create-home \
     --uid "${UID}" \
     appuser && \
-    mkdir -p /app/static /app/matplotlib_cache && \
+    mkdir -p /app/static && \
     chown -R appuser:appuser /app
 
 # Download dependencies as a separate step to take advantage of Docker's caching.
