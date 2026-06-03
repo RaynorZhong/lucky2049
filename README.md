@@ -50,6 +50,8 @@ uvicorn app.main:app            # 或 fastapi run app/main.py
 
 应用启动后每 10 分钟检查新区块、自动出新一期（APScheduler）。
 
+部署（容器一键 / GitHub Pages 静态验证站 / Actions 开奖机）与"高效同步号码"见 [`docs/DEPLOY.md`](docs/DEPLOY.md)。
+
 ### 比特币哈希来源（全节点）
 
 系统以**自建比特币全节点**作为哈希真值源（canonical source of truth），公开浏览器仅作降级备援。
