@@ -15,7 +15,7 @@
 > 这样做是为了规避潜在法律风险。本项目仅供研究与娱乐，不构成任何博彩服务。
 
 **算法规范：** 见 [`SPEC.md`](SPEC.md)（冻结版本 `v1`）。
-**独立验证：** 见 [`verify.py`](verify.py)。
+**独立验证：** 命令行用 [`verify.py`](verify.py)，或打开 `/verify` 页面在浏览器里自证。
 **Repository:** https://github.com/RaynorZhong/lucky2049 · **Demo:** http://www.lucky2049.com:8000/
 
 ## 公平性保证 / Fairness Properties
@@ -25,6 +25,8 @@
 | 可复现 | ✅ | 开源确定性算法 + 公开链上数据，任何人可重算 |
 | 运营方零自由度 | ✅ | 第 N 期固定使用高度 `[N*144, N*144+143]`，从创世块锚定，无人工挑选 |
 | 算法已冻结 | ✅ | `ALGO_VERSION="v1"`，每期声明版本；改规则须升版本且仅对未来期生效 |
+| 防篡改（历史不可改） | ✅ | 每期串入哈希链承诺，全历史压成一个"链头"；外锚链头后运营方无法事后改历史（见下文「防篡改」） |
+| 抗链重组 | ✅ | 区块滞后 `DRAW_CONFIRMATIONS`（默认 6）个确认才入库/开奖，浅重组无法改变已开结果 |
 | 矿工操纵 | ⚠️ 经济安全 | 144 块聚合把攻击成本推至极高；非密码学绝对安全，残余风险随下游奖池上升（详见 SPEC.md §7） |
 
 ## 算法（v1 摘要）
@@ -60,12 +62,22 @@ export BITCOIN_RPC_URL="http://user:pass@127.0.0.1:8332"
 
 未配置节点时回退到 mempool.space。节点搭建参考 Bitcoin Core 文档（`bitcoind` + `getblockhash`/`getblockheader` RPC）。
 
+### 确认数 / Confirmations
+
+区块只在被埋够确认数后才入库，避免浅层链重组在已开结果之后改写区块哈希：
+
+```shell
+export DRAW_CONFIRMATIONS=6     # 默认 6；高价值场景可调大（延迟换安全）
+```
+
 ## 接口 / API
 
 - `GET /api/spec` — 机器可读的算法规范摘要（版本、参数、选块规则）。
 - `GET /api/draw/{id}` — 某期结果及所用区块。
-- `GET /api/draw/{id}/manifest` — **每期算法声明**：期号、算法版本、高度区间、144 个哈希、种子、结果、验证说明（含自复算校验）。
+- `GET /api/draw/{id}/manifest` — **每期算法声明**：期号、算法版本、高度区间、144 个哈希、种子、结果、**承诺（commitment）与前一期承诺**、验证说明（含自复算校验）。
+- `GET /api/commitments/head` — **历史链头**：一个承诺整段开奖历史的 32 字节哈希。
 - `GET /api/draws` / `GET /api/index` — 列表与首页数据。
+- `GET /verify` — **浏览器内自证页面**：纯前端用自带 SHA-256/HMAC 重算某期号码与承诺链，无需信任服务器、不加载任何外部脚本。
 
 ## 独立验证 / Verify
 
@@ -83,15 +95,43 @@ python verify.py 6315 --source core
 python verify.py 6315 --source db --db db/database.db
 ```
 
+加上 `--site` 时，`verify.py` 还会重算该期的**承诺链**并校验它正确链到上一期（`CHAIN MATCH`）。
+不想用命令行？直接打开 `GET /verify` 页面，在浏览器里一键复算。
+
+## 防篡改 / Tamper-evidence
+
+每期开奖都串入一条 SHA-256 哈希链承诺：
+
+```
+commitment = SHA256( 上一期承诺 | 期号 | 算法版本 | 种子 | 前区 | 后区 | 高度区间 )
+```
+
+于是整段历史被压缩成一个 32 字节的**链头**（`GET /api/commitments/head`）。改动任何一期都会
+改变链头。把链头**定期外锚**到不可篡改的见证处（OpenTimestamps、git tag、公开发帖等），运营方
+就无法在事后悄悄改写历史——因为旧链头已被第三方/时间戳固定。关键在于 `verify.py` 与 `/verify`
+页面都能**独立重算**这条链，承诺并非运营方自说自话。
+
+> 部署本特性后运行一次 `lotto.backfill_commitments()` 为历史各期回填承诺链（幂等）。
+
 ## 代码结构 / Structure
 
-- `main.py` — FastAPI 应用、路由、定时调度（每 10 分钟）。
-- `lotto.py` — 开奖引擎：`generate_lotto_numbers_bitcoin`、`verify_lotto_numbers`、`build_draw_manifest`、`get_spec`、`ALGO_VERSION`、卡方统计。
-- `bitcoin.py` — 区块哈希抓取：全节点 RPC（主）+ 公开浏览器（备援）。
-- `db/models.py` — SQLModel/SQLite 模型与读写（`Draw` 含 `algo_version` 列）。
-- `verify.py` — 独立验证脚本（标准库）。
+- `main.py` — FastAPI 应用、路由（含 `/verify`、`/api/commitments/head`）、定时调度（每 10 分钟）。
+- `lotto.py` — 开奖引擎：`generate_lotto_numbers_bitcoin`、`build_draw_manifest`、`get_spec`、承诺链（`backfill_commitments`、`get_commitment_head`）、`ALGO_VERSION`、卡方统计。
+- `bitcoin.py` — 区块哈希抓取：全节点 RPC（主）+ 公开浏览器（备援）；`CONFIRMATIONS` 确认缓冲。
+- `db/models.py` — SQLModel/SQLite 模型与读写（`Draw` 含 `algo_version`、`commitment` 列）+ 幂等轻量迁移。
+- `verify.py` — 独立验证脚本（标准库）：号码复算 + 承诺链校验。
+- `static/verify.js` — 浏览器内验证器（自带 SHA-256/HMAC，无外部脚本），`/verify` 页面使用。
 - `SPEC.md` — 冻结算法规范 v1。
+- `tests/` — 锁定 v1 算法/承诺的回归测试（`python -m unittest discover -s tests`），CI 见 `.github/workflows/tests.yml`。
 - `lucky.py` — **独立的经济/奖金模拟器**（自带一套 69/26 示例参数），**不是开奖引擎**，与本系统开号无关。
+
+## 测试 / Tests
+
+```shell
+python -m unittest discover -s tests   # 标准库即可跑核心算法锁；装了依赖会额外跑一致性/迁移测试
+```
+
+CI（GitHub Actions）对每次 push/PR 运行：一个零依赖的「算法锁」任务（黄金测试向量），加一个装全依赖的完整任务。
 
 ## License
 
