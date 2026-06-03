@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>lucky2049 — Verifiable Bitcoin-Hash Draws</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>lucky2049</h1>
+            <p>Super Lotto numbers (5 of 1–35 + 2 of 1–12) derived deterministically from 144 Bitcoin
+                block hashes. This is a static, independently verifiable snapshot of the draw history.</p>
+            <p class="text-secondary" id="summary" style="margin-top:0.5rem;"></p>
+        </header>
+
+        <section>
+            <h2>Latest draws</h2>
+            <div class="glass-panel">
+                <table>
+                    <thead>
+                        <tr><th>Draw</th><th>Front</th><th>Back</th><th>Heights</th><th>Time</th></tr>
+                    </thead>
+                    <tbody id="rows"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <nav class="nav-links" style="margin-top:1.5rem;">
+            <a href="./verify.html" class="btn">Verify a Draw</a>
+        </nav>
+    </div>
+
+    <script>
+        function balls(nums, extra) {
+            return (nums || []).map(function (n) { return '<div class="white-balls' + (extra ? ' ' + extra : '') + '">' + n + '</div>'; }).join("");
+        }
+        (async function () {
+            var idx;
+            try { idx = await (await fetch("./index.json")).json(); }
+            catch (e) { document.getElementById("summary").textContent = "Could not load draw data."; return; }
+            var head = (idx.head || {}).head || "";
+            document.getElementById("summary").textContent =
+                idx.count + " draws · algorithm " + idx.algo_version + " · history head " + head.slice(0, 16) + "…";
+            var latest = (idx.draws || []).slice(-20).reverse();
+            document.getElementById("rows").innerHTML = latest.map(function (d) {
+                return "<tr><td><a class='btn btn-sm' href='./verify.html?draw=" + d.id + "'>No. " + d.id + "</a></td>"
+                    + "<td><div class='d-flex'>" + balls(d.front) + "</div></td>"
+                    + "<td><div class='d-flex'>" + balls(d.back, "powerball") + "</div></td>"
+                    + "<td class='text-secondary'>" + d.start_height + " - " + d.end_height + "</td>"
+                    + "<td class='text-secondary'>" + (d.timestamp || "") + "</td></tr>";
+            }).join("");
+        })();
+    </script>
+</body>
+
+</html>

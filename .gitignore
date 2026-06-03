@@ -40,5 +40,7 @@ coverage.xml
 
 # Ignores output directories.
 output/
+# Generated static site (built by scripts/export_static.py, published to gh-pages).
+site/
 BACKUP.md
 lucky.py

@@ -28,22 +28,9 @@ lucky2049 是**开奖引擎**:一个 FastAPI 服务,定时(每 10 分钟)把比�
 docker compose up --build      # http://localhost:8000
 ```
 
-**Render(Blueprint 一键)** — 在仓库根加 `render.yaml`:
-```yaml
-services:
-  - type: web
-    name: lucky2049
-    runtime: docker
-    plan: starter
-    healthCheckPath: /healthz
-    envVars:
-      - key: DRAW_CONFIRMATIONS
-        value: "6"
-      # - key: BITCOIN_RPC_URL      # 可选:自有全节点(权威真值源)
-      #   sync: false
-```
-然后用 “Deploy to Render” 按钮 / Blueprint 一键起。Railway、Fly.io 同理
-(Railway 读 `Dockerfile`;Fly 用 `fly.toml`)。
+**Render(Blueprint 一键)** —— 仓库根已带 [`render.yaml`](../render.yaml)(Docker +
+`/healthz` 健康检查 + 已接上 seed Release 的 `LOTTO_SEED_CSV_URL`)。在 Render 里
+New > Blueprint 指向本仓库即可一键起;Railway 读 `Dockerfile`,Fly 用 `fly.toml` 同理。
 
 **环境变量**
 | 变量 | 作用 | 默认 |
@@ -73,33 +60,36 @@ export LOTTO_SEED_CSV_URL="https://github.com/RaynorZhong/lucky2049/releases/dow
 
 ---
 
-## 路径 B:GitHub Pages 静态验证站(只读 + 自证)
+## 路径 B:GitHub Pages 静态验证站(已实现)
 
-最契合"公开透明"的玩法,也是给"其他人"最省事的消费方式。
+最契合"公开透明",也是给"其他人"最省事的消费方式 —— **这就是"部署在 GitHub 上"**。
 
-思路:开奖机(路径 A 的服务,或下面的 Actions)产出每期 manifest →
-导成静态 JSON → Pages 托管 JSON + 一个读 JSON 的验证页。访客在浏览器里
-本地复算,**不信任服务器、不连数据库**。
+在有数据库的机器上(`gh auth login` 之后)一条命令发布:
+```shell
+./scripts/publish-pages.sh      # 导出 site/ 并推到 gh-pages 分支
+```
+- [`scripts/export_static.py`](../scripts/export_static.py):从库导出 **精简快照**
+  `site/index.json`(全量号码:id/高度/结果/承诺/前一承诺,**不含 144 哈希**,约 2MB)
+  + `head.json` + 静态页(`web/index.html`、`web/verify.html`、`static/verify.js`)。
+- [`web/verify.html`](../web/verify.html):纯静态自证页 —— 给定期号,**浏览器内从
+  mempool.space 拉那 144 个区块哈希**、用 `verify.js`(自带 SHA-256/HMAC、零外部脚本)
+  复算,并与发布的结果/承诺链比对。不信任服务器、不连数据库。
+- **首次**之后到仓库 Settings > Pages 选 `gh-pages` 分支启用一次(或 `gh api`,脚本里有注释)。
 
-需要新增(尚未实现,按需再做):
-1. **导出脚本** `scripts/export_static.py`:遍历 draws,写
-   `site/draws/<id>.json`(复用 `lotto.build_draw_manifest`)+ 一个
-   `site/index.json` 汇总 + 最新 `commitment head`。
-2. **静态验证页**:把现有 `templates/verify.html` 改成读 `site/*.json`
-   (而不是 `/api/...`),复用 `static/verify.js`(已是纯前端、零外部脚本)。
-3. **Pages workflow** `.github/workflows/pages.yml`:导出 → 上传 → 部署 Pages。
+站点地址:`https://<owner>.github.io/<repo>/`。因为快照不含哈希(只 ~2MB),验证时按需
+从链上抓哈希 —— 链才是真值源,这也是最 trustless 的校验。
 
 ---
 
-## 路径 C:GitHub Actions 当"开奖机"(无常驻服务器)
+## 路径 C:GitHub Actions 当"开奖机"(未实现,设计备忘)
 
-定时 cron 拉块、算号、提交结果,适合不想养服务器的部署者。
+定时 cron 拉块、算号、发布,适合不想养服务器的人。**暂未实现**,原因是
+GitHub 托管的 runner 没有那个数据库(已 gitignored),而从链上重算全部历史不现实
+(6600+ 期 × 144 块的抓取会被限流)。可行做法二选一:
+- **自托管 runner**(机器上有库):cron 跑 `update_draws` + `./scripts/publish-pages.sh`。
+- 让**路径 A 的常驻服务**当开奖机(它已每 10 分钟自动开奖),再定期跑 `publish-pages.sh` 刷新 Pages 快照。
 
-需要新增(尚未实现):
-- `.github/workflows/draw.yml`:`schedule: cron` 每天触发 → 装依赖 →
-  跑 `python -c "from app.lotto import update_draws; update_draws()"` →
-  `git commit` 新增的开奖 JSON(配合路径 B 的导出)。
-- 要确定性,建议配 `BITCOIN_RPC_URL`(或固定的可信浏览器)作为哈希源。
+当前推荐:路径 A(开奖)+ 路径 B(发布静态站),已完全可用。
 
 ---
 

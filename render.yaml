@@ -1,0 +1,20 @@
+# Render Blueprint — one-click deploy of the live FastAPI service.
+# In Render: New > Blueprint > point at this repo. Or use a "Deploy to Render"
+# button. The service is Dockerized (Dockerfile); Render builds and runs it.
+services:
+  - type: web
+    name: lucky2049
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      # Reorg-safety confirmation buffer (see app/bitcoin.py).
+      - key: DRAW_CONFIRMATIONS
+        value: "6"
+      # Cold-start seed: download the block-hash CSV on first boot instead of
+      # shipping it in the image. Published as a GitHub Release asset.
+      - key: LOTTO_SEED_CSV_URL
+        value: "https://github.com/RaynorZhong/lucky2049/releases/download/seed-v1/blockchain_timeup898560.csv"
+      # Optional: point at your own Bitcoin Core node for a canonical hash source.
+      # - key: BITCOIN_RPC_URL
+      #   sync: false
