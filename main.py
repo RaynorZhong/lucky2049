@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from contextlib import asynccontextmanager
-from lotto import update_draws, update_statistics, get_heights_by_draw_id
+from lotto import update_draws, update_statistics, get_heights_by_draw_id, build_draw_manifest, get_spec
 from db.models import *
 import logging
 import os
@@ -148,3 +148,13 @@ async def api_get_draw(trial_id: int):
             "draw": draw
         }
     return {"error": "Invalid draw number"}
+
+@app.get("/api/spec")
+async def api_spec():
+    """Machine-readable summary of the frozen draw algorithm (see SPEC.md)."""
+    return get_spec()
+
+@app.get("/api/draw/{trial_id}/manifest")
+async def api_draw_manifest(trial_id: int):
+    """Per-draw public declaration: heights, 144 hashes, seed, result, and how to verify."""
+    return build_draw_manifest(trial_id)

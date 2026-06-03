@@ -12,6 +12,7 @@ __pycache__/
 .env
 .venv/
 *.db
+*.db-journal
 *.sqlite
 
 # Ignores log files.

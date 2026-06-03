@@ -10,11 +10,17 @@ from bitcoin import update_bitcoins
 
 # from bitcoinlib.services.services import Service
 
-NUM_BLOCKCHAIN = 144  # Number of blockchain hashes per group
-BLUE_BALL_MAX = 35
-RED_BALL_MAX = 12
-BLUE_BALL_NUM = 5
-RED_BALL_NUM = 2
+# Algorithm version. FROZEN. See SPEC.md.
+# Any change to the generation logic or game parameters below REQUIRES bumping
+# this version, and the new version applies to FUTURE draws only. Historical
+# draws remain verifiable under the version they were generated with.
+ALGO_VERSION = "v1"
+
+NUM_BLOCKCHAIN = 144  # Number of blockchain hashes per group (Super Lotto / 大乐透)
+BLUE_BALL_MAX = 35    # front zone range 1..35
+RED_BALL_MAX = 12     # back zone range 1..12
+BLUE_BALL_NUM = 5     # front: pick 5
+RED_BALL_NUM = 2      # back: pick 2
 IS_UPDATE_DRAW = True  # Whether to update the draw automatically
 IS_UPDATE_BITCOIN = True  # Whether to update the Bitcoin blocks automatically
 
@@ -99,6 +105,78 @@ def verify_lotto_numbers(hashes: List[str], front: List[int], back: List[int]) -
     """
     expected_front, expected_back = generate_lotto_numbers_bitcoin(hashes)
     return front == expected_front and back == expected_back
+
+
+def get_spec() -> dict:
+    """Machine-readable summary of the frozen algorithm spec (see SPEC.md)."""
+    return {
+        "algo_version": ALGO_VERSION,
+        "status": "frozen",
+        "game": "super_lotto",
+        "front": {"pick": BLUE_BALL_NUM, "min": 1, "max": BLUE_BALL_MAX},
+        "back": {"pick": RED_BALL_NUM, "min": 1, "max": RED_BALL_MAX},
+        "blocks_per_draw": NUM_BLOCKCHAIN,
+        "input_selection": "heights [draw_id*144, draw_id*144+143], genesis-anchored, deterministic",
+        "seed": "SHA256(utf8(concat of 144 lowercase-hex block hashes, ascending height))",
+        "rng": "HMAC_SHA256(key=seed, msg=ascii(str(counter))), big-endian uint256, counter=0..6",
+        "mapping": "idx = int mod len(pool); pool.pop(idx); front then back; each sorted ascending",
+        "spec_doc": "SPEC.md",
+    }
+
+
+def build_draw_manifest(draw_id: int) -> dict:
+    """
+    Build the per-draw public declaration (manifest) for a given draw_id.
+
+    Contains everything needed to independently reproduce the result: the exact
+    block heights, their 144 hashes (ascending), the derived seed, the published
+    result, and a self-recomputation check. See SPEC.md and verify.py.
+    """
+    draw = get_draw_by_id(draw_id)
+    if draw is None:
+        return {"error": "Invalid draw number", "draw_id": draw_id}
+
+    heights = get_heights_by_draw_id(draw_id)
+    bitcoins = select_bitcoin_by_height(heights)
+    hashes = [b.hash for b in bitcoins]
+
+    published_front = draw.front_list
+    published_back = draw.back_list
+
+    manifest = {
+        "algo_version": getattr(draw, "algo_version", ALGO_VERSION),
+        "spec": get_spec(),
+        "draw_id": draw_id,
+        "height_range": [min(heights), max(heights)],
+        "num_blocks": len(hashes),
+        "timestamp": draw.timestamp,
+        "result": {"front": published_front, "back": published_back},
+        "block_hashes": hashes,
+        "verify": (
+            "Independently fetch Bitcoin mainnet block hashes for heights "
+            f"{min(heights)}..{max(heights)} (any full node / explorer), then follow SPEC.md "
+            f"({getattr(draw, 'algo_version', ALGO_VERSION)}). Or run: python verify.py "
+            f"{draw_id}"
+        ),
+    }
+
+    # Self-recomputation check (only meaningful when all 144 hashes are present).
+    if len(hashes) == NUM_BLOCKCHAIN:
+        seed = hashlib.sha256(''.join(hashes).encode('utf-8')).hexdigest()
+        recomputed_front, recomputed_back = generate_lotto_numbers_bitcoin(hashes)
+        manifest["seed_sha256"] = seed
+        manifest["reproduced"] = (
+            recomputed_front == published_front and recomputed_back == published_back
+        )
+    else:
+        manifest["seed_sha256"] = None
+        manifest["reproduced"] = None
+        manifest["warning"] = (
+            f"Only {len(hashes)}/{NUM_BLOCKCHAIN} block hashes available locally; "
+            "fetch the full range from chain to verify."
+        )
+
+    return manifest
 
 
 # Chi-square test function
@@ -213,8 +291,8 @@ def update_one_draw():
     hashs = [bitcoin.hash for bitcoin in bitcoins]
     front, back = generate_lotto_numbers_bitcoin(hashs)
 
-    # Update the database with the new draw
-    create_draw([(current_draw_id, front, back, bitcoins[-1].timestamp, min(heights), max(heights))])
+    # Update the database with the new draw (stamped with the frozen algo version)
+    create_draw([(current_draw_id, front, back, bitcoins[-1].timestamp, min(heights), max(heights), ALGO_VERSION)])
     return True
 
 def update_draws():

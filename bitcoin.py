@@ -7,6 +7,7 @@ import requests
 import logging
 import pytz
 import json
+import os
 
 # Logging configuration
 logging.basicConfig(level=logging.INFO)
@@ -204,7 +205,72 @@ def fetch_bitcoins_by_mempool_space(start_height: int, count: int) -> List[Dict[
         logger.error(f"Error: {str(e)}")
         raise
 
+# =========================================================================
+# Bitcoin Core full node (JSON-RPC) — PRIMARY, canonical source of truth.
+#
+# Configure via environment:
+#   BITCOIN_RPC_URL="http://user:pass@127.0.0.1:8332"     (preferred), or
+#   BITCOIN_RPC_USER / BITCOIN_RPC_PASSWORD / BITCOIN_RPC_HOST / BITCOIN_RPC_PORT
+#
+# When a node is configured it is used as the source of truth; the public
+# explorers above remain as a fallback only (e.g. node temporarily unreachable).
+# Block hashes are objective Bitcoin consensus data, so the node is canonical.
+# =========================================================================
+def core_rpc_url() -> str:
+    url = os.environ.get("BITCOIN_RPC_URL")
+    if url:
+        return url
+    user = os.environ.get("BITCOIN_RPC_USER")
+    if not user:
+        return ""
+    pw = os.environ.get("BITCOIN_RPC_PASSWORD", "")
+    host = os.environ.get("BITCOIN_RPC_HOST", "127.0.0.1")
+    port = os.environ.get("BITCOIN_RPC_PORT", "8332")
+    return f"http://{user}:{pw}@{host}:{port}"
+
+def core_enabled() -> bool:
+    return bool(core_rpc_url())
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+def _core_call(method: str, params: list):
+    url = core_rpc_url()
+    if not url:
+        raise RuntimeError("Bitcoin Core RPC is not configured")
+    payload = {"jsonrpc": "1.0", "id": "lucky2049", "method": method, "params": params}
+    response = requests.post(url, json=payload, timeout=30)
+    response.raise_for_status()
+    data = response.json()
+    if data.get("error"):
+        raise ValueError(f"RPC error for {method}: {data['error']}")
+    return data["result"]
+
+def fetch_height_by_core() -> int:
+    return int(_core_call("getblockcount", []))
+
+def fetch_bitcoins_by_core(start_height: int, count: int) -> List[Dict[str, str]]:
+    hashes = []
+    for height in range(start_height, start_height + count):
+        block_hash = _core_call("getblockhash", [height])
+        header = _core_call("getblockheader", [block_hash])
+        block_hash = block_hash.strip().lower()
+        if len(block_hash) != 64 or not all(c in "0123456789abcdef" for c in block_hash):
+            raise ValueError(f"Invalid block hash from node: {block_hash}")
+        hashes.append({
+            "height": header["height"],
+            "hash": block_hash,
+            "timestamp": parse_timestamp(header["time"]),
+        })
+    return sorted(hashes, key=lambda x: x["height"])
+
+
 def fetch_height() -> int:
+    if core_enabled():
+        try:
+            height = fetch_height_by_core()
+            if height is not None:
+                return height
+        except Exception as e:
+            logger.warning(f"Core node height fetch failed, falling back to explorer: {e}")
     # height = min(
     #     # fetch_height_by_blockcypher(),
     #     fetch_height_by_mempool_space(),
@@ -216,6 +282,12 @@ def fetch_height() -> int:
     return height
 
 def fetch_bitcoins(start_height: int, count: int) -> List[Dict[str, str]]:
+    # Primary: own full node (canonical). Fallback: public explorer.
+    if core_enabled():
+        try:
+            return fetch_bitcoins_by_core(start_height, count)
+        except Exception as e:
+            logger.warning(f"Core node block fetch failed, falling back to explorer: {e}")
     list_bitcoins = [
         # fetch_bitcoins_by_blockchair_v2(start_height, count),
         # fetch_bitcoins_by_blockcypher(start_height, count),
