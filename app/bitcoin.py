@@ -13,7 +13,7 @@ import os
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 if os.environ.get("LOTTO_DISABLE_DB_LOG") != "1":
-    logger.addHandler(DatabaseHandler(level=logging.INFO))
+    logger.addHandler(DatabaseHandler(level=logging.WARNING))
 
 # Reorg safety: only ingest blocks that are already buried by this many
 # confirmations. Ingestion is append-only (we never re-fetch a stored block),

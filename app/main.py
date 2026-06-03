@@ -14,7 +14,7 @@ import os
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 if os.environ.get("LOTTO_DISABLE_DB_LOG") != "1":
-    logger.addHandler(DatabaseHandler(level=logging.INFO))
+    logger.addHandler(DatabaseHandler(level=logging.WARNING))
 
 # Import necessary modules for scheduling
 @asynccontextmanager
@@ -24,6 +24,7 @@ async def lifespan(app: FastAPI):
     init_db()
     scheduler = AsyncIOScheduler()
     scheduler.add_job(update_draws, IntervalTrigger(minutes=10))
+    scheduler.add_job(prune_logs, IntervalTrigger(hours=24))  # bound log-table growth
     scheduler.start()
     logger.info("Scheduled task started, checking for new blocks every 10 minutes")
     

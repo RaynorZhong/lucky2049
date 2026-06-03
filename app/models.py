@@ -1,5 +1,5 @@
 from sqlmodel import Field, Session, SQLModel, create_engine, select
-from sqlalchemy import inspect as sa_inspect, text, func
+from sqlalchemy import inspect as sa_inspect, text, func, delete
 from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 from typing import List
@@ -89,8 +89,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 # DatabaseHandler writes a row per log record; disable in tests
 # (LOTTO_DISABLE_DB_LOG=1) so logging needs no DB and never pollutes one.
+# Only WARNING+ is persisted to the DB (INFO still goes to the console via
+# basicConfig) so the log table doesn't grow without bound; see prune_logs().
 if os.environ.get("LOTTO_DISABLE_DB_LOG") != "1":
-    logger.addHandler(DatabaseHandler(level=logging.INFO))
+    logger.addHandler(DatabaseHandler(level=logging.WARNING))
 
 
 def _sql_literal(value) -> str:
@@ -310,6 +312,22 @@ def get_log_entries(page=1, page_size=50):
         total = session.exec(select(func.count()).select_from(LogEntry)).one()
         total_pages = (total + page_size - 1) // page_size
         return logs, total_pages
+
+def prune_logs(keep: int = 2000) -> int:
+    """Keep only the most recent `keep` log rows; delete the rest.
+
+    Bounds the log table's growth. Returns the number of rows deleted.
+    """
+    with Session(engine) as session:
+        # id of the newest row we want to keep; everything older is deleted.
+        cutoff = session.exec(
+            select(LogEntry.id).order_by(LogEntry.id.desc()).offset(keep).limit(1)
+        ).first()
+        if cutoff is None:
+            return 0  # fewer than `keep` rows; nothing to prune
+        result = session.execute(delete(LogEntry).where(LogEntry.id <= cutoff))
+        session.commit()
+        return result.rowcount or 0
 
 def init_db():
     create_db_and_tables()
