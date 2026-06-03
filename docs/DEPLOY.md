@@ -54,12 +54,22 @@ services:
 | `LOTTO_SEED_CSV_URL` | 冷启动播种 CSV 的下载地址(见下) | 空 |
 
 > 健康检查打 `/healthz`。
->
-> **关于冷启动播种**:那份 ~82MB 的 `data/blockchain_timeup898560.csv`
-> **不再随仓库分发**(太大)。新部署有三种选择:① 把该 CSV 传到一个稳定地址
-> (如本仓库的 GitHub Release),设 `LOTTO_SEED_CSV_URL`,首启自动下载;
-> ② 什么都不设,空表启动,调度器从链上慢慢补;③ 直接拉一个 sqlite 快照
-> (见下面"高效同步号码")。本地已有该 CSV 时照常使用。
+
+### 冷启动播种 CSV
+
+~82MB 的 `data/blockchain_timeup898560.csv` **不再随仓库分发**(太大,已从 git 历史移除)。
+新部署三选一:① 设 `LOTTO_SEED_CSV_URL` 首启自动下载;② 什么都不设,空表启动,
+调度器从链上慢慢补;③ 拉一个 sqlite 快照(见下面"高效同步号码")。本地已有该 CSV 时照常使用。
+
+**把 CSV 发布成 Release(维护者做一次)** —— 在有本地 CSV 的机器上,`gh auth login` 后:
+```shell
+./scripts/publish-seed.sh          # 需要 gh CLI;创建/更新 Release seed-v1 并上传 CSV
+```
+之后新部署设:
+```shell
+export LOTTO_SEED_CSV_URL="https://github.com/RaynorZhong/lucky2049/releases/download/seed-v1/blockchain_timeup898560.csv"
+```
+> 资产校验:`sha256 = 1c4d83d98fdf9f17ce0009cfe0ed0e5620008f81b300a75b86dab5693cf02877`
 
 ---
 
