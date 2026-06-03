@@ -63,8 +63,10 @@ auditor). Data files live in `data/`.
 
 ## Gotchas
 
-- `data/database.db` (~170MB) and `data/blockchain_timeup898560.csv` (~86MB, the
-  cold-start seed) are gitignored / large; don't commit DB artifacts.
+- `data/database.db` (~170MB, runtime) and `data/blockchain_timeup898560.csv`
+  (~82MB cold-start seed) are gitignored — NOT in the repo. Don't re-add them.
+  Cold start fetches the CSV from `LOTTO_SEED_CSV_URL` if set, else starts empty
+  and backfills from the chain (see docs/DEPLOY.md).
 - After deploying commitment changes, run `lotto.backfill_commitments()` once.
 - Anchor `get_commitment_head()` externally (OpenTimestamps / git tag) to make
   history truly tamper-evident — code provides the chain, anchoring is the rest.

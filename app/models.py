@@ -149,6 +149,26 @@ def create_db_and_tables():
 def create_bitcoin():
     if get_max_bitcoin_height() is not None:
         return
+    # The seed CSV is no longer committed (it's large). If it's absent, optionally
+    # fetch it from LOTTO_SEED_CSV_URL; otherwise start empty and let the scheduler
+    # backfill from the chain. See docs/DEPLOY.md.
+    if not os.path.exists(csv_file_name):
+        url = os.environ.get("LOTTO_SEED_CSV_URL")
+        if not url:
+            logger.warning(
+                "Seed CSV %s not found and LOTTO_SEED_CSV_URL not set; starting with "
+                "an empty block table (the scheduler will backfill from the chain). "
+                "See docs/DEPLOY.md.", csv_file_name,
+            )
+            return
+        try:
+            import urllib.request
+            os.makedirs(os.path.dirname(csv_file_name), exist_ok=True)
+            logger.info("Downloading seed CSV from LOTTO_SEED_CSV_URL ...")
+            urllib.request.urlretrieve(url, csv_file_name)
+        except Exception as e:
+            logger.warning("Failed to download seed CSV (%s); starting empty.", e)
+            return
     csv_blockchain = pd.read_csv(csv_file_name, dtype=str)
     records = [
         Bitcoin(height=block[0], hash=block[1], timestamp=block[2])

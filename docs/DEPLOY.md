@@ -51,9 +51,15 @@ services:
 | `BITCOIN_RPC_URL` | 自有 Bitcoin Core(权威源);留空则用 mempool.space | 空 |
 | `DRAW_CONFIRMATIONS` | 入库/开奖前的确认缓冲(抗重组) | 6 |
 | `LOTTO_DB_URL` | 数据库位置 | `data/database.db` |
+| `LOTTO_SEED_CSV_URL` | 冷启动播种 CSV 的下载地址(见下) | 空 |
 
-> 健康检查打 `/healthz`。首次冷启动会从 `data/blockchain_timeup898560.csv`
-> 播种,再追到链尖——见下面更快的同步方式。
+> 健康检查打 `/healthz`。
+>
+> **关于冷启动播种**:那份 ~82MB 的 `data/blockchain_timeup898560.csv`
+> **不再随仓库分发**(太大)。新部署有三种选择:① 把该 CSV 传到一个稳定地址
+> (如本仓库的 GitHub Release),设 `LOTTO_SEED_CSV_URL`,首启自动下载;
+> ② 什么都不设,空表启动,调度器从链上慢慢补;③ 直接拉一个 sqlite 快照
+> (见下面"高效同步号码")。本地已有该 CSV 时照常使用。
 
 ---
 

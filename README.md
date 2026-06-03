@@ -127,7 +127,7 @@ app/            应用包（FastAPI 服务 + 开奖引擎）
 verify.py       独立验证脚本（标准库，留在根目录便于单文件复制）：号码复算 + 承诺链校验
 static/         style.css、verify.js（浏览器内验证器，自带 SHA-256/HMAC、无外部脚本）
 templates/      Jinja2 页面（index/draw/stats/logs/verify）
-data/           blockchain_timeup898560.csv（冷启动播种）、database.db（运行时，gitignored）
+data/           database.db（运行时）、blockchain_timeup898560.csv（冷启动播种）—— 均 gitignored、不随仓库分发
 tests/          回归测试 + conftest（隔离 fixture）；CI 见 .github/workflows/tests.yml
 SPEC.md         冻结算法规范 v1        docs/TDD.md   TDD 工作流
 ```
