@@ -126,10 +126,13 @@ async def api_index():
     }
 
 @app.get("/api/draws")
-async def api_draws():
-    """API endpoint to get all lottery draws"""
-    draws = get_all_draws()
-    return {"draws": draws}
+async def api_draws(limit: int = 100, offset: int = 0):
+    """Paginated lottery draws (newest first). limit is capped at 1000 to keep
+    responses bounded as the number of draws grows."""
+    limit = max(1, min(limit, 1000))
+    offset = max(0, offset)
+    draws, total = get_draws_page(limit, offset)
+    return {"draws": draws, "total": total, "limit": limit, "offset": offset}
 
 @app.get("/api/draw/{trial_id}")
 async def api_get_draw(trial_id: int):

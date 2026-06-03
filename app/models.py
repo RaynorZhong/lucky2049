@@ -257,6 +257,14 @@ def get_limit_draws(limit=20):
         results = session.exec(statement)
         draws = results.all()
         return draws
+
+def get_draws_page(limit=100, offset=0):
+    """A page of draws (newest first) plus the total count, for /api/draws."""
+    with Session(engine) as session:
+        statement = select(Draw).order_by(Draw.id.desc()).offset(offset).limit(limit)
+        draws = session.exec(statement).all()
+        total = session.exec(select(func.count()).select_from(Draw)).one()
+        return draws, total
     
 def get_draw_by_id(draw_id):
     with Session(engine) as session:
