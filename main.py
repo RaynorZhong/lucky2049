@@ -13,12 +13,15 @@ import os
 # Logging configuration
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-logger.addHandler(DatabaseHandler(level=logging.INFO))
+if os.environ.get("LOTTO_DISABLE_DB_LOG") != "1":
+    logger.addHandler(DatabaseHandler(level=logging.INFO))
 
 # Import necessary modules for scheduling
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup logic
+    # Startup logic — initialize the DB here (not at import) so the app can be
+    # imported in tests without touching a database or seeding from CSV.
+    init_db()
     scheduler = AsyncIOScheduler()
     scheduler.add_job(update_draws, IntervalTrigger(minutes=10))
     scheduler.start()
@@ -39,9 +42,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Ensure the static directory exists
 if not os.path.exists("static"):
     os.makedirs("static")
-
-# Initialize the database
-init_db()
 
 # CORS configuration
 origins = [

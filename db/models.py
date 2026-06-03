@@ -77,15 +77,19 @@ class DatabaseHandler(logging.Handler):
 base_dir = os.path.dirname(os.path.abspath(__file__))
 sqlite_file_name = os.path.join(base_dir, SQLITE_NAME)
 csv_file_name = os.path.join(base_dir, CSV_NAME)
-sqlite_url = f"sqlite:///{sqlite_file_name}"
+# DB location is env-overridable (LOTTO_DB_URL) so tests can point at a
+# throwaway database instead of the bundled one. Defaults to the SQLite file.
+sqlite_url = os.environ.get("LOTTO_DB_URL", f"sqlite:///{sqlite_file_name}")
 
-# engine = create_engine(sqlite_url, echo=True)
 engine = create_engine(sqlite_url)
 
 # Logging configuration
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-logger.addHandler(DatabaseHandler(level=logging.INFO))
+# DatabaseHandler writes a row per log record; disable in tests
+# (LOTTO_DISABLE_DB_LOG=1) so logging needs no DB and never pollutes one.
+if os.environ.get("LOTTO_DISABLE_DB_LOG") != "1":
+    logger.addHandler(DatabaseHandler(level=logging.INFO))
 
 
 def _sql_literal(value) -> str:
