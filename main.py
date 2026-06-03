@@ -88,6 +88,11 @@ async def get_draw(request: Request, trial_id: int):
         })
     return {"error": "Invalid draw number"}
 
+@app.get("/verify")
+async def verify_page(request: Request):
+    """Public self-verification page: recomputes a draw in the browser."""
+    return templates.TemplateResponse("verify.html", {"request": request})
+
 @app.get("/stats")
 async def stats(request: Request):
     """Display chi-square test results and frequency distribution chart"""
