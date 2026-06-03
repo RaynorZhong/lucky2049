@@ -7,6 +7,7 @@ from scipy.stats import chi2_contingency
 import plotly.graph_objects as go
 from db.models import *
 from bitcoin import update_bitcoins
+from verify import commitment_for, GENESIS_PREV
 
 # from bitcoinlib.services.services import Service
 
@@ -143,6 +144,11 @@ def build_draw_manifest(draw_id: int) -> dict:
     published_front = draw.front_list
     published_back = draw.back_list
 
+    prev_commitment = (
+        GENESIS_PREV if draw_id == 0
+        else getattr(get_draw_by_id(draw_id - 1), "commitment", None)
+    )
+
     manifest = {
         "algo_version": getattr(draw, "algo_version", ALGO_VERSION),
         "spec": get_spec(),
@@ -152,11 +158,13 @@ def build_draw_manifest(draw_id: int) -> dict:
         "timestamp": draw.timestamp,
         "result": {"front": published_front, "back": published_back},
         "block_hashes": hashes,
+        "commitment": getattr(draw, "commitment", None),
+        "prev_commitment": prev_commitment,
         "verify": (
             "Independently fetch Bitcoin mainnet block hashes for heights "
             f"{min(heights)}..{max(heights)} (any full node / explorer), then follow SPEC.md "
             f"({getattr(draw, 'algo_version', ALGO_VERSION)}). Or run: python verify.py "
-            f"{draw_id}"
+            f"{draw_id} --site <this site> to also check the tamper-evidence chain."
         ),
     }
 
@@ -177,6 +185,63 @@ def build_draw_manifest(draw_id: int) -> dict:
         )
 
     return manifest
+
+
+def backfill_commitments() -> int:
+    """Fill the tamper-evidence commitment chain for any draws missing it.
+
+    Walks draws in ascending id, recomputing each seed from stored hashes and
+    chaining commitments from GENESIS_PREV. Idempotent: a draw whose commitment
+    already matches its recomputation is left untouched; the walk still threads
+    the (correct) prev through so later draws chain consistently. Returns the
+    number of draws written. Run once after deploying the commitment feature.
+    """
+    written = 0
+    prev = GENESIS_PREV
+    with Session(engine) as session:
+        draws = session.exec(select(Draw).order_by(Draw.id.asc())).all()
+        for draw in draws:
+            heights = get_heights_by_draw_id(draw.id)
+            bitcoins = select_bitcoin_by_height(heights)
+            hashes = [b.hash for b in bitcoins]
+            if len(hashes) != NUM_BLOCKCHAIN:
+                logger.warning(
+                    "backfill: draw %s has %s/%s hashes; stopping chain here.",
+                    draw.id, len(hashes), NUM_BLOCKCHAIN,
+                )
+                break
+            seed_hex = hashlib.sha256(''.join(hashes).encode('utf-8')).hexdigest()
+            expected = commitment_for(
+                prev, draw.id, getattr(draw, "algo_version", ALGO_VERSION) or ALGO_VERSION,
+                seed_hex, draw.front_list, draw.back_list, min(heights), max(heights),
+            )
+            if draw.commitment != expected:
+                draw.commitment = expected
+                session.add(draw)
+                written += 1
+            prev = expected
+        if written:
+            session.commit()
+    logger.info("backfill_commitments: wrote %s commitment(s); head=%s", written, prev)
+    return written
+
+
+def get_commitment_head() -> dict:
+    """The single value that commits to the entire published draw history.
+
+    Anchor this externally (OpenTimestamps / a git tag / a public post) so the
+    operator cannot rewrite history and recompute a new consistent head.
+    """
+    max_id = get_max_draw_id()
+    if max_id is None:
+        return {"head": GENESIS_PREV, "draw_id": None, "count": 0}
+    head_draw = get_draw_by_id(max_id)
+    return {
+        "head": getattr(head_draw, "commitment", None),
+        "draw_id": max_id,
+        "count": max_id + 1,
+        "algo_version": getattr(head_draw, "algo_version", ALGO_VERSION),
+    }
 
 
 # Chi-square test function
@@ -294,8 +359,27 @@ def update_one_draw():
     hashs = [bitcoin.hash for bitcoin in bitcoins]
     front, back = generate_lotto_numbers_bitcoin(hashs)
 
-    # Update the database with the new draw (stamped with the frozen algo version)
-    create_draw([(current_draw_id, front, back, bitcoins[-1].timestamp, min(heights), max(heights), ALGO_VERSION)])
+    # Tamper-evidence: chain this draw onto the previous one's commitment.
+    seed_hex = hashlib.sha256(''.join(hashs).encode('utf-8')).hexdigest()
+    if current_draw_id == 0:
+        prev = GENESIS_PREV
+    else:
+        prev = getattr(get_draw_by_id(current_draw_id - 1), "commitment", None)
+    if prev is None:
+        # Chain not established yet (e.g. backfill_commitments() not run). Store
+        # the draw now without breaking, and leave the commitment for backfill.
+        logger.warning(
+            "Draw %s: previous commitment missing; storing without a commitment. "
+            "Run backfill_commitments() to (re)build the chain.", current_draw_id,
+        )
+        commitment = None
+    else:
+        commitment = commitment_for(
+            prev, current_draw_id, ALGO_VERSION, seed_hex, front, back, min(heights), max(heights)
+        )
+
+    # Update the database with the new draw (stamped with algo version + commitment)
+    create_draw([(current_draw_id, front, back, bitcoins[-1].timestamp, min(heights), max(heights), ALGO_VERSION, commitment)])
     return True
 
 def update_draws():

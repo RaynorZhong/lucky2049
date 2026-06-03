@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from contextlib import asynccontextmanager
-from lotto import update_draws, update_statistics, get_heights_by_draw_id, build_draw_manifest, get_spec
+from lotto import update_draws, update_statistics, get_heights_by_draw_id, build_draw_manifest, get_spec, get_commitment_head
 from db.models import *
 import logging
 import os
@@ -158,3 +158,13 @@ async def api_spec():
 async def api_draw_manifest(trial_id: int):
     """Per-draw public declaration: heights, 144 hashes, seed, result, and how to verify."""
     return build_draw_manifest(trial_id)
+
+@app.get("/api/commitments/head")
+async def api_commitment_head():
+    """The single tamper-evidence hash that commits to the entire draw history.
+
+    Anchor this externally (OpenTimestamps / git tag / public post) so history
+    cannot be silently rewritten. Verify any draw's link with:
+    `python verify.py <id> --site <this site>`.
+    """
+    return get_commitment_head()

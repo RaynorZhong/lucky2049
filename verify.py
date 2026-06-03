@@ -64,6 +64,31 @@ def heights_for(draw_id):
     return start, start + NUM_BLOCKCHAIN - 1
 
 
+# --------------------------- tamper-evidence chain ---------------------------
+# Each draw is linked into a hash chain so the whole published history collapses
+# into one 32-byte "head". Editing any past draw changes the head, which an
+# auditor detects by recomputing the chain. Anchoring the head externally
+# (OpenTimestamps / a git tag / a public post) is what stops the operator from
+# rewriting history and recomputing a new consistent head.
+GENESIS_PREV = "0" * 64  # prev-commitment of the very first draw (id 0)
+
+
+def commitment_for(prev_hex, draw_id, algo_version, seed_hex, front, back, start_height, end_height):
+    """Deterministic per-draw commitment. Binds this draw's published result and
+    its exact block range (via the seed) to the entire prior history (via prev)."""
+    payload = "|".join([
+        prev_hex,
+        str(draw_id),
+        str(algo_version),
+        seed_hex,
+        ",".join(str(x) for x in front),
+        ",".join(str(x) for x in back),
+        str(start_height),
+        str(end_height),
+    ])
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def _normalize(h):
     h = h.strip().lower()
     if len(h) != 64 or any(c not in "0123456789abcdef" for c in h):
@@ -197,6 +222,27 @@ def main():
                 exit_code = 1
         elif not result_ok:
             exit_code = 1
+
+        # Tamper-evidence: recompute this draw's commitment from the previous
+        # draw's commitment and check it matches what the site published.
+        published_commitment = manifest.get("commitment")
+        if published_commitment:
+            algo = manifest.get("algo_version", ALGO_VERSION)
+            if args.draw_id == 0:
+                prev = GENESIS_PREV
+            else:
+                try:
+                    prev_url = f"{args.site.rstrip('/')}/api/draw/{args.draw_id - 1}/manifest"
+                    prev = json.loads(_http_get(prev_url)).get("commitment")
+                except Exception as e:
+                    prev = None
+                    print(f"WARN: could not fetch previous commitment: {e}", file=sys.stderr)
+            if prev:
+                recomputed = commitment_for(prev, args.draw_id, algo, seed, front, back, start, end)
+                chain_ok = (recomputed == published_commitment)
+                print(f"CHAIN MATCH : {'PASS' if chain_ok else 'FAIL'} (links to draw {args.draw_id - 1})")
+                if not chain_ok:
+                    exit_code = 1
 
     return exit_code
 

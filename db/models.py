@@ -26,6 +26,7 @@ class Draw(SQLModel, table=True):
     start_height: int
     end_height: int
     algo_version: str = Field(default="v1")  # frozen algorithm version, see SPEC.md
+    commitment: str | None = Field(default=None)  # tamper-evidence hash-chain head, see verify.py
 
     @property
     def front_list(self) -> List[int]:
@@ -196,13 +197,14 @@ def add_bitcoin(bitcoins):
     return True
 
 def create_draw(draws):
-    # Each draw tuple is (id, front, back, timestamp, start_height, end_height[, algo_version]).
-    # algo_version is optional for backward compatibility; defaults to "v1".
+    # Each draw tuple is (id, front, back, timestamp, start_height, end_height[, algo_version[, commitment]]).
+    # algo_version and commitment are optional for backward compatibility.
     records = [
         Draw(
             id=draw[0], front=str(draw[1]), back=str(draw[2]), timestamp=draw[3],
             start_height=draw[4], end_height=draw[5],
             algo_version=(draw[6] if len(draw) > 6 else "v1"),
+            commitment=(draw[7] if len(draw) > 7 else None),
         )
         for draw in draws
     ]
