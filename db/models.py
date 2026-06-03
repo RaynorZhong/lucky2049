@@ -1,4 +1,5 @@
 from sqlmodel import Field, Session, SQLModel, create_engine, select
+from sqlalchemy import inspect as sa_inspect, text
 from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 from typing import List
@@ -86,8 +87,57 @@ logger = logging.getLogger(__name__)
 logger.addHandler(DatabaseHandler(level=logging.INFO))
 
 
+def _sql_literal(value) -> str:
+    """Render a Python scalar as a SQLite literal for an ALTER ... DEFAULT clause."""
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (int, float)):
+        return str(value)
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def run_lightweight_migrations():
+    """Idempotently add columns that exist on the models but not yet in the DB.
+
+    `create_all` only CREATEs missing tables; it never ALTERs an existing one.
+    So when a new field is added to a model (e.g. Draw.algo_version), an older
+    database keeps its old shape and queries fail with "no such column".
+    Here we diff each mapped table against the live schema and ADD COLUMN for
+    anything missing, carrying over the model's default. New columns must be
+    nullable or have a default (SQLite can't add a NOT NULL column without one).
+    """
+    inspector = sa_inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    with engine.begin() as conn:
+        for table in SQLModel.metadata.sorted_tables:
+            if table.name not in existing_tables:
+                continue  # freshly created by create_all — already has every column
+            db_cols = {c["name"] for c in inspector.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in db_cols:
+                    continue
+                col_type = col.type.compile(dialect=engine.dialect)
+                # Resolve a scalar python-side default, if any.
+                default = None
+                if col.default is not None and getattr(col.default, "is_scalar", False):
+                    default = col.default.arg
+                ddl = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col_type}'
+                if default is not None:
+                    ddl += f" NOT NULL DEFAULT {_sql_literal(default)}"
+                elif not col.nullable:
+                    logger.warning(
+                        "Skipping migration for %s.%s: NOT NULL with no default cannot "
+                        "be added to an existing table; add a default or migrate manually.",
+                        table.name, col.name,
+                    )
+                    continue
+                conn.execute(text(ddl))
+                logger.info("Migrated schema: %s", ddl)
+
+
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
+    run_lightweight_migrations()
 
 def create_bitcoin():
     if get_max_bitcoin_height() is not None:
