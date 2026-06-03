@@ -1,0 +1,35 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Fast, dependency-free guard for the FROZEN draw algorithm (SPEC.md).
+  # Uses only the standard library, so it can never be broken by a flaky dep
+  # install — if this job is red, the algorithm or its golden vectors changed.
+  algorithm-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Run spec lock tests (stdlib only)
+        run: python -m unittest discover -s tests -v
+
+  # Full suite with project deps installed, so the lotto.py <-> verify.py
+  # bit-for-bit consistency test actually runs (it self-skips without pandas).
+  full-consistency:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run full test suite
+        run: python -m unittest discover -s tests -v
