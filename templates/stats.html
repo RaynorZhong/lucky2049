@@ -10,60 +10,62 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;700&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .stat-cards .card { background: rgba(255,255,255,0.05); padding: 1rem; border-radius: var(--radius-sm); }
+        .stat-cards .k { font-size: 0.85rem; color: var(--text-secondary); }
+        .stat-cards .v { font-size: 1.5rem; font-weight: 700; }
+        .stat-cards .v.small { font-size: 1rem; font-weight: 600; }
+        .chart { position: relative; height: 220px; padding: 0.5rem 0; }
+        .chart .bars { display: flex; align-items: flex-end; gap: 2px; height: 100%; }
+        .chart .bar { flex: 1; min-height: 2px; background: linear-gradient(180deg, #60a5fa, #2563eb); border-radius: 3px 3px 0 0; }
+        .chart .bar:hover { filter: brightness(1.2); }
+        .chart .expected { position: absolute; left: 0; right: 0; border-top: 2px dashed #f87171; opacity: 0.85; }
+        .caption { color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.75rem; }
+    </style>
 </head>
 
 <body>
+    {% macro chart_section(title, sec) %}
+    <section class="glass-panel">
+        <h2>{{ title }}</h2>
+        <div class="stat-cards">
+            <div class="card"><div class="k">Chi-square statistic</div><div class="v">{{ sec.stats.chi2 }}</div></div>
+            <div class="card"><div class="k">p-value</div>
+                <div class="v" style="color: {{ 'var(--accent-color)' if sec.stats.p_value > 0.05 else '#f87171' }};">{{ sec.stats.p_value }}</div></div>
+            <div class="card"><div class="k">Conclusion</div><div class="v small">{{ sec.stats.conclusion }}</div></div>
+        </div>
+        <div class="chart">
+            <div class="expected" style="bottom: {{ sec.expected_pct }}%;" title="Expected if perfectly uniform (~{{ sec.expected }})"></div>
+            <div class="bars">
+                {% for b in sec.bars %}
+                <div class="bar" style="height: {{ b.pct }}%;" title="#{{ b.n }}: drawn {{ b.count }} times"></div>
+                {% endfor %}
+            </div>
+        </div>
+        <p class="caption">Each bar = how often a number was drawn across all {{ sec.bars|length }} numbers; the dashed line is the uniform expectation (~{{ sec.expected }}). Hover a bar for its count.</p>
+    </section>
+    {% endmacro %}
+
     <div class="container">
         <header>
             <h1>Statistics Results</h1>
-            <p>Analysis based on {{ statistics.draws }} total draws</p>
+            {% if overview %}
+            <p>Live analysis based on {{ overview.draws }} total draws — a flat distribution near the dashed line is what fair, unbiased draws look like.</p>
+            {% else %}
+            <p>No draws yet.</p>
+            {% endif %}
         </header>
 
-        <section class="glass-panel">
-            <h2>Front Area Chi-Square Test</h2>
-            <div
-                style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-                <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: var(--radius-sm);">
-                    <div style="font-size: 0.9rem; color: var(--text-secondary);">Chi-square Statistic</div>
-                    <div style="font-size: 1.5rem; font-weight: 700;">{{ statistics.front_chi2 }}</div>
-                </div>
-                <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: var(--radius-sm);">
-                    <div style="font-size: 0.9rem; color: var(--text-secondary);">p-value</div>
-                    <div
-                        style="font-size: 1.5rem; font-weight: 700; color: {{ 'var(--accent-color)' if statistics.front_p_value > 0.05 else '#ef4444' }};">
-                        {{ statistics.front_p_value }}</div>
-                </div>
-                <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: var(--radius-sm);">
-                    <div style="font-size: 0.9rem; color: var(--text-secondary);">Conclusion</div>
-                    <div style="font-weight: 600;">{{ statistics.front_conclusion }}</div>
-                </div>
-            </div>
-        </section>
+        {% if overview %}
+        {{ chart_section("Front Area (1–35)", overview.front) }}
+        {{ chart_section("Back Area (1–12)", overview.back) }}
+        {% endif %}
 
-        <section class="glass-panel">
-            <h2>Back Area Chi-Square Test</h2>
-            <div
-                style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-                <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: var(--radius-sm);">
-                    <div style="font-size: 0.9rem; color: var(--text-secondary);">Chi-square Statistic</div>
-                    <div style="font-size: 1.5rem; font-weight: 700;">{{ statistics.back_chi2 }}</div>
-                </div>
-                <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: var(--radius-sm);">
-                    <div style="font-size: 0.9rem; color: var(--text-secondary);">p-value</div>
-                    <div
-                        style="font-size: 1.5rem; font-weight: 700; color: {{ 'var(--accent-color)' if statistics.back_p_value > 0.05 else '#ef4444' }};">
-                        {{ statistics.back_p_value }}</div>
-                </div>
-                <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: var(--radius-sm);">
-                    <div style="font-size: 0.9rem; color: var(--text-secondary);">Conclusion</div>
-                    <div style="font-weight: 600;">{{ statistics.back_conclusion }}</div>
-                </div>
-            </div>
-        </section>
-
-        <div style="text-align: center; margin-top: 2rem;">
+        <nav class="nav-links" style="margin-top: 2rem;">
             <a href="/" class="btn">Back to Home</a>
-        </div>
+            <a href="/verify" class="btn">Verify a Draw</a>
+        </nav>
     </div>
 </body>
 

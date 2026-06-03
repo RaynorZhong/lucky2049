@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from contextlib import asynccontextmanager
-from app.lotto import update_draws, get_heights_by_draw_id, build_draw_manifest, get_spec, get_commitment_head
+from app.lotto import update_draws, get_heights_by_draw_id, build_draw_manifest, get_spec, get_commitment_head, get_stats_overview
 from app.models import *
 import logging
 import os
@@ -95,11 +95,11 @@ async def verify_page(request: Request):
 
 @app.get("/stats")
 async def stats(request: Request):
-    """Display chi-square test results and frequency distribution chart"""
-    statistics = get_last_statistics()
+    """Live distribution stats: per-number frequency chart + chi-square test."""
+    overview = get_stats_overview()
     return templates.TemplateResponse("stats.html", {
         "request": request,
-        "statistics": statistics
+        "overview": overview,
     })
 
 @app.get("/logs")

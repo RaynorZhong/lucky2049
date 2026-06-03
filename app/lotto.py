@@ -294,6 +294,38 @@ def compute_distribution_stats(front_all, back_all, total_draws):
     return front_stats, back_stats
 
 
+def get_stats_overview():
+    """Live stats for the /stats page: per-number frequencies + chi-square,
+    computed from all draws (no stored Statistics row, no charts on disk).
+
+    Returns chart-ready bar geometry (pct of the tallest bar) so the template can
+    render a lightweight CSS/SVG chart with no plotting library. None if no draws.
+    """
+    from collections import Counter
+    draws = get_all_draws()
+    n = len(draws)
+    if n == 0:
+        return None
+    front_all = [x for d in draws for x in d.front_list]
+    back_all = [x for d in draws for x in d.back_list]
+
+    def section(all_nums, max_ball, picks):
+        counts = Counter(all_nums)
+        freq = [counts.get(i, 0) for i in range(1, max_ball + 1)]
+        tallest = max(freq) or 1
+        expected = n * picks / max_ball
+        return {
+            "bars": [{"n": i + 1, "count": c, "pct": round(c / tallest * 100, 2)} for i, c in enumerate(freq)],
+            "expected_pct": round(expected / tallest * 100, 2),
+            "expected": round(expected, 1),
+        }
+
+    front_stats, back_stats = compute_distribution_stats(front_all, back_all, n)
+    front = section(front_all, BLUE_BALL_MAX, BLUE_BALL_NUM); front["stats"] = front_stats
+    back = section(back_all, RED_BALL_MAX, RED_BALL_NUM); back["stats"] = back_stats
+    return {"draws": n, "front": front, "back": back}
+
+
 def get_heights_by_draw_id(draw_id: int) -> List[int]:
     """
     Get the blockchain heights for a specific lottery draw ID.
