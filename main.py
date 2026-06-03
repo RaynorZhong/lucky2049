@@ -1,11 +1,11 @@
-from fastapi import FastAPI, Request, BackgroundTasks
+from fastapi import FastAPI, Request
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from contextlib import asynccontextmanager
-from lotto import update_draws, update_statistics, get_heights_by_draw_id, build_draw_manifest, get_spec, get_commitment_head
+from lotto import update_draws, get_heights_by_draw_id, build_draw_manifest, get_spec, get_commitment_head
 from db.models import *
 import logging
 import os
@@ -101,16 +101,6 @@ async def stats(request: Request):
         "request": request,
         "statistics": statistics
     })
-
-@app.get("/trigger-draw")
-async def trigger_draw(background_tasks: BackgroundTasks):
-    background_tasks.add_task(update_draws)
-    return {"message": "The draw has been triggered, please check the result later"}
-
-@app.get("/refresh-statistics")
-async def refresh_statistics(background_tasks: BackgroundTasks):
-    background_tasks.add_task(update_statistics)
-    return {"message": "The statistics has been refreshed, please check the result later"}
 
 @app.get("/logs")
 async def logs(request: Request, page: int = 1):
