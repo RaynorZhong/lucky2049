@@ -281,7 +281,10 @@ def update_one_draw():
     else:
         current_draw_id = current_draw_id + 1  # Increment to the next draw ID
 
-    # Check if there are enough Bitcoin blocks to generate a new draw
+    # Only draw once the full 144-block window is present in the store. Stored
+    # blocks are ingested only after CONFIRMATIONS confirmations (see
+    # bitcoin.update_bitcoins), so a complete window here is already deeply
+    # confirmed and robust to shallow reorgs.
     if current_bitcoin_height < (current_draw_id + 1) * NUM_BLOCKCHAIN:
         return False
 

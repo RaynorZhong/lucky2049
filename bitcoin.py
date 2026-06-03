@@ -14,6 +14,26 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 logger.addHandler(DatabaseHandler(level=logging.INFO))
 
+# Reorg safety: only ingest blocks that are already buried by this many
+# confirmations. Ingestion is append-only (we never re-fetch a stored block),
+# so taking blocks straight from the chain tip would let a later reorg leave a
+# stale hash in the DB forever. Lagging the tip by CONFIRMATIONS means every
+# stored (and therefore every drawn) block was already this deep when captured,
+# making draws robust to reorgs shallower than CONFIRMATIONS. This is purely an
+# ingestion/finalization timing parameter — it does NOT change the v1 result for
+# any given height (see SPEC.md). Tune up via env for higher-value deployments.
+CONFIRMATIONS = int(os.environ.get("DRAW_CONFIRMATIONS", "6"))
+
+
+def confirmed_tip(latest_height: int) -> int:
+    """Highest height considered final: chain tip minus CONFIRMATIONS.
+
+    May be negative when the chain is shorter than the confirmation depth
+    (nothing is final yet); callers compare against a non-negative start height
+    and simply skip ingestion in that case.
+    """
+    return latest_height - CONFIRMATIONS
+
 # Utility functions
 def parse_timestamp(timestamp_input) -> str:
     if isinstance(timestamp_input, (int, float, str)) and str(timestamp_input).isdigit():
@@ -320,7 +340,12 @@ def update_bitcoins():
     try:
         start_height = get_max_bitcoin_height()
         start_height = start_height + 1 if start_height else 0
-        latest_height = fetch_height()
+        # Only ingest up to the confirmed tip, never the raw chain tip, so a
+        # later shallow reorg can't strand a stale hash in our append-only store.
+        latest_height = confirmed_tip(fetch_height())
+        if latest_height < start_height:
+            logger.info(f"No new confirmed blocks (need {CONFIRMATIONS} confirmations); up to date at height {start_height - 1}")
+            return
 
         while start_height <= latest_height:
             count = min(MAX_BLOCKCHAINS, latest_height - start_height + 1)
