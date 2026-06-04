@@ -76,15 +76,21 @@ class TestTrendJs(unittest.TestCase):
             self.assertEqual(sum(js["front"]["freq"]), count * BLUE_NUM)
             self.assertEqual(sum(js["back"]["freq"]), count * RED_NUM)
 
-    def test_lines_track_kth_smallest(self):
-        draws = _synthetic_draws(20, 3)
+    def test_front_row_stats(self):
+        zones = [(1, 12), (13, 24), (25, 35)]
+        draws = _synthetic_draws(40, 9)
         js = self._run_js(draws)
-        self.assertEqual(len(js["front"]["lines"]), BLUE_NUM)
-        self.assertEqual(len(js["back"]["lines"]), RED_NUM)
-        self.assertTrue(all(len(line) == 20 for line in js["front"]["lines"]))
-        for k, line in enumerate(js["front"]["lines"]):
-            for pt in line:
-                self.assertEqual(pt["num"], js["front"]["rows"][pt["row"]]["nums"][k])
+        for i, d in enumerate(draws):
+            nums = sorted(d["front"])
+            row = js["front"]["rows"][i]
+            self.assertEqual(row["sum"], sum(nums), f"row {i} sum")
+            self.assertEqual(row["span"], nums[-1] - nums[0], f"row {i} span")
+            self.assertEqual(row["zoneRatio"],
+                             [sum(1 for x in nums if a <= x <= b) for a, b in zones], f"row {i} zones")
+            self.assertEqual([row["odd"], row["even"]],
+                             [sum(x % 2 for x in nums), sum(1 - x % 2 for x in nums)], f"row {i} odd/even")
+        # zone ratio always sums to the number of front picks
+        self.assertTrue(all(sum(r["zoneRatio"]) == BLUE_NUM for r in js["front"]["rows"]))
 
     def test_empty(self):
         js = self._run_js([])

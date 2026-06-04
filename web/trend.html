@@ -5,40 +5,55 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trend — lucky2049</title>
-    <meta name="description" content="lucky2049 trend chart: basic trend for front 1–35 and back 1–12 — hit numbers, miss gaps, trend lines and frequency, all computed in your browser from the published snapshot.">
+    <meta name="description" content="lucky2049 trend chart: one table per draw — front 1–35 in three zones + back 1–12, with miss gaps, sum, span, zone ratio and odd:even. Computed in your browser from the published snapshot.">
     <meta name="theme-color" content="#f4f5f7">
     <link rel="icon" href="./favicon.svg" type="image/svg+xml">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="lucky2049">
     <meta property="og:title" content="Trend — lucky2049">
-    <meta property="og:description" content="Basic trend chart for front 1–35 and back 1–12, computed in your browser from the published snapshot.">
+    <meta property="og:description" content="A Sina-style trend chart: front 1–35 in three zones + back 1–12, with sum, span, zone ratio and odd:even, computed in your browser.">
     <meta property="og:url" content="https://lucky2049.com/trend.html">
     <meta name="twitter:card" content="summary">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./style.css">
     <style>
-        .trend-controls { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+        .trend-controls { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
         .seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--radius-md); overflow: hidden; box-shadow: var(--shadow-sm); }
         .seg button { border: none; background: var(--surface); color: var(--text-secondary); padding: 0.4rem 0.9rem; font: inherit; font-size: 0.9rem; cursor: pointer; }
         .seg button + button { border-left: 1px solid var(--border); }
         .seg button.active { background: #111827; color: #fff; }
-        .legend { color: var(--muted); font-size: 0.82rem; display: flex; gap: 1.1rem; flex-wrap: wrap; align-items: center; margin: 0.25rem 0 0.5rem; }
+        .legend { color: var(--muted); font-size: 0.82rem; display: flex; gap: 1.1rem; flex-wrap: wrap; align-items: center; margin: 0.25rem 0 0.9rem; }
         .legend .dot { display: inline-block; width: 0.85rem; height: 0.85rem; border-radius: 50%; vertical-align: -1px; margin-right: 0.3rem; }
         .legend .ltc { background: var(--ball-ltc); }
         .legend .btc { background: var(--ball-btc); }
-        .trend-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); -webkit-overflow-scrolling: touch; }
-        .trend-scroll svg { display: block; }
-        .area-title { font-size: 1.05rem; font-weight: 600; font-family: var(--font-heading); margin: 0 0 0.6rem; color: #0f172a; }
-        .trend-areas { display: flex; flex-direction: column; gap: 1.75rem; margin-top: 0.5rem; }
-        /* On a wide desktop, lay Front and Back out side by side. */
-        @media (min-width: 1240px) {
-            .trend-areas { flex-direction: row; align-items: flex-start; }
-            .trend-block { min-width: 0; }
-            .trend-block.front { flex: 0 1 auto; }
-            .trend-block.back { flex: 0 0 auto; }
-        }
+
+        .grid-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); -webkit-overflow-scrolling: touch; }
+        table.ttab { table-layout: fixed; border-collapse: collapse; font-size: 11px; line-height: 1; color: #374151; }
+        col.ci { width: 54px; } col.cn { width: 21px; } col.cs { width: 50px; }
+        .ttab th, .ttab td { height: 26px; text-align: center; border: 1px solid #eef0f3; padding: 0; overflow: hidden; }
+        .ttab th { color: #5b6573; font-weight: 600; background: #f3f5f8; }
+        /* zone / area tints */
+        .ttab .z0 { background: #f3f8fd; } .ttab .z1 { background: #ffffff; }
+        .ttab .cb { background: #fff8f0; } .ttab .st { background: #f8f9fb; font-weight: 600; color: #1f2937; }
+        .ttab thead .z0 { background: #e9f1fb; } .ttab thead .z1 { background: #eef4fb; }
+        .ttab thead .cb { background: #fdeedd; } .ttab thead .st { background: #eef0f3; }
+        .ttab .sep { border-left: 2px solid #cdd2d8; }
+        /* group header */
+        .ttab .zh { font-weight: 700; color: #334155; }
+        .ttab .zh .zr { font-weight: 500; color: #94a3b8; margin-left: 0.25rem; font-size: 10px; }
+        /* sticky issue column */
+        .ttab .issue { width: 54px; position: sticky; left: 0; z-index: 2; background: #fff; color: #6b7280; font-weight: 600; box-shadow: 1px 0 0 #e6e8ec; }
+        .ttab thead .issue, .ttab tfoot .issue { background: #f3f5f8; z-index: 4; }
+        /* balls */
+        .ttab .b { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%;
+            background: var(--ball-ltc); color: #fff; font-weight: 700; font-size: 9.5px;
+            box-shadow: inset 0 1px 2px rgba(255,255,255,0.4), 0 1px 2px rgba(16,24,40,0.22); text-shadow: 0 1px 1px rgba(0,0,0,0.3); }
+        .ttab .b.bk { background: var(--ball-btc); box-shadow: inset 0 1px 2px rgba(255,255,255,0.5), 0 1px 2px rgba(247,147,26,0.3); }
+        .ttab .g { color: #cdd2d8; font-style: normal; font-size: 10px; }
+        .ttab tfoot td { border-top: 2px solid #dfe2e6; }
+        .ttab tfoot .ff { color: #1f2937; } .ttab tfoot .fg { color: #9aa3af; font-style: normal; } .ttab tfoot .hot { color: #dc2626; }
     </style>
 </head>
 
@@ -46,9 +61,10 @@
     <div class="container" style="max-width:1320px;">
         <header>
             <div class="brand"><img src="./favicon.svg" alt=""><h1>Trend</h1></div>
-            <p id="intro" class="text-secondary">Basic trend for the front (1–35) and back (1–12) areas — each draw's hit
-                numbers are balls, misses show the gap (draws since it last appeared), and the lines join numbers by rank.
-                All computed in your browser from the published snapshot.</p>
+            <p id="intro" class="text-secondary">One row per draw: the front area (1–35) split into three zones and the back
+                area (1–12) — hits are balls, misses show the gap (draws since it last appeared). The right-hand columns are
+                the front <b>Sum</b>, <b>Span</b> (max−min), <b>Zones</b> (count per zone) and <b>O:E</b> (odd:even). All
+                computed in your browser from the published snapshot.</p>
         </header>
 
         <div class="trend-controls">
@@ -67,16 +83,7 @@
             <span style="color:#dc2626;">red = large current gap</span>
         </div>
 
-        <div class="trend-areas">
-            <div class="trend-block front">
-                <div class="area-title">Front area (1–35)</div>
-                <div class="trend-scroll" id="frontTrend"></div>
-            </div>
-            <div class="trend-block back">
-                <div class="area-title">Back area (1–12)</div>
-                <div class="trend-scroll" id="backTrend"></div>
-            </div>
-        </div>
+        <div class="grid-wrap" id="grid"></div>
 
         <nav class="nav-links" style="margin-top:2rem;">
             <a href="./index.html" class="btn">← Home</a>
@@ -87,75 +94,76 @@
 
     <script src="./trend.js"></script>
     <script>
-        var DRAWS = null;
-        var WINDOW = 30;
+        var DRAWS = null, WINDOW = 30;
+        var ZONE_LABELS = ['Zone 1', 'Zone 2', 'Zone 3'];
 
-        function buildArea(area, cfg) {
-            var maxBall = area.maxBall, rows = area.rows, n = rows.length;
-            var cw = cfg.cellW, lw = cfg.labelW, hh = cfg.headH, rh = cfg.rowH;
-            var bodyTop = hh, bodyH = n * rh, footTop = bodyTop + bodyH, footH = 3 * rh;
-            var W = lw + maxBall * cw, H = hh + bodyH + footH;
-            var cx = function (b) { return lw + (b - 0.5) * cw; };
-            var cy = function (i) { return bodyTop + (i + 0.5) * rh; };
-            var p = [];
+        function zoneIdx(n, zones) {
+            for (var i = 0; i < zones.length; i++) if (n >= zones[i][0] && n <= zones[i][1]) return i;
+            return 0;
+        }
+        function footVal(v, ri, isFront) {
+            if (ri === 0) return '<b class="ff">' + v + '</b>';
+            if (ri === 2 && v >= (isFront ? 14 : 11)) return '<b class="hot">' + v + '</b>';
+            return '<i class="fg">' + v + '</i>';
+        }
 
-            // alternating column bands
-            for (var b = 2; b <= maxBall; b += 2)
-                p.push('<rect x="' + (lw + (b - 1) * cw) + '" y="' + hh + '" width="' + cw + '" height="' + (bodyH + footH) + '" fill="#f7f8fa"/>');
+        function buildTable(t) {
+            var f = t.front, b = t.back, zones = f.zones, n;
+            // colgroup
+            var cg = '<colgroup><col class="ci">';
+            for (n = 0; n < f.maxBall + b.maxBall; n++) cg += '<col class="cn">';
+            cg += '<col class="cs"><col class="cs"><col class="cs"><col class="cs"></colgroup>';
 
-            // trend polylines (under the balls)
-            for (var k = 0; k < area.lines.length; k++) {
-                var pts = area.lines[k].map(function (q) { return cx(q.num) + ',' + cy(q.row); }).join(' ');
-                if (pts) p.push('<polyline points="' + pts + '" fill="none" stroke="' + cfg.line + '" stroke-width="1.3" opacity="0.4" stroke-linejoin="round"/>');
-            }
+            // header row 1: groups
+            var h = '<tr><th class="issue" rowspan="2">Issue</th>';
+            zones.forEach(function (z, zi) {
+                h += '<th colspan="' + (z[1] - z[0] + 1) + '" class="zh z' + (zi % 2) + (zi > 0 ? ' sep' : '') + '">'
+                    + ZONE_LABELS[zi] + '<span class="zr">' + z[0] + '–' + z[1] + '</span></th>';
+            });
+            h += '<th colspan="' + b.maxBall + '" class="zh cb sep">Back<span class="zr">1–' + b.maxBall + '</span></th>';
+            h += '<th rowspan="2" class="st sep">Sum</th><th rowspan="2" class="st">Span</th>'
+                + '<th rowspan="2" class="st">Zones</th><th rowspan="2" class="st">O:E</th></tr>';
+            // header row 2: numbers
+            h += '<tr>';
+            for (n = 1; n <= f.maxBall; n++) { var zi = zoneIdx(n, zones); h += '<th class="z' + (zi % 2) + (n === zones[zi][0] && zi > 0 ? ' sep' : '') + '">' + n + '</th>'; }
+            for (n = 1; n <= b.maxBall; n++) h += '<th class="cb' + (n === 1 ? ' sep' : '') + '">' + n + '</th>';
+            h += '</tr>';
 
-            // header number labels
-            for (var b = 1; b <= maxBall; b++)
-                p.push('<text x="' + cx(b) + '" y="' + (hh - 8) + '" text-anchor="middle" font-size="10" font-weight="600" fill="#5b6573">' + b + '</text>');
-            p.push('<line x1="0" y1="' + hh + '" x2="' + W + '" y2="' + hh + '" stroke="#e6e8ec"/>');
-
-            // rows
-            for (var i = 0; i < n; i++) {
-                var y = cy(i);
-                p.push('<text x="' + (lw - 8) + '" y="' + (y + 3.4) + '" text-anchor="end" font-size="10" fill="#9aa3af">' + rows[i].id + '</text>');
-                for (var b = 1; b <= maxBall; b++) {
-                    var cell = rows[i].cells[b - 1];
-                    if (cell.drawn) {
-                        p.push('<circle cx="' + cx(b) + '" cy="' + y + '" r="9" fill="url(#' + cfg.grad + ')"/>');
-                        p.push('<text x="' + cx(b) + '" y="' + (y + 3.4) + '" text-anchor="middle" font-size="9.5" font-weight="700" fill="#fff">' + b + '</text>');
-                    } else {
-                        p.push('<text x="' + cx(b) + '" y="' + (y + 3.2) + '" text-anchor="middle" font-size="9" fill="#ccd0d6">' + cell.gap + '</text>');
-                    }
+            // body
+            var body = '';
+            for (var i = 0; i < f.rows.length; i++) {
+                var fr = f.rows[i], br = b.rows[i];
+                body += '<tr><td class="issue">' + fr.id + '</td>';
+                for (n = 1; n <= f.maxBall; n++) {
+                    var zi2 = zoneIdx(n, zones), c = fr.cells[n - 1];
+                    body += '<td class="z' + (zi2 % 2) + (n === zones[zi2][0] && zi2 > 0 ? ' sep' : '') + '">'
+                        + (c.drawn ? '<span class="b">' + n + '</span>' : '<i class="g">' + c.gap + '</i>') + '</td>';
                 }
-            }
-
-            // footer: frequency / max gap / current gap
-            var sums = [['Freq', area.freq, 0], ['Max gap', area.maxGap, 1], ['Cur gap', area.curGap, 2]];
-            p.push('<line x1="0" y1="' + footTop + '" x2="' + W + '" y2="' + footTop + '" stroke="#e6e8ec"/>');
-            for (var s = 0; s < sums.length; s++) {
-                var fy = footTop + (s + 0.5) * rh;
-                p.push('<text x="' + (lw - 8) + '" y="' + (fy + 3.4) + '" text-anchor="end" font-size="9" font-weight="600" fill="#5b6573">' + sums[s][0] + '</text>');
-                for (var b = 1; b <= maxBall; b++) {
-                    var val = sums[s][1][b - 1];
-                    var col = sums[s][2] === 0 ? '#374151' : (sums[s][2] === 2 && val >= cfg.hot ? '#dc2626' : '#9aa3af');
-                    var fw = sums[s][2] === 0 ? '600' : '400';
-                    p.push('<text x="' + cx(b) + '" y="' + (fy + 3.4) + '" text-anchor="middle" font-size="9" font-weight="' + fw + '" fill="' + col + '">' + val + '</text>');
+                for (n = 1; n <= b.maxBall; n++) {
+                    var cb = br.cells[n - 1];
+                    body += '<td class="cb' + (n === 1 ? ' sep' : '') + '">'
+                        + (cb.drawn ? '<span class="b bk">' + n + '</span>' : '<i class="g">' + cb.gap + '</i>') + '</td>';
                 }
+                body += '<td class="st sep">' + fr.sum + '</td><td class="st">' + fr.span + '</td>'
+                    + '<td class="st">' + fr.zoneRatio.join(':') + '</td><td class="st">' + fr.odd + ':' + fr.even + '</td></tr>';
             }
 
-            var defs = '<defs><radialGradient id="' + cfg.grad + '" cx="32%" cy="28%" r="72%">'
-                + '<stop offset="0%" stop-color="' + cfg.g0 + '"/><stop offset="60%" stop-color="' + cfg.g1 + '"/><stop offset="100%" stop-color="' + cfg.g2 + '"/></radialGradient></defs>';
-            return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" xmlns="http://www.w3.org/2000/svg">' + defs + p.join('') + '</svg>';
+            // footer: Freq / Max gap / Cur gap over the number columns
+            var foot = '';
+            [['Freq', f.freq, b.freq], ['Max gap', f.maxGap, b.maxGap], ['Cur gap', f.curGap, b.curGap]].forEach(function (rd, ri) {
+                foot += '<tr class="ft"><td class="issue">' + rd[0] + '</td>';
+                for (n = 1; n <= f.maxBall; n++) { var zi3 = zoneIdx(n, zones); foot += '<td class="z' + (zi3 % 2) + (n === zones[zi3][0] && zi3 > 0 ? ' sep' : '') + '">' + footVal(rd[1][n - 1], ri, true) + '</td>'; }
+                for (n = 1; n <= b.maxBall; n++) foot += '<td class="cb' + (n === 1 ? ' sep' : '') + '">' + footVal(rd[2][n - 1], ri, false) + '</td>';
+                foot += '<td class="st sep" colspan="4"></td></tr>';
+            });
+
+            return '<table class="ttab">' + cg + '<thead>' + h + '</thead><tbody>' + body + '</tbody><tfoot>' + foot + '</tfoot></table>';
         }
 
         function render() {
             if (!DRAWS) return;
             var win = DRAWS.slice(-WINDOW);
-            var t = window.Lucky2049Trend.computeTrend(win);
-            document.getElementById('frontTrend').innerHTML = buildArea(t.front,
-                { cellW: 21, labelW: 64, headH: 26, rowH: 25, grad: 'gf', g0: '#7da2d9', g1: '#345d9d', g2: '#21386b', line: '#345d9d', hot: 14 });
-            document.getElementById('backTrend').innerHTML = buildArea(t.back,
-                { cellW: 24, labelW: 64, headH: 26, rowH: 25, grad: 'gb', g0: '#ffc46b', g1: '#f7931a', g2: '#c2710a', line: '#f7931a', hot: 11 });
+            document.getElementById('grid').innerHTML = buildTable(window.Lucky2049Trend.computeTrend(win));
             var first = win[0], last = win[win.length - 1];
             document.getElementById('range').textContent = win.length + ' draws (No. ' + first.id + ' – ' + last.id + ')';
         }
@@ -163,7 +171,7 @@
         document.getElementById('seg').addEventListener('click', function (e) {
             var btn = e.target.closest('button'); if (!btn) return;
             WINDOW = parseInt(btn.dataset.n, 10);
-            [].forEach.call(this.querySelectorAll('button'), function (b) { b.classList.toggle('active', b === btn); });
+            [].forEach.call(this.querySelectorAll('button'), function (x) { x.classList.toggle('active', x === btn); });
             render();
         });
 
