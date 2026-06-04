@@ -70,7 +70,9 @@ export LOTTO_SEED_CSV_URL="https://github.com/RaynorZhong/lucky2049/releases/dow
 ```
 - [`scripts/export_static.py`](../scripts/export_static.py):从库导出 **精简快照**
   `site/index.json`(全量号码:id/高度/结果/承诺/前一承诺,**不含 144 哈希**,约 2MB)
-  + `head.json` + 静态页(`web/index.html`、`web/verify.html`、`static/verify.js`)。
+  + `head.json` + 静态页(`web/index.html`、`web/verify.html`、`web/stats.html`、`static/verify.js`、`static/stats.js`)。
+- [`web/stats.html`](../web/stats.html) + [`static/stats.js`](../static/stats.js):纯前端**统计页** —— 浏览器内从
+  `index.json` 现算每号频率 + 卡方均匀性检验(与服务端 `/stats` 同法,`tests/test_stats_js.py` 用 Node 对拍 scipy 锁死)。
 - [`web/verify.html`](../web/verify.html):纯静态自证页 —— 给定期号,**浏览器内从
   mempool.space 拉那 144 个区块哈希**、用 `verify.js`(自带 SHA-256/HMAC、零外部脚本)
   复算,并与发布的结果/承诺链比对。不信任服务器、不连数据库。

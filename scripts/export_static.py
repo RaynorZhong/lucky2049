@@ -59,15 +59,15 @@ def main():
         json.dump(head, f)
 
     web = os.path.join(REPO, "web")
-    for name in ("index.html", "verify.html"):
+    for name in ("index.html", "verify.html", "stats.html"):
         shutil.copy(os.path.join(web, name), os.path.join(args.out, name))
     cname_src = os.path.join(web, "CNAME")
     if os.path.exists(cname_src):
         # Custom domain marker -- must ride along every publish or GitHub Pages
         # drops the domain on the next (force-pushed) republish.
         shutil.copy(cname_src, os.path.join(args.out, "CNAME"))
-    shutil.copy(os.path.join(REPO, "static", "verify.js"), os.path.join(args.out, "verify.js"))
-    shutil.copy(os.path.join(REPO, "static", "style.css"), os.path.join(args.out, "style.css"))
+    for name in ("verify.js", "stats.js", "style.css"):
+        shutil.copy(os.path.join(REPO, "static", name), os.path.join(args.out, name))
 
     kb = os.path.getsize(os.path.join(args.out, "index.json")) / 1024
     head_hex = (head.get("head") or "")[:16]

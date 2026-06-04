@@ -34,9 +34,9 @@ jobs:
           mkdir -p site
           cp _published/index.json site/index.json
           python scripts/extend_pages.py site/index.json
-          cp web/index.html web/verify.html site/
+          cp web/index.html web/verify.html web/stats.html site/
           cp web/CNAME site/                 # custom domain -- keep across republishes
-          cp static/verify.js static/style.css site/
+          cp static/verify.js static/stats.js static/style.css site/
           touch site/.nojekyll
 
       - name: Publish to gh-pages
