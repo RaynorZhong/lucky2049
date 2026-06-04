@@ -15,8 +15,8 @@ __pycache__/
 *.db-journal
 *.sqlite
 
-# Large cold-start seed dataset — not tracked; obtain via LOTTO_SEED_CSV_URL (see docs/DEPLOY.md).
-data/blockchain_timeup898560.csv
+# Large local seed CSV (~82MB) — local-only cold-start data, never commit.
+data/*.csv
 
 # Ignores test / coverage artifacts.
 .pytest_cache/

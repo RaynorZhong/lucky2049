@@ -97,10 +97,11 @@ python verify.py 6315 --source db --db data/database.db
 commitment = SHA256( 上一期承诺 | 期号 | 算法版本 | 种子 | 前区 | 后区 | 高度区间 )
 ```
 
-于是整段历史被压缩成一个 32 字节的**链头**（`head.json`）。改动任何一期都会改变链头。把链头**定期
-外锚**到不可篡改的见证处（OpenTimestamps、git tag、公开发帖等），运营方就无法在事后悄悄改写历史——
-因为旧链头已被第三方/时间戳固定。关键在于 `verify.py` 与 `verify.html` 页面都能**独立重算**这条链，
-承诺并非运营方自说自话。
+于是整段历史被压缩成一个 32 字节的**链头**（`head.json`）。改动任何一期都会改变链头。**链头每周经
+[OpenTimestamps](https://opentimestamps.org) 外锚到比特币区块链**（[`.github/workflows/anchor-head.yml`](.github/workflows/anchor-head.yml)，
+证明发布在 [`anchors/`](anchors/) 并同时服务于 `https://lucky2049.com/anchors/`），于是旧链头被第三方
+时间戳固定，运营方无法在事后悄悄改写历史。关键在于 `verify.py` 与 `verify.html` 都能**独立重算**这条
+链，承诺并非运营方自说自话；任何人可 `ots verify anchors/<id>.head.json.ots` 复核锚点。
 
 ## 代码结构 / Structure
 

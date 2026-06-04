@@ -1,0 +1,51 @@
+name: anchor-head
+
+# Externally anchor the commitment head with OpenTimestamps: timestamp the
+# current published head onto the Bitcoin blockchain (via OTS calendars) so the
+# operator can't silently rewrite history. Weekly + manual. Commits proofs to
+# main; the refresh-pages workflow then serves them at /anchors/.
+on:
+  schedule:
+    - cron: "40 2 * * 0"   # weekly, Sunday ~01:40 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: anchor-head
+  cancel-in-progress: false
+
+jobs:
+  anchor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install the OpenTimestamps client
+        run: pip install opentimestamps-client
+
+      - name: Stamp the current published head (skips draws already anchored)
+        run: |
+          python scripts/anchor_head.py
+          for f in anchors/*.head.json; do
+            [ -f "$f.ots" ] || ots stamp "$f"
+          done
+
+      - name: Upgrade earlier pending proofs to full Bitcoin attestations
+        run: |
+          for f in anchors/*.ots; do ots upgrade "$f" || true; done
+        continue-on-error: true
+
+      - name: Commit new / upgraded proofs to main
+        run: |
+          git add anchors
+          if git diff --cached --quiet; then
+            echo "no anchor changes"; exit 0
+          fi
+          git -c user.email=anchor@users.noreply.github.com \
+              -c user.name="lucky2049 anchor bot" \
+              commit -m "Anchor commitment head via OpenTimestamps"
+          git push

@@ -17,6 +17,8 @@ lucky2049 是**纯静态、无服务器**的开奖引擎:出号、发布、验�
   用 `verify.py` 续算并接上承诺链 → 推回 `gh-pages` → Pages 自动重建。**纯 stdlib、无 DB、无服务器**。
 - **站点** — `gh-pages` 上的 `index.json`/`head.json` + `web/`(页面)+ `static/`(JS/CSS)。
   GitHub Pages 免费 CDN 托管;`verify.html` 在浏览器内自带 SHA-256/HMAC 复算,不信任服务器。
+- **链头外锚** — [`.github/workflows/anchor-head.yml`](../.github/workflows/anchor-head.yml) 每周用
+  OpenTimestamps 把当前链头(`head.json`)盖时间戳到比特币链上;证明提交进 `anchors/`,并服务于 `/anchors/`。
 
 > 一期开奖需 144 个区块(≈24h)才产生,日更 cron 已足够;想更快可把 `refresh-pages.yml` 的
 > cron 改成每小时,仍然无服务器。
@@ -52,8 +54,9 @@ lucky2049 是**纯静态、无服务器**的开奖引擎:出号、发布、验�
 
 ## 重建 / 灾备
 
-`index.json` 是系统的权威快照,建议定期备份(它在 `gh-pages` git 历史里,也可发个 Release;
-再给 `head.json` 的链头打 OpenTimestamps 锚点就更稳)。万一 `gh-pages` 丢失,两条重建路径:
+`index.json` 是系统的权威快照,建议定期备份(它在 `gh-pages` git 历史里,也可发个 Release)。链头已由
+`anchor-head.yml` 每周经 OpenTimestamps 外锚到比特币链(见 `anchors/`),历史防篡改更稳。万一 `gh-pages`
+丢失,两条重建路径: 
 
 ```shell
 # A) 有本地 DB 缓存时:stdlib sqlite3 直读,秒级重建整份快照

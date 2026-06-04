@@ -34,7 +34,7 @@ import sys
 import time
 import urllib.request
 
-# ---- Algorithm constants (FROZEN, must match SPEC.md / lotto.py v1) ----
+# ---- Algorithm constants (FROZEN, must match SPEC.md / static/verify.js v1) ----
 ALGO_VERSION = "v1"
 NUM_BLOCKCHAIN = 144
 BLUE_BALL_MAX = 35

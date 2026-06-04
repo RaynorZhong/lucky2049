@@ -36,7 +36,8 @@ jobs:
           python scripts/extend_pages.py site/index.json
           cp web/index.html web/verify.html web/stats.html site/
           cp web/CNAME site/                 # custom domain -- keep across republishes
-          cp static/verify.js static/stats.js static/style.css site/
+          cp static/verify.js static/stats.js static/style.css static/favicon.svg site/
+          cp -r anchors site/anchors 2>/dev/null || true   # serve OpenTimestamps proofs at /anchors/
           touch site/.nojekyll
 
       - name: Publish to gh-pages

@@ -68,14 +68,21 @@ def main():
         next_id += 1
         added += 1
 
+    head = ({"head": prev_commitment, "draw_id": draws[-1]["id"],
+             "count": len(draws), "algo_version": ALGO} if draws
+            else {"head": verify.GENESIS_PREV, "draw_id": -1, "count": 0, "algo_version": ALGO})
+
     if added:
         data["count"] = len(draws)
-        data["head"] = {"head": prev_commitment, "draw_id": draws[-1]["id"],
-                        "count": len(draws), "algo_version": ALGO}
+        data["head"] = head
         with open(path, "w") as f:
             json.dump(data, f, separators=(",", ":"))
-        with open(os.path.join(os.path.dirname(path), "head.json"), "w") as f:
-            json.dump(data["head"], f)
+
+    # Always (re)write head.json next to index.json, even on a no-op refresh: the
+    # publish workflow only carries index.json forward, so without this head.json
+    # would 404 after any refresh that adds 0 draws (the common case).
+    with open(os.path.join(os.path.dirname(path), "head.json"), "w") as f:
+        json.dump(head, f)
 
     print(f"ADDED={added} total={len(draws)} latest={(draws[-1]['id'] if draws else None)}")
     return 0
