@@ -29,13 +29,21 @@
         .legend .ltc { background: var(--ball-ltc); }
         .legend .btc { background: var(--ball-btc); }
         .trend-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); -webkit-overflow-scrolling: touch; }
-        .trend-scroll svg { min-width: 100%; }
-        .area-title { font-size: 1.05rem; font-weight: 600; font-family: var(--font-heading); margin: 1.25rem 0 0.6rem; color: #0f172a; }
+        .trend-scroll svg { display: block; }
+        .area-title { font-size: 1.05rem; font-weight: 600; font-family: var(--font-heading); margin: 0 0 0.6rem; color: #0f172a; }
+        .trend-areas { display: flex; flex-direction: column; gap: 1.75rem; margin-top: 0.5rem; }
+        /* On a wide desktop, lay Front and Back out side by side. */
+        @media (min-width: 1240px) {
+            .trend-areas { flex-direction: row; align-items: flex-start; }
+            .trend-block { min-width: 0; }
+            .trend-block.front { flex: 0 1 auto; }
+            .trend-block.back { flex: 0 0 auto; }
+        }
     </style>
 </head>
 
 <body>
-    <div class="container">
+    <div class="container" style="max-width:1320px;">
         <header>
             <div class="brand"><img src="./favicon.svg" alt=""><h1>Trend</h1></div>
             <p id="intro" class="text-secondary">Basic trend for the front (1–35) and back (1–12) areas — each draw's hit
@@ -59,11 +67,16 @@
             <span style="color:#dc2626;">red = large current gap</span>
         </div>
 
-        <div class="area-title">Front area (1–35)</div>
-        <div class="trend-scroll" id="frontTrend"></div>
-
-        <div class="area-title">Back area (1–12)</div>
-        <div class="trend-scroll" id="backTrend"></div>
+        <div class="trend-areas">
+            <div class="trend-block front">
+                <div class="area-title">Front area (1–35)</div>
+                <div class="trend-scroll" id="frontTrend"></div>
+            </div>
+            <div class="trend-block back">
+                <div class="area-title">Back area (1–12)</div>
+                <div class="trend-scroll" id="backTrend"></div>
+            </div>
+        </div>
 
         <nav class="nav-links" style="margin-top:2rem;">
             <a href="./index.html" class="btn">← Home</a>
@@ -140,9 +153,9 @@
             var win = DRAWS.slice(-WINDOW);
             var t = window.Lucky2049Trend.computeTrend(win);
             document.getElementById('frontTrend').innerHTML = buildArea(t.front,
-                { cellW: 23, labelW: 64, headH: 26, rowH: 25, grad: 'gf', g0: '#7da2d9', g1: '#345d9d', g2: '#21386b', line: '#345d9d', hot: 14 });
+                { cellW: 21, labelW: 64, headH: 26, rowH: 25, grad: 'gf', g0: '#7da2d9', g1: '#345d9d', g2: '#21386b', line: '#345d9d', hot: 14 });
             document.getElementById('backTrend').innerHTML = buildArea(t.back,
-                { cellW: 30, labelW: 64, headH: 26, rowH: 25, grad: 'gb', g0: '#ffc46b', g1: '#f7931a', g2: '#c2710a', line: '#f7931a', hot: 11 });
+                { cellW: 24, labelW: 64, headH: 26, rowH: 25, grad: 'gb', g0: '#ffc46b', g1: '#f7931a', g2: '#c2710a', line: '#f7931a', hot: 11 });
             var first = win[0], last = win[win.length - 1];
             document.getElementById('range').textContent = win.length + ' draws (No. ' + first.id + ' – ' + last.id + ')';
         }
