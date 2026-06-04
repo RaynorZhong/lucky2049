@@ -239,8 +239,21 @@ tr:hover td {
         padding: 1rem;
     }
 
+    header {
+        margin-bottom: 2rem;
+        padding-top: 1rem;
+    }
+
     h1 {
         font-size: 2rem;
+    }
+
+    h2 {
+        font-size: 1.4rem;
+    }
+
+    .glass-panel {
+        padding: 1.25rem 1rem;
     }
 
     .white-balls {
@@ -253,5 +266,56 @@ tr:hover td {
     td {
         padding: 0.75rem 0.5rem;
         font-size: 0.9rem;
+    }
+}
+
+/* Phones: turn the wide draws table into a stacked card per draw, so the five
+   numbers sit in a row instead of being squeezed into a too-narrow column. */
+@media (max-width: 640px) {
+    .draws-table thead {
+        display: none;
+    }
+
+    .draws-table,
+    .draws-table tbody,
+    .draws-table tr,
+    .draws-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .draws-table tr {
+        padding: 1rem 0.25rem;
+        border-bottom: 1px solid var(--card-border);
+    }
+
+    .draws-table tr:last-child {
+        border-bottom: none;
+    }
+
+    .draws-table tr:hover td {
+        background: none;
+    }
+
+    .draws-table td {
+        border: none;
+        padding: 0.3rem 0;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .draws-table td[data-label]::before {
+        content: attr(data-label);
+        flex: 0 0 4.5rem;
+        color: var(--text-secondary);
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .draws-table td:first-child {
+        margin-bottom: 0.35rem;
     }
 }

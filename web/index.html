@@ -20,7 +20,7 @@
         <section>
             <h2>Latest draws</h2>
             <div class="glass-panel">
-                <table>
+                <table class="draws-table">
                     <thead>
                         <tr><th>Draw</th><th>Front</th><th>Back</th><th>Heights</th><th>Time</th></tr>
                     </thead>
@@ -49,10 +49,10 @@
             var latest = (idx.draws || []).slice(-20).reverse();
             document.getElementById("rows").innerHTML = latest.map(function (d) {
                 return "<tr><td><a class='btn btn-sm' href='./verify.html?draw=" + d.id + "'>No. " + d.id + "</a></td>"
-                    + "<td><div class='d-flex'>" + balls(d.front) + "</div></td>"
-                    + "<td><div class='d-flex'>" + balls(d.back, "powerball") + "</div></td>"
-                    + "<td class='text-secondary'>" + d.start_height + " - " + d.end_height + "</td>"
-                    + "<td class='text-secondary'>" + (d.timestamp || "") + "</td></tr>";
+                    + "<td data-label='Front'><div class='d-flex'>" + balls(d.front) + "</div></td>"
+                    + "<td data-label='Back'><div class='d-flex'>" + balls(d.back, "powerball") + "</div></td>"
+                    + "<td data-label='Heights' class='text-secondary'>" + d.start_height + " - " + d.end_height + "</td>"
+                    + "<td data-label='Time' class='text-secondary'>" + (d.timestamp || "") + "</td></tr>";
             }).join("");
         })();
     </script>
