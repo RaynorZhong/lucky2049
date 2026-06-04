@@ -16,7 +16,7 @@
 
 **算法规范：** 见 [`SPEC.md`](SPEC.md)（冻结版本 `v1`）。
 **独立验证：** 命令行用 [`verify.py`](verify.py)，或打开 `/verify` 页面在浏览器里自证。
-**Repository:** https://github.com/RaynorZhong/lucky2049 · **Demo:** http://www.lucky2049.com:8000/
+**Repository:** https://github.com/RaynorZhong/lucky2049 · **Demo:** https://lucky2049.com
 
 ## 公平性保证 / Fairness Properties
 
@@ -86,8 +86,8 @@ export DRAW_CONFIRMATIONS=6     # 默认 6；高价值场景可调大（延迟�
 `verify.py` 自包含、仅用标准库。给定期号，它从独立来源拉取 144 个哈希、按 SPEC v1 重算、并可与已发布结果比对：
 
 ```shell
-# 用公开浏览器复算并与线上结果比对（含哈希交叉校验，可检测数据库篡改）
-python verify.py 6315 --source mempool --site http://www.lucky2049.com:8000
+# 用公开浏览器复算并与已发布站点比对（结果 + 承诺链；静态站或实时服务器均可）
+python verify.py 6315 --source mempool --site https://lucky2049.com
 
 # 用自己的全节点作为真值源
 export BITCOIN_RPC_URL="http://user:pass@127.0.0.1:8332"
@@ -97,7 +97,8 @@ python verify.py 6315 --source core
 python verify.py 6315 --source db --db data/database.db
 ```
 
-加上 `--site` 时，`verify.py` 还会重算该期的**承诺链**并校验它正确链到上一期（`CHAIN MATCH`）。
+加上 `--site` 时，`verify.py` 还会重算该期的**承诺链**并校验它正确链到上一期（`CHAIN MATCH`）；
+对着自托管的实时服务器还会交叉校验其存储的 144 个哈希（`HASHES MATCH`，静态快照不含哈希，省略此项）。
 不想用命令行？直接打开 `GET /verify` 页面，在浏览器里一键复算。
 
 ## 防篡改 / Tamper-evidence

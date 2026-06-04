@@ -14,8 +14,9 @@ Standard library only — no third-party packages required.
 
 Examples
 --------
-  # Recompute draw 6315 using a public explorer, compare to a published result:
-  python verify.py 6315 --source mempool --site http://www.lucky2049.com:8000
+  # Recompute draw 6315 from a public explorer and compare to a published site
+  # (works against the static GitHub Pages snapshot or a live server):
+  python verify.py 6315 --source mempool --site https://lucky2049.com
 
   # Use your own Bitcoin Core node as the source of truth:
   export BITCOIN_RPC_URL="http://user:pass@127.0.0.1:8332"
@@ -167,6 +168,47 @@ SOURCES = {
 }
 
 
+# ----------------------------- published site -----------------------------
+def _fetch_published(site, draw_id):
+    """Fetch draw_id's published record from a site, normalized to one shape.
+
+    Tries the live server's manifest API first; if it is unavailable (the
+    public deployment is the static GitHub Pages snapshot, which has no API),
+    falls back to the static index.json. The slim static record inlines
+    prev_commitment, so the chain check needs no extra request there; the live
+    API does not, so prev_commitment is left None for the caller to resolve.
+
+    Returns {front, back, block_hashes, commitment, prev_commitment,
+    algo_version, kind} or raises if neither source is reachable.
+    """
+    base = site.rstrip("/")
+    try:
+        m = json.loads(_http_get(f"{base}/api/draw/{draw_id}/manifest"))
+        res = m.get("result", {})
+        return {
+            "front": res.get("front"), "back": res.get("back"),
+            "block_hashes": [_normalize(h) for h in m.get("block_hashes", [])],
+            "commitment": m.get("commitment"),
+            "prev_commitment": None,  # live API: previous draw fetched separately
+            "algo_version": m.get("algo_version", ALGO_VERSION),
+            "kind": "api",
+        }
+    except Exception:
+        pass  # no live API -- fall back to the static snapshot
+    idx = json.loads(_http_get(f"{base}/index.json"))
+    rec = next((d for d in idx.get("draws", []) if d.get("id") == draw_id), None)
+    if rec is None:
+        raise LookupError(f"draw {draw_id} not found in {base}/index.json")
+    return {
+        "front": rec.get("front"), "back": rec.get("back"),
+        "block_hashes": [],  # snapshot omits hashes by design; the chain is truth
+        "commitment": rec.get("commitment"),
+        "prev_commitment": rec.get("prev_commitment"),
+        "algo_version": rec.get("algo_version", idx.get("algo_version", ALGO_VERSION)),
+        "kind": "static",
+    }
+
+
 # ----------------------------- main -----------------------------
 def main():
     ap = argparse.ArgumentParser(description="Independent verifier for lucky2049 draws (spec v1).")
@@ -178,7 +220,7 @@ def main():
         help="block-hash source (default: core if RPC env is set, else mempool)",
     )
     ap.add_argument("--db", default="data/database.db", help="sqlite path for --source db")
-    ap.add_argument("--site", help="base URL of a running site to fetch the published result, e.g. http://host:8000")
+    ap.add_argument("--site", help="base URL of a published site to compare against -- a live server or the static GitHub Pages snapshot, e.g. https://lucky2049.com")
     args = ap.parse_args()
 
     start, end = heights_for(args.draw_id)
@@ -201,42 +243,40 @@ def main():
 
     exit_code = 0
     if args.site:
-        url = f"{args.site.rstrip('/')}/api/draw/{args.draw_id}/manifest"
         try:
-            manifest = json.loads(_http_get(url))
+            pub = _fetch_published(args.site, args.draw_id)
         except Exception as e:
-            print(f"WARN: could not fetch published manifest: {e}", file=sys.stderr)
+            print(f"WARN: could not fetch published result: {e}", file=sys.stderr)
             return exit_code
-        pub = manifest.get("result", {})
-        pf, pb = pub.get("front"), pub.get("back")
-        print(f"PUBLISHED   : front {pf}  back {pb}")
+        pf, pb = pub["front"], pub["back"]
+        print(f"PUBLISHED   : front {pf}  back {pb}  (via {pub['kind']})")
         result_ok = (pf == front and pb == back)
         print(f"RESULT MATCH: {'PASS' if result_ok else 'FAIL'}")
-
-        # Cross-check: do the site's stored hashes match the independent source?
-        site_hashes = [_normalize(h) for h in manifest.get("block_hashes", [])]
-        if site_hashes:
-            hashes_ok = (site_hashes == hashes)
-            print(f"HASHES MATCH: {'PASS' if hashes_ok else 'FAIL'} (site DB vs {args.source})")
-            if not (result_ok and hashes_ok):
-                exit_code = 1
-        elif not result_ok:
+        if not result_ok:
             exit_code = 1
+
+        # Cross-check the site's stored hashes against the independent source,
+        # when exposed (live API only; the static snapshot omits them on purpose).
+        if pub["block_hashes"]:
+            hashes_ok = (pub["block_hashes"] == hashes)
+            print(f"HASHES MATCH: {'PASS' if hashes_ok else 'FAIL'} (site DB vs {args.source})")
+            if not hashes_ok:
+                exit_code = 1
 
         # Tamper-evidence: recompute this draw's commitment from the previous
         # draw's commitment and check it matches what the site published.
-        published_commitment = manifest.get("commitment")
+        published_commitment = pub["commitment"]
         if published_commitment:
-            algo = manifest.get("algo_version", ALGO_VERSION)
-            if args.draw_id == 0:
-                prev = GENESIS_PREV
-            else:
-                try:
-                    prev_url = f"{args.site.rstrip('/')}/api/draw/{args.draw_id - 1}/manifest"
-                    prev = json.loads(_http_get(prev_url)).get("commitment")
-                except Exception as e:
-                    prev = None
-                    print(f"WARN: could not fetch previous commitment: {e}", file=sys.stderr)
+            algo = pub["algo_version"]
+            prev = pub["prev_commitment"]
+            if prev is None:  # live API record carries no prev -- resolve it
+                if args.draw_id == 0:
+                    prev = GENESIS_PREV
+                else:
+                    try:
+                        prev = _fetch_published(args.site, args.draw_id - 1)["commitment"]
+                    except Exception as e:
+                        print(f"WARN: could not fetch previous commitment: {e}", file=sys.stderr)
             if prev:
                 recomputed = commitment_for(prev, args.draw_id, algo, seed, front, back, start, end)
                 chain_ok = (recomputed == published_commitment)

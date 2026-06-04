@@ -122,7 +122,7 @@ GitHub 托管 runner 即可跑)。这让整套"开奖 + 发布"完全跑在 GitH
 ## 自证 / Verify
 
 ```shell
-python verify.py <draw_id> --site <url>        # 复算号码 + 校验承诺链
-python verify.py <draw_id> --source core       # 用自有全节点作真值源
+python verify.py <draw_id> --site https://lucky2049.com   # 复算号码 + 校验承诺链(静态站亦可)
+python verify.py <draw_id> --source core                   # 用自有全节点作真值源
 ```
 或直接打开部署后的 `/verify` 页面,在浏览器里一键复核。
