@@ -4,7 +4,7 @@
     {
       "name": "lucky2049",
       "runtimeExecutable": "./.venv/bin/python",
-      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8011"],
+      "runtimeArgs": ["-m", "http.server", "8011", "--directory", "site"],
       "port": 8011
     }
   ]

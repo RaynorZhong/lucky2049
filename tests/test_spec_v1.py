@@ -7,8 +7,9 @@ SPEC.md: if anyone changes the generation logic or game parameters, these
 golden vectors break in CI.
 
 Standard library only — `python -m unittest discover -s tests` needs no
-third-party packages and no database/network. The optional consistency test
-against lotto.py is skipped automatically when its heavy deps aren't installed.
+third-party packages and no database/network. verify.py is the single Python
+implementation of the algorithm; the in-browser JS copy is locked separately by
+tests/test_verify_js.py.
 """
 import hashlib
 import hmac
@@ -23,7 +24,7 @@ FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
 
 import verify  # noqa: E402  (stdlib-only module at repo root)
 
-# ---- Frozen parameters (must match SPEC.md / lotto.py / verify.py) ----
+# ---- Frozen parameters (must match SPEC.md / verify.py) ----
 NUM_BLOCKCHAIN = 144
 BLUE_BALL_MAX, BLUE_BALL_NUM = 35, 5
 RED_BALL_MAX, RED_BALL_NUM = 12, 2
@@ -97,25 +98,6 @@ class TestFullPipelineDraw0(unittest.TestCase):
         self.assertEqual(seed_hex, VECTORS[0]["seed"])
         self.assertEqual(front, VECTORS[0]["front"])
         self.assertEqual(back, VECTORS[0]["back"])
-
-
-class TestImplementationsAgree(unittest.TestCase):
-    """lotto.py (production) and verify.py (auditor copy) must agree bit-for-bit.
-
-    Skipped when lotto.py's heavy deps (pandas/scipy/plotly) aren't installed.
-    """
-
-    def test_lotto_equals_verify_on_synthetic_input(self):
-        try:
-            import app.lotto as lotto
-        except Exception as e:  # pragma: no cover - deps not installed in CI
-            self.skipTest(f"lotto.py not importable (deps missing): {e}")
-
-        # 144 deterministic, well-formed 64-hex "hashes" — no chain data needed.
-        hashes = [hashlib.sha256(f"block-{i}".encode()).hexdigest() for i in range(NUM_BLOCKCHAIN)]
-        v_front, v_back, _ = verify.generate(hashes)
-        l_front, l_back = lotto.generate_lotto_numbers_bitcoin(hashes)
-        self.assertEqual((v_front, v_back), (l_front, l_back))
 
 
 if __name__ == "__main__":

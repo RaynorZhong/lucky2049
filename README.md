@@ -11,11 +11,14 @@
 算法是确定性的：任何人用相同的 144 个区块哈希都能**逐位元复现**同一期结果。真值源是比特币
 区块链本身（全网共识、客观、不可篡改），而非本系统数据库或任何单一 API。
 
+它以**纯静态、无服务器**的方式发布(GitHub Pages → lucky2049.com)：一个 GitHub Actions 定时
+任务负责开奖+发布，验证完全在浏览器/命令行里完成，没有后端、关键链路上没有数据库。
+
 > **范围说明：** 本项目**只负责开奖**。奖池、售票、兑奖等功能不在本项目内，由其他项目完成。
 > 这样做是为了规避潜在法律风险。本项目仅供研究与娱乐，不构成任何博彩服务。
 
 **算法规范：** 见 [`SPEC.md`](SPEC.md)（冻结版本 `v1`）。
-**独立验证：** 命令行用 [`verify.py`](verify.py)，或打开 `/verify` 页面在浏览器里自证。
+**独立验证：** 命令行用 [`verify.py`](verify.py)，或打开 `verify.html` 页面在浏览器里自证。
 **Repository:** https://github.com/RaynorZhong/lucky2049 · **Demo:** https://lucky2049.com
 
 ## 公平性保证 / Fairness Properties
@@ -26,7 +29,7 @@
 | 运营方零自由度 | ✅ | 第 N 期固定使用高度 `[N*144, N*144+143]`，从创世块锚定，无人工挑选 |
 | 算法已冻结 | ✅ | `ALGO_VERSION="v1"`，每期声明版本；改规则须升版本且仅对未来期生效 |
 | 防篡改（历史不可改） | ✅ | 每期串入哈希链承诺，全历史压成一个"链头"；外锚链头后运营方无法事后改历史（见下文「防篡改」） |
-| 抗链重组 | ✅ | 区块滞后 `DRAW_CONFIRMATIONS`（默认 6）个确认才入库/开奖，浅重组无法改变已开结果 |
+| 抗链重组 | ✅ | 区块滞后 `DRAW_CONFIRMATIONS`（默认 6）个确认才参与开奖，浅重组无法改变已开结果 |
 | 矿工操纵 | ⚠️ 经济安全 | 144 块聚合把攻击成本推至极高；非密码学绝对安全，残余风险随下游奖池上升（详见 SPEC.md §7） |
 
 ## 算法（v1 摘要）
@@ -39,67 +42,52 @@
 
 完整规范与测试向量见 [`SPEC.md`](SPEC.md)。
 
-## 运行 / Running
+## 架构 / Architecture
+
+整套"开奖 + 发布 + 验证"都跑在 GitHub 上，**无需服务器、无需数据库**：
+
+- **开奖机（cron）** — [`.github/workflows/refresh-pages.yml`](.github/workflows/refresh-pages.yml) 定时
+  运行 [`scripts/extend_pages.py`](scripts/extend_pages.py)：对每个**完全确认**的 144 区块新窗口，从
+  mempool.space 取哈希、用 `verify.py` 复算并接上承诺链，追加进 `index.json`，推回 `gh-pages`。纯 stdlib。
+- **站点** — `web/`（`index.html` / `verify.html` / `stats.html`）+ `static/`（`verify.js` / `stats.js` /
+  `style.css`）。浏览器里读 `index.json`，用自带 SHA-256/HMAC 复算校验，不信任服务器、不连数据库。
+- **验证器** — `verify.py`：独立 stdlib 脚本，命令行复算 + 校验承诺链。
+
+> 一期开奖需要 144 个区块（≈ 24 小时）才产生，所以日更 cron 已足够；想更快可把 cron 调成每小时。
+
+### 本地预览 / Local preview
 
 ```shell
-docker compose up --build       # http://localhost:8000
-# 或本地：
-pip install -r requirements.txt
-uvicorn app.main:app            # 或 fastapi run app/main.py
+python scripts/export_static.py --out /tmp/site   # 从本地 DB 缓存生成 index.json + 页面
+python -m http.server -d /tmp/site 8000           # 打开 http://localhost:8000
 ```
 
-应用启动后每 10 分钟检查新区块、自动出新一期（APScheduler）。
+## 静态数据 / Data
 
-部署（容器一键 / GitHub Pages 静态验证站 / Actions 开奖机）与"高效同步号码"见 [`docs/DEPLOY.md`](docs/DEPLOY.md)。
+站点即数据源，无动态 API：
 
-### 比特币哈希来源（全节点）
-
-系统以**自建比特币全节点**作为哈希真值源（canonical source of truth），公开浏览器仅作降级备援。
-通过环境变量配置 JSON-RPC：
-
-```shell
-export BITCOIN_RPC_URL="http://user:pass@127.0.0.1:8332"
-# 或分项：BITCOIN_RPC_USER / BITCOIN_RPC_PASSWORD / BITCOIN_RPC_HOST / BITCOIN_RPC_PORT
-```
-
-未配置节点时回退到 mempool.space。节点搭建参考 Bitcoin Core 文档（`bitcoind` + `getblockhash`/`getblockheader` RPC）。
-
-### 确认数 / Confirmations
-
-区块只在被埋够确认数后才入库，避免浅层链重组在已开结果之后改写区块哈希：
-
-```shell
-export DRAW_CONFIRMATIONS=6     # 默认 6；高价值场景可调大（延迟换安全）
-```
-
-## 接口 / API
-
-- `GET /api/spec` — 机器可读的算法规范摘要（版本、参数、选块规则）。
-- `GET /api/draw/{id}` — 某期结果及所用区块。
-- `GET /api/draw/{id}/manifest` — **每期算法声明**：期号、算法版本、高度区间、144 个哈希、种子、结果、**承诺（commitment）与前一期承诺**、验证说明（含自复算校验）。
-- `GET /api/commitments/head` — **历史链头**：一个承诺整段开奖历史的 32 字节哈希。
-- `GET /api/draws` / `GET /api/index` — 列表与首页数据。
-- `GET /verify` — **浏览器内自证页面**：纯前端用自带 SHA-256/HMAC 重算某期号码与承诺链，无需信任服务器、不加载任何外部脚本。
+- `index.json` — 全量精简快照：`{count, head, algo_version, draws:[…]}`，每期含 id / 高度区间 / 前后区 /
+  算法版本 / 承诺 / 前一承诺 / 时间戳（**不含 144 哈希**，约 2MB；哈希按需从链上取，链才是真值源）。
+- `head.json` — 历史**链头**：承诺整段开奖历史的 32 字节哈希（外锚它即可固定历史，见「防篡改」）。
 
 ## 独立验证 / Verify
 
-`verify.py` 自包含、仅用标准库。给定期号，它从独立来源拉取 144 个哈希、按 SPEC v1 重算、并可与已发布结果比对：
+`verify.py` 自包含、仅用标准库。给定期号，它从独立来源拉取 144 个哈希、按 SPEC v1 重算，并与已发布
+快照比对结果 + 承诺链：
 
 ```shell
-# 用公开浏览器复算并与已发布站点比对（结果 + 承诺链；静态站或实时服务器均可）
+# 从公开浏览器复算，并与已发布站点比对（RESULT MATCH + CHAIN MATCH）
 python verify.py 6315 --source mempool --site https://lucky2049.com
 
 # 用自己的全节点作为真值源
 export BITCOIN_RPC_URL="http://user:pass@127.0.0.1:8332"
 python verify.py 6315 --source core
 
-# 离线对本地数据库
+# 离线对本地数据库缓存
 python verify.py 6315 --source db --db data/database.db
 ```
 
-加上 `--site` 时，`verify.py` 还会重算该期的**承诺链**并校验它正确链到上一期（`CHAIN MATCH`）；
-对着自托管的实时服务器还会交叉校验其存储的 144 个哈希（`HASHES MATCH`，静态快照不含哈希，省略此项）。
-不想用命令行？直接打开 `GET /verify` 页面，在浏览器里一键复算。
+不想用命令行？直接打开站点的 `verify.html`，在浏览器里一键复算同样的校验。
 
 ## 防篡改 / Tamper-evidence
 
@@ -109,48 +97,43 @@ python verify.py 6315 --source db --db data/database.db
 commitment = SHA256( 上一期承诺 | 期号 | 算法版本 | 种子 | 前区 | 后区 | 高度区间 )
 ```
 
-于是整段历史被压缩成一个 32 字节的**链头**（`GET /api/commitments/head`）。改动任何一期都会
-改变链头。把链头**定期外锚**到不可篡改的见证处（OpenTimestamps、git tag、公开发帖等），运营方
-就无法在事后悄悄改写历史——因为旧链头已被第三方/时间戳固定。关键在于 `verify.py` 与 `/verify`
-页面都能**独立重算**这条链，承诺并非运营方自说自话。
-
-> 部署本特性后运行一次 `lotto.backfill_commitments()` 为历史各期回填承诺链（幂等）。
+于是整段历史被压缩成一个 32 字节的**链头**（`head.json`）。改动任何一期都会改变链头。把链头**定期
+外锚**到不可篡改的见证处（OpenTimestamps、git tag、公开发帖等），运营方就无法在事后悄悄改写历史——
+因为旧链头已被第三方/时间戳固定。关键在于 `verify.py` 与 `verify.html` 页面都能**独立重算**这条链，
+承诺并非运营方自说自话。
 
 ## 代码结构 / Structure
 
 ```
-app/            应用包（FastAPI 服务 + 开奖引擎）
-  main.py       路由（含 /verify、/healthz、/api/commitments/head）+ 调度（每 10 分钟）
-  lotto.py      开奖引擎：generate_lotto_numbers_bitcoin、build_draw_manifest、
-                承诺链（backfill_commitments、get_commitment_head）、ALGO_VERSION、统计
-  bitcoin.py    区块哈希抓取：全节点 RPC（主）+ mempool.space（备援）；CONFIRMATIONS 确认缓冲
-  models.py     SQLModel/SQLite（Draw 含 algo_version、commitment 列）+ 幂等轻量迁移
-verify.py       独立验证脚本（标准库，留在根目录便于单文件复制）：号码复算 + 承诺链校验
-static/         style.css、verify.js（浏览器内验证器，自带 SHA-256/HMAC、无外部脚本）
-templates/      Jinja2 页面（index/draw/stats/logs/verify）
-data/           database.db（运行时）、blockchain_timeup898560.csv（冷启动播种）—— 均 gitignored、不随仓库分发
-tests/          回归测试 + conftest（隔离 fixture）；CI 见 .github/workflows/tests.yml
-SPEC.md         冻结算法规范 v1        docs/TDD.md   TDD 工作流
+verify.py       独立引擎(标准库,单文件可复制):算法 generate、承诺链 commitment_for、
+                区块哈希抓取(Core RPC / mempool / blockstream / sqlite)、--site CLI 验证器
+scripts/
+  extend_pages.py  cron 开奖+发布:从链上扩展 index.json(stdlib,复用 verify.py,无 DB)
+  export_static.py 从本地 SQLite 缓存(stdlib sqlite3)重建整个 index.json + 站点(初建/灾备)
+  publish-pages.sh 手动发布(调 export_static + 推 gh-pages);常态用 cron,二选一
+web/            index.html / verify.html / stats.html + CNAME(自定义域名)
+static/         verify.js(浏览器验证器)、stats.js(频率+卡方)、style.css —— 均自带算法、无外部脚本
+.github/workflows/  refresh-pages.yml(cron 发布)、tests.yml(算法/承诺/JS 锁)
+SPEC.md         冻结算法规范 v1        docs/DEPLOY.md 部署   docs/TDD.md TDD 工作流
+data/           database.db —— 可选本地缓存,gitignored、不随仓库分发,仅 export_static 重建时读
 ```
 
-> 运行：`uvicorn app.main:app`（Docker：`docker compose up`）。
-> `lucky.py`（gitignored）是独立的经济/奖金模拟器，**不是开奖引擎**，与本系统开号无关。
+> 旧的 FastAPI 服务器 + 数据库 + Docker/Render 已从 `main` 移除,存档在 git tag `v1-server`,
+> 需要实时 API/自托管时可从那里取回。`lucky.py`（gitignored）是独立的经济模拟器,与开奖无关。
 
 ## 测试 / Tests
 
 ```shell
-make install-dev   # pytest + pytest-cov + pytest-watcher 装进 venv
+make install-dev   # 只装 pytest 工具(运行期纯标准库)
 make test          # 跑一次
-make watch         # 存盘即自动重跑（TDD 红-绿循环）
+make watch         # 存盘即自动重跑(TDD 红-绿循环)
 make cov           # 带覆盖率报告
-# 不装 pytest 也行：python -m unittest discover -s tests（仅标准库即可跑核心算法锁）
+python -m unittest discover -s tests   # 不装 pytest 也行(同一套)
 ```
 
-测试隔离：`tests/conftest.py` 把数据库指向临时文件，提供 `db`（每个测试一份干净表）与
-`client`（无 lifespan 副作用的 TestClient）两个 fixture，测试永远碰不到真实库。
-TDD 工作流与"测试先行"示例见 [`docs/TDD.md`](docs/TDD.md)。
-
-CI（GitHub Actions）对每次 push/PR 运行：一个零依赖的「算法锁」任务（黄金测试向量），加一个装全依赖的完整任务。
+测试是**标准库 + Node**(无 DB、无 fixture):算法/承诺的黄金向量锁(`test_spec_v1`、`test_commitment`)、
+独立验证器(`test_verify_site`)、以及在 Node 里跑浏览器 JS 对拍(`test_verify_js`、`test_stats_js`)。
+TDD 工作流见 [`docs/TDD.md`](docs/TDD.md)。CI(GitHub Actions)对每次 push/PR 跑这套锁。
 
 ## License
 

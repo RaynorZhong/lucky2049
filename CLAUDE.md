@@ -10,68 +10,78 @@ via a deterministic algorithm anyone can reproduce. **Scope is deliberately just
 the draw** — no prize pool, ticketing, or payout (those are separate projects,
 to avoid legal risk). Don't add gambling/business features here.
 
+It ships as a **static, server-less site** (GitHub Pages → lucky2049.com): a
+GitHub Actions cron draws + publishes, and the browser verifies. No backend, no
+database in the critical path. (The old FastAPI server + DB live in the
+`v1-server` git tag if a live API is ever needed again.)
+
 ## ⚠️ The algorithm is FROZEN (read before touching draw logic)
 
 `SPEC.md` is the normative, frozen spec (`ALGO_VERSION = "v1"`). The number
-generation in `app/lotto.py` (`generate_lotto_numbers_bitcoin`), the standalone
-`verify.py`, and the in-browser `static/verify.js` must stay **bit-for-bit
-identical** and match `SPEC.md`.
+generation in `verify.py` (`generate`) and the in-browser `static/verify.js`
+must stay **bit-for-bit identical** and match `SPEC.md`.
 
 - Do NOT change the generation logic, game params, seeding (SHA256→HMAC), or the
   commitment formula to "improve" them. Any real change requires a NEW version
   (`v2`, …) that applies to FUTURE draws only; historical draws stay verifiable.
-- Golden-vector tests (`tests/test_spec_v1.py`, `tests/test_commitment.py`) are
+- Golden-vector tests (`tests/test_spec_v1.py`, `tests/test_commitment.py`) and
+  the JS parity tests (`tests/test_verify_js.py`, `tests/test_stats_js.py`) are
   **guardrails, not TODOs**. If a change turns them red, the change is wrong.
-- The commitment formula lives once in `verify.py` (`commitment_for`) and is
-  reused by `app/lotto.py`; keep it that way.
+- `verify.py` is the single Python implementation; `static/verify.js` is the JS
+  copy. They cross-check each other (Python ↔ JS) — keep them in lockstep.
 
 ## Run
 
+It's a static site — nothing to serve in production. To preview locally:
+
 ```shell
-pip install -r requirements.txt
-uvicorn app.main:app       # serves on :8000 (Docker: docker compose up)
+python scripts/export_static.py --out /tmp/site   # build index.json + pages from the local DB cache
+python -m http.server -d /tmp/site 8000           # open http://localhost:8000
 ```
-Local preview/launch config: `.claude/launch.json` (port 8011). The scheduler
-auto-draws every 10 min on startup; DB init runs in the FastAPI lifespan.
+The published site self-updates: `.github/workflows/refresh-pages.yml` (daily
+cron) runs `scripts/extend_pages.py` to draw any newly-confirmed 144-block window
+from the chain and republish `gh-pages`. No server, no DB — stdlib + `verify.py`.
 
 ## Test / TDD
 
 ```shell
-make install-dev   # pytest + pytest-cov + pytest-watcher (also pip install -r requirements-dev.txt)
+make install-dev   # pytest tooling only (runtime is stdlib-only)
 make test          # run once     make watch  # re-run on save (TDD loop)     make cov
-python -m unittest discover -s tests   # stdlib-only fallback (core algorithm lock)
+python -m unittest discover -s tests   # stdlib-only fallback (same suite)
 ```
-Tests never touch the real DB: `tests/conftest.py` redirects to a throwaway DB
-and offers `db` (clean tables) and `client` (TestClient, no lifespan) fixtures.
-Write tests first — see `docs/TDD.md` and the `/healthz` example
-(`tests/test_healthz.py`). Deps-gated tests self-skip when pandas/etc. are absent.
+The suite is **stdlib + Node only** (no DB, no fixtures): golden-vector locks for
+the algorithm/commitment (`test_spec_v1`, `test_commitment`), the standalone
+verifier (`test_verify_site`), and the in-browser JS run under Node
+(`test_verify_js`, `test_stats_js`). Write tests first — see `docs/TDD.md`.
 
 ## Key files
 
-Code lives in the `app/` package; `verify.py` stays at the repo root (standalone
-auditor). Data files live in `data/`.
+`verify.py` is the standalone engine; the site lives in `web/` + `static/`.
 
-- `app/lotto.py` — draw engine, manifest, commitment chain (`backfill_commitments`,
-  `get_commitment_head`), stats.
-- `verify.py` — standalone stdlib verifier (numbers + commitment chain); CLI.
-- `static/verify.js` — pure-JS in-browser verifier for the `/verify` page.
-- `app/bitcoin.py` — block-hash fetch: Bitcoin Core RPC (primary) + mempool.space
-  (fallback). `CONFIRMATIONS` (env `DRAW_CONFIRMATIONS`, default 6) reorg buffer.
-- `app/models.py` — SQLModel/SQLite. DB URL via env `LOTTO_DB_URL`; idempotent
-  `run_lightweight_migrations()` adds missing columns on startup.
-- `app/main.py` — FastAPI routes + scheduler. `SPEC.md` / `README.md` / `docs/TDD.md`.
+- `verify.py` — the draw algorithm (`generate`), commitment chain (`commitment_for`),
+  block-hash fetch (Core RPC / mempool.space / blockstream / sqlite), and the
+  `--site` CLI verifier. Stdlib only.
+- `scripts/extend_pages.py` — the cron drawer/publisher: extends `index.json` from
+  the chain (stdlib, reuses `verify.py`, no DB). Run by `refresh-pages.yml`.
+- `scripts/export_static.py` — (re)build the full `index.json` + site from a local
+  SQLite cache via stdlib `sqlite3` (initial build / disaster recovery).
+- `web/` — `index.html` / `verify.html` / `stats.html` + `CNAME`. `static/` —
+  `verify.js` (verifier), `stats.js` (frequency + chi-square), `style.css`.
+- `SPEC.md` (frozen spec) · `docs/DEPLOY.md` · `docs/TDD.md`.
 
 ## Gotchas
 
-- `data/database.db` (~170MB, runtime) and `data/blockchain_timeup898560.csv`
-  (~82MB cold-start seed) are gitignored — NOT in the repo. Don't re-add them.
-  Cold start fetches the CSV from `LOTTO_SEED_CSV_URL` if set, else starts empty
-  and backfills from the chain (see docs/DEPLOY.md).
-- After deploying commitment changes, run `lotto.backfill_commitments()` once.
-- Anchor `get_commitment_head()` externally (OpenTimestamps / git tag) to make
-  history truly tamper-evident — code provides the chain, anchoring is the rest.
-- macOS system `python3` is 3.9 with a central bytecode cache; use `./.venv`
-  (3.13) for anything real.
+- **Single publish source**: the cron owns `gh-pages`/`index.json`. Don't also run
+  `scripts/publish-pages.sh` locally — it force-pushes a DB export that can clash.
+- **Custom domain**: `web/CNAME` (lucky2049.com) must ride along every publish, or
+  a `gh-pages` force-push drops the domain → 404. Both publishers copy it.
+- `data/database.db` is an **optional local cache** (gitignored, ~170MB, NOT in the
+  repo), only read by `export_static.py` for a local rebuild. The cron never uses it.
+- Anchor `head.json` externally (OpenTimestamps / git tag) to make history truly
+  tamper-evident — code provides the chain, anchoring is the rest.
+- The old FastAPI server + DB + Docker/Render are gone from `main`; recover from the
+  `v1-server` tag if you ever need a live API.
+- macOS system `python3` is 3.9; use `./.venv` (3.13) for anything real.
 
 ## Conventions
 

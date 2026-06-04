@@ -1,5 +1,5 @@
-# Tooling config only (pytest + coverage). The project ships via requirements.txt
-# and the Dockerfile; this file does not define a build/package.
+# Tooling config only (pytest + coverage). Runtime is stdlib-only (no
+# requirements.txt); this file does not define a build/package.
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

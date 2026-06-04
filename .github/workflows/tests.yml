@@ -6,32 +6,19 @@ on:
   pull_request:
 
 jobs:
-  # Fast, dependency-free guard for the FROZEN draw algorithm (SPEC.md).
-  # Installs only pytest; tests that need the app's heavy deps self-skip, so a
-  # red here means the algorithm, its golden vectors, or the JS verifier changed.
-  algorithm-lock:
+  # Locks the frozen draw algorithm + commitment chain (SPEC.md) and the
+  # in-browser verifiers (static/verify.js, static/stats.js), which run under
+  # the runner's preinstalled Node. Runtime is stdlib-only, so the whole suite
+  # needs nothing but pytest -- a red here means the algorithm, its golden
+  # vectors, the commitment formula, or a JS verifier changed.
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Install pytest only (no app deps)
+      - name: Install pytest only (runtime is stdlib-only)
         run: pip install pytest==9.0.3
-      - name: Run spec lock tests (deps-requiring tests self-skip)
+      - name: Run the test suite
         run: pytest -ra
-
-  # Full suite with all deps, so the DB / endpoint / consistency tests run.
-  # Enforces a coverage floor (well below current ~40%) to catch big regressions.
-  full:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-          cache: pip
-      - name: Install dependencies
-        run: pip install -r requirements.txt -r requirements-dev.txt
-      - name: Run full test suite with coverage
-        run: pytest --cov --cov-report=term-missing --cov-report=xml --cov-fail-under=35

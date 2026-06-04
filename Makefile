@@ -3,13 +3,13 @@ PYTHON ?= ./.venv/bin/python
 .PHONY: help install-dev test watch cov
 
 help:
-	@echo "make install-dev  - install runtime + test tooling into the venv"
+	@echo "make install-dev  - install test tooling into the venv (runtime is stdlib-only)"
 	@echo "make test         - run the test suite once (pytest)"
 	@echo "make watch        - re-run tests on every save (TDD red-green loop)"
 	@echo "make cov          - run tests with a coverage report"
 
 install-dev:
-	$(PYTHON) -m pip install -r requirements.txt -r requirements-dev.txt
+	$(PYTHON) -m pip install -r requirements-dev.txt
 
 test:
 	$(PYTHON) -m pytest

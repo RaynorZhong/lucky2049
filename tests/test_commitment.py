@@ -58,15 +58,5 @@ class TestCommitmentGolden(unittest.TestCase):
             self.assertNotEqual(altered, ref, f"commitment ignored change: {mut}")
 
 
-class TestLottoUsesSameCommitment(unittest.TestCase):
-    def test_lotto_imports_the_same_function(self):
-        try:
-            import app.lotto as lotto
-        except Exception as e:  # pragma: no cover - deps not installed in stdlib CI job
-            self.skipTest(f"lotto.py not importable (deps missing): {e}")
-        self.assertIs(lotto.commitment_for, verify.commitment_for)
-        self.assertEqual(lotto.GENESIS_PREV, verify.GENESIS_PREV)
-
-
 if __name__ == "__main__":
     unittest.main()

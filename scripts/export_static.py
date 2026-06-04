@@ -2,55 +2,86 @@
 """
 Export a static, self-verifying snapshot of the draw history into site/.
 
-Reads the local database and writes a small static site (no 144-hash blobs, so
+Reads the local SQLite draw cache with the stdlib `sqlite3` module only (no
+app package, no SQLModel) and writes a small static site (no 144-hash blobs, so
 the snapshot stays ~1-2MB):
   site/index.json  - {count, head, algo_version, draws:[slim records]}
   site/head.json   - the commitment head
-  site/index.html, site/verify.html, site/verify.js, site/style.css
+  site/index.html, verify.html, stats.html, verify.js, stats.js, style.css, CNAME
 
 Each slim record has id, heights, result, algo_version, commitment and
 prev_commitment -- everything the static verify page needs to recompute against
 the chain (it fetches the 144 block hashes from a public explorer client-side).
 
-Run where the DB lives:  python scripts/export_static.py [--out site]
+The DB is just an optional local cache: the GitHub Actions cron
+(scripts/extend_pages.py) maintains the published snapshot without any DB. This
+script is for the initial build / local disaster-recovery from a DB you have.
+
+Run where the DB lives:  python scripts/export_static.py [--out site] [--db data/database.db]
 Publish with:            scripts/publish-pages.sh
 """
 import argparse
 import json
 import os
 import shutil
+import sqlite3
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 
+from verify import GENESIS_PREV, ALGO_VERSION  # noqa: E402  (stdlib-only auditor)
+
+
+def read_draws(db_path):
+    """Read all draws from the SQLite cache, oldest first, via stdlib sqlite3.
+
+    Returns slim records (id/heights/result/commitment/prev_commitment/...),
+    chaining prev_commitment from GENESIS_PREV, plus the commitment head dict.
+    """
+    con = sqlite3.connect(f"file:{db_path}?immutable=1", uri=True)
+    try:
+        rows = con.execute(
+            "SELECT id, front, back, start_height, end_height, algo_version, "
+            "commitment, timestamp FROM draw ORDER BY id ASC"
+        ).fetchall()
+    finally:
+        con.close()
+
+    records = []
+    prev = GENESIS_PREV
+    for (id_, front, back, start_h, end_h, algo, commitment, ts) in rows:
+        records.append({
+            "id": id_,
+            "start_height": start_h,
+            "end_height": end_h,
+            "front": json.loads(front),
+            "back": json.loads(back),
+            "algo_version": algo or ALGO_VERSION,
+            "commitment": commitment,
+            "prev_commitment": prev,
+            "timestamp": ts,
+        })
+        prev = commitment
+
+    if records:
+        last = records[-1]
+        head = {"head": last["commitment"], "draw_id": last["id"],
+                "count": len(records), "algo_version": ALGO_VERSION}
+    else:
+        head = {"head": GENESIS_PREV, "draw_id": -1, "count": 0, "algo_version": ALGO_VERSION}
+    return records, head
+
 
 def main():
     ap = argparse.ArgumentParser(description="Export the static GitHub Pages snapshot.")
     ap.add_argument("--out", default=os.path.join(REPO, "site"), help="output directory (default: site/)")
+    ap.add_argument("--db", default=os.path.join(REPO, "data", "database.db"),
+                    help="sqlite draw cache path (default: data/database.db)")
     args = ap.parse_args()
 
-    from app.lotto import get_all_draws, get_commitment_head, ALGO_VERSION
-    from verify import GENESIS_PREV
+    records, head = read_draws(args.db)
 
-    draws = get_all_draws()
-    records = []
-    prev = GENESIS_PREV
-    for d in draws:
-        records.append({
-            "id": d.id,
-            "start_height": d.start_height,
-            "end_height": d.end_height,
-            "front": d.front_list,
-            "back": d.back_list,
-            "algo_version": getattr(d, "algo_version", ALGO_VERSION) or ALGO_VERSION,
-            "commitment": d.commitment,
-            "prev_commitment": prev,
-            "timestamp": d.timestamp,
-        })
-        prev = d.commitment
-
-    head = get_commitment_head()
     os.makedirs(args.out, exist_ok=True)
     with open(os.path.join(args.out, "index.json"), "w") as f:
         json.dump({"count": len(records), "head": head, "algo_version": ALGO_VERSION, "draws": records},
