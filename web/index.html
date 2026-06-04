@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>lucky2049 — Verifiable Bitcoin-Hash Draws</title>
     <meta name="description" content="Super Lotto numbers (5/35 + 2/12) derived deterministically from 144 Bitcoin block hashes — a transparent, independently verifiable draw. No server, no trust required.">
-    <meta name="theme-color" content="#0d1117">
+    <meta name="theme-color" content="#f4f5f7">
     <link rel="icon" href="./favicon.svg" type="image/svg+xml">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="lucky2049">
@@ -14,21 +14,49 @@
     <meta property="og:description" content="Super Lotto numbers derived deterministically from 144 Bitcoin block hashes. A transparent, independently verifiable draw — recompute it yourself.">
     <meta property="og:url" content="https://lucky2049.com/">
     <meta name="twitter:card" content="summary">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./style.css">
+    <style>
+        .next-card { display: flex; align-items: stretch; gap: 0; padding: 0; overflow: hidden; }
+        .nd-cell { flex: 1; padding: 1.1rem 1.25rem; border-left: 1px solid var(--border); }
+        .nd-cell:first-child { border-left: none; }
+        .nd-k { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 0.3rem; }
+        .nd-v { font-size: 1.5rem; font-weight: 700; font-family: var(--font-heading); color: #0f172a; line-height: 1.1; }
+        .nd-v.mono { font-variant-numeric: tabular-nums; }
+        .nd-sub { font-size: 0.78rem; color: var(--text-secondary); margin-top: 0.2rem; }
+        @media (max-width: 640px) {
+            .next-card { flex-wrap: wrap; }
+            .nd-cell { flex: 1 1 50%; border-left: none; border-top: 1px solid var(--border); }
+            .nd-cell:first-child, .nd-cell:nth-child(2) { border-top: none; }
+            .nd-v { font-size: 1.25rem; }
+        }
+    </style>
 </head>
 
 <body>
     <div class="container">
         <header>
-            <h1>lucky2049</h1>
+            <div class="brand"><img src="./favicon.svg" alt=""><h1>lucky2049</h1></div>
             <p>Super Lotto numbers (5 of 1–35 + 2 of 1–12) derived deterministically from 144 Bitcoin
-                block hashes. This is a static, independently verifiable snapshot of the draw history.</p>
-            <p class="text-secondary" id="summary" style="margin-top:0.5rem;"></p>
+                block hashes — a transparent, independently verifiable snapshot of the draw history.</p>
+            <p class="text-muted" id="summary" style="margin-top:0.4rem; font-size:0.9rem;"></p>
         </header>
 
         <section>
+            <h2>Next draw</h2>
+            <div class="glass-panel next-card" id="nextDraw">
+                <div class="nd-cell"><div class="nd-k">Next draw</div><div class="nd-v" id="ndId">No. —</div></div>
+                <div class="nd-cell"><div class="nd-k">Est. draw time</div><div class="nd-v mono" id="ndEta" style="font-size:1.05rem;">—</div><div class="nd-sub">≈10 min/block · 6 confirmations</div></div>
+                <div class="nd-cell"><div class="nd-k">Countdown</div><div class="nd-v mono" id="ndCd">—</div></div>
+                <div class="nd-cell"><div class="nd-k">Blocks left</div><div class="nd-v mono" id="ndBlocks">—</div></div>
+            </div>
+        </section>
+
+        <section>
             <h2>Latest draws</h2>
-            <div class="glass-panel">
+            <div class="glass-panel" style="padding:0.5rem 1rem;">
                 <table class="draws-table">
                     <thead>
                         <tr><th>Draw</th><th>Front</th><th>Back</th><th>Heights</th><th>Time</th></tr>
@@ -40,29 +68,74 @@
 
         <nav class="nav-links" style="margin-top:1.5rem;">
             <a href="./verify.html" class="btn">Verify a Draw</a>
-            <a href="./stats.html" class="btn">View Statistics</a>
+            <a href="./stats.html" class="btn">Statistics</a>
+            <a href="./trend.html" class="btn">Trend</a>
         </nav>
     </div>
 
     <script>
+        var $ = function (id) { return document.getElementById(id); };
         function balls(nums, extra) {
             return (nums || []).map(function (n) { return '<div class="white-balls' + (extra ? ' ' + extra : '') + '">' + n + '</div>'; }).join("");
         }
+
+        // ---- next-draw ETA: 144 blocks/draw, ~10 min/block, 6 confirmations ----
+        var etaTarget = null;
+        function fmtLeft(ms) {
+            if (ms <= 0) return "soon";
+            var s = Math.floor(ms / 1000), d = Math.floor(s / 86400);
+            s -= d * 86400; var h = Math.floor(s / 3600); s -= h * 3600;
+            var m = Math.floor(s / 60); s -= m * 60;
+            var pad = function (x) { return (x < 10 ? "0" : "") + x; };
+            return (d ? d + "d " : "") + pad(h) + ":" + pad(m) + ":" + pad(s);
+        }
+        function tick() {
+            if (etaTarget == null) return;
+            $("ndCd").textContent = fmtLeft(etaTarget - Date.now());
+        }
+        async function nextDraw(latestId) {
+            var nextId = latestId + 1;
+            var target = nextId * 144 + 143 + 6;   // last block of the window + 6 confirmations
+            $("ndId").textContent = "No. " + nextId;
+            var tip;
+            try { tip = parseInt((await (await fetch("https://mempool.space/api/blocks/tip/height")).text()).trim(), 10); }
+            catch (e) { $("ndEta").textContent = "—"; $("ndCd").textContent = "—"; $("ndBlocks").textContent = "—"; return; }
+            var remaining = Math.max(0, target - tip);
+            $("ndBlocks").textContent = remaining === 0 ? "0 — ready" : remaining + " blocks";
+            if (remaining === 0) {
+                etaTarget = null;
+                $("ndEta").textContent = "awaiting publish";
+                $("ndCd").textContent = "imminent";
+                return;
+            }
+            etaTarget = Date.now() + remaining * 10 * 60 * 1000;
+            $("ndEta").textContent = new Date(etaTarget).toLocaleString();
+            tick();
+        }
+
         (async function () {
             var idx;
             try { idx = await (await fetch("./index.json")).json(); }
-            catch (e) { document.getElementById("summary").textContent = "Could not load draw data."; return; }
+            catch (e) { $("summary").textContent = "Could not load draw data."; return; }
             var head = (idx.head || {}).head || "";
-            document.getElementById("summary").textContent =
+            $("summary").textContent =
                 idx.count + " draws · algorithm " + idx.algo_version + " · history head " + head.slice(0, 16) + "…";
-            var latest = (idx.draws || []).slice(-20).reverse();
-            document.getElementById("rows").innerHTML = latest.map(function (d) {
+
+            var draws = idx.draws || [];
+            var latest = draws.slice(-20).reverse();
+            $("rows").innerHTML = latest.map(function (d) {
                 return "<tr><td><a class='btn btn-sm' href='./verify.html?draw=" + d.id + "'>No. " + d.id + "</a></td>"
                     + "<td data-label='Front'><div class='d-flex'>" + balls(d.front) + "</div></td>"
                     + "<td data-label='Back'><div class='d-flex'>" + balls(d.back, "powerball") + "</div></td>"
                     + "<td data-label='Heights' class='text-secondary'>" + d.start_height + " - " + d.end_height + "</td>"
                     + "<td data-label='Time' class='text-secondary'>" + (d.timestamp || "") + "</td></tr>";
             }).join("");
+
+            if (draws.length) {
+                nextDraw(draws[draws.length - 1].id);
+                setInterval(tick, 1000);
+                setInterval(function () { nextDraw(draws[draws.length - 1].id); }, 120000);
+            }
         })();
     </script>
 </body>

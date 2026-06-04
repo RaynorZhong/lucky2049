@@ -49,7 +49,7 @@
 - **开奖机（cron）** — [`.github/workflows/refresh-pages.yml`](.github/workflows/refresh-pages.yml) 定时
   运行 [`scripts/extend_pages.py`](scripts/extend_pages.py)：对每个**完全确认**的 144 区块新窗口，从
   mempool.space 取哈希、用 `verify.py` 复算并接上承诺链，追加进 `index.json`，推回 `gh-pages`。纯 stdlib。
-- **站点** — `web/`（`index.html` / `verify.html` / `stats.html`）+ `static/`（`verify.js` / `stats.js` /
+- **站点** — `web/`（`index.html`〔含下一期预计〕/ `verify.html` / `stats.html` / `trend.html`〔走势图〕）+ `static/`（`verify.js` / `stats.js` / `trend.js` /
   `style.css`）。浏览器里读 `index.json`，用自带 SHA-256/HMAC 复算校验，不信任服务器、不连数据库。
 - **验证器** — `verify.py`：独立 stdlib 脚本，命令行复算 + 校验承诺链。
 
@@ -112,8 +112,8 @@ scripts/
   extend_pages.py  cron 开奖+发布:从链上扩展 index.json(stdlib,复用 verify.py,无 DB)
   export_static.py 从本地 SQLite 缓存(stdlib sqlite3)重建整个 index.json + 站点(初建/灾备)
   publish-pages.sh 手动发布(调 export_static + 推 gh-pages);常态用 cron,二选一
-web/            index.html / verify.html / stats.html + CNAME(自定义域名)
-static/         verify.js(浏览器验证器)、stats.js(频率+卡方)、style.css —— 均自带算法、无外部脚本
+web/            index.html(首页+下一期预计)/ verify.html / stats.html / trend.html(走势图)+ CNAME
+static/         verify.js(验证器)、stats.js(频率+卡方)、trend.js(走势图)、style.css、favicon.svg —— 自带算法、无外部脚本
 .github/workflows/  refresh-pages.yml(cron 发布)、tests.yml(算法/承诺/JS 锁)
 SPEC.md         冻结算法规范 v1        docs/DEPLOY.md 部署   docs/TDD.md TDD 工作流
 data/           database.db —— 可选本地缓存,gitignored、不随仓库分发,仅 export_static 重建时读

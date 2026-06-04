@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trend — lucky2049</title>
+    <meta name="description" content="lucky2049 trend chart: basic trend for front 1–35 and back 1–12 — hit numbers, miss gaps, trend lines and frequency, all computed in your browser from the published snapshot.">
+    <meta name="theme-color" content="#f4f5f7">
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="lucky2049">
+    <meta property="og:title" content="Trend — lucky2049">
+    <meta property="og:description" content="Basic trend chart for front 1–35 and back 1–12, computed in your browser from the published snapshot.">
+    <meta property="og:url" content="https://lucky2049.com/trend.html">
+    <meta name="twitter:card" content="summary">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./style.css">
+    <style>
+        .trend-controls { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+        .seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--radius-md); overflow: hidden; box-shadow: var(--shadow-sm); }
+        .seg button { border: none; background: var(--surface); color: var(--text-secondary); padding: 0.4rem 0.9rem; font: inherit; font-size: 0.9rem; cursor: pointer; }
+        .seg button + button { border-left: 1px solid var(--border); }
+        .seg button.active { background: #111827; color: #fff; }
+        .legend { color: var(--muted); font-size: 0.82rem; display: flex; gap: 1.1rem; flex-wrap: wrap; align-items: center; margin: 0.25rem 0 0.5rem; }
+        .legend .dot { display: inline-block; width: 0.85rem; height: 0.85rem; border-radius: 50%; vertical-align: -1px; margin-right: 0.3rem; }
+        .legend .ltc { background: var(--ball-ltc); }
+        .legend .btc { background: var(--ball-btc); }
+        .trend-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); -webkit-overflow-scrolling: touch; }
+        .trend-scroll svg { min-width: 100%; }
+        .area-title { font-size: 1.05rem; font-weight: 600; font-family: var(--font-heading); margin: 1.25rem 0 0.6rem; color: #0f172a; }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <div class="brand"><img src="./favicon.svg" alt=""><h1>Trend</h1></div>
+            <p id="intro" class="text-secondary">Basic trend for the front (1–35) and back (1–12) areas — each draw's hit
+                numbers are balls, misses show the gap (draws since it last appeared), and the lines join numbers by rank.
+                All computed in your browser from the published snapshot.</p>
+        </header>
+
+        <div class="trend-controls">
+            <span class="text-secondary" style="font-size:0.9rem;">Last</span>
+            <div class="seg" id="seg">
+                <button data-n="30" class="active">30</button>
+                <button data-n="50">50</button>
+                <button data-n="100">100</button>
+            </div>
+            <span id="range" class="text-muted" style="font-size:0.85rem;"></span>
+        </div>
+        <div class="legend">
+            <span><span class="dot ltc"></span>Front (Litecoin)</span>
+            <span><span class="dot btc"></span>Back (Bitcoin)</span>
+            <span>number = miss gap</span>
+            <span style="color:#dc2626;">red = large current gap</span>
+        </div>
+
+        <div class="area-title">Front area (1–35)</div>
+        <div class="trend-scroll" id="frontTrend"></div>
+
+        <div class="area-title">Back area (1–12)</div>
+        <div class="trend-scroll" id="backTrend"></div>
+
+        <nav class="nav-links" style="margin-top:2rem;">
+            <a href="./index.html" class="btn">← Home</a>
+            <a href="./verify.html" class="btn">Verify</a>
+            <a href="./stats.html" class="btn">Statistics</a>
+        </nav>
+    </div>
+
+    <script src="./trend.js"></script>
+    <script>
+        var DRAWS = null;
+        var WINDOW = 30;
+
+        function buildArea(area, cfg) {
+            var maxBall = area.maxBall, rows = area.rows, n = rows.length;
+            var cw = cfg.cellW, lw = cfg.labelW, hh = cfg.headH, rh = cfg.rowH;
+            var bodyTop = hh, bodyH = n * rh, footTop = bodyTop + bodyH, footH = 3 * rh;
+            var W = lw + maxBall * cw, H = hh + bodyH + footH;
+            var cx = function (b) { return lw + (b - 0.5) * cw; };
+            var cy = function (i) { return bodyTop + (i + 0.5) * rh; };
+            var p = [];
+
+            // alternating column bands
+            for (var b = 2; b <= maxBall; b += 2)
+                p.push('<rect x="' + (lw + (b - 1) * cw) + '" y="' + hh + '" width="' + cw + '" height="' + (bodyH + footH) + '" fill="#f7f8fa"/>');
+
+            // trend polylines (under the balls)
+            for (var k = 0; k < area.lines.length; k++) {
+                var pts = area.lines[k].map(function (q) { return cx(q.num) + ',' + cy(q.row); }).join(' ');
+                if (pts) p.push('<polyline points="' + pts + '" fill="none" stroke="' + cfg.line + '" stroke-width="1.3" opacity="0.4" stroke-linejoin="round"/>');
+            }
+
+            // header number labels
+            for (var b = 1; b <= maxBall; b++)
+                p.push('<text x="' + cx(b) + '" y="' + (hh - 8) + '" text-anchor="middle" font-size="10" font-weight="600" fill="#5b6573">' + b + '</text>');
+            p.push('<line x1="0" y1="' + hh + '" x2="' + W + '" y2="' + hh + '" stroke="#e6e8ec"/>');
+
+            // rows
+            for (var i = 0; i < n; i++) {
+                var y = cy(i);
+                p.push('<text x="' + (lw - 8) + '" y="' + (y + 3.4) + '" text-anchor="end" font-size="10" fill="#9aa3af">' + rows[i].id + '</text>');
+                for (var b = 1; b <= maxBall; b++) {
+                    var cell = rows[i].cells[b - 1];
+                    if (cell.drawn) {
+                        p.push('<circle cx="' + cx(b) + '" cy="' + y + '" r="9" fill="url(#' + cfg.grad + ')"/>');
+                        p.push('<text x="' + cx(b) + '" y="' + (y + 3.4) + '" text-anchor="middle" font-size="9.5" font-weight="700" fill="#fff">' + b + '</text>');
+                    } else {
+                        p.push('<text x="' + cx(b) + '" y="' + (y + 3.2) + '" text-anchor="middle" font-size="9" fill="#ccd0d6">' + cell.gap + '</text>');
+                    }
+                }
+            }
+
+            // footer: frequency / max gap / current gap
+            var sums = [['Freq', area.freq, 0], ['Max gap', area.maxGap, 1], ['Cur gap', area.curGap, 2]];
+            p.push('<line x1="0" y1="' + footTop + '" x2="' + W + '" y2="' + footTop + '" stroke="#e6e8ec"/>');
+            for (var s = 0; s < sums.length; s++) {
+                var fy = footTop + (s + 0.5) * rh;
+                p.push('<text x="' + (lw - 8) + '" y="' + (fy + 3.4) + '" text-anchor="end" font-size="9" font-weight="600" fill="#5b6573">' + sums[s][0] + '</text>');
+                for (var b = 1; b <= maxBall; b++) {
+                    var val = sums[s][1][b - 1];
+                    var col = sums[s][2] === 0 ? '#374151' : (sums[s][2] === 2 && val >= cfg.hot ? '#dc2626' : '#9aa3af');
+                    var fw = sums[s][2] === 0 ? '600' : '400';
+                    p.push('<text x="' + cx(b) + '" y="' + (fy + 3.4) + '" text-anchor="middle" font-size="9" font-weight="' + fw + '" fill="' + col + '">' + val + '</text>');
+                }
+            }
+
+            var defs = '<defs><radialGradient id="' + cfg.grad + '" cx="32%" cy="28%" r="72%">'
+                + '<stop offset="0%" stop-color="' + cfg.g0 + '"/><stop offset="60%" stop-color="' + cfg.g1 + '"/><stop offset="100%" stop-color="' + cfg.g2 + '"/></radialGradient></defs>';
+            return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" xmlns="http://www.w3.org/2000/svg">' + defs + p.join('') + '</svg>';
+        }
+
+        function render() {
+            if (!DRAWS) return;
+            var win = DRAWS.slice(-WINDOW);
+            var t = window.Lucky2049Trend.computeTrend(win);
+            document.getElementById('frontTrend').innerHTML = buildArea(t.front,
+                { cellW: 23, labelW: 64, headH: 26, rowH: 25, grad: 'gf', g0: '#7da2d9', g1: '#345d9d', g2: '#21386b', line: '#345d9d', hot: 14 });
+            document.getElementById('backTrend').innerHTML = buildArea(t.back,
+                { cellW: 30, labelW: 64, headH: 26, rowH: 25, grad: 'gb', g0: '#ffc46b', g1: '#f7931a', g2: '#c2710a', line: '#f7931a', hot: 11 });
+            var first = win[0], last = win[win.length - 1];
+            document.getElementById('range').textContent = win.length + ' draws (No. ' + first.id + ' – ' + last.id + ')';
+        }
+
+        document.getElementById('seg').addEventListener('click', function (e) {
+            var btn = e.target.closest('button'); if (!btn) return;
+            WINDOW = parseInt(btn.dataset.n, 10);
+            [].forEach.call(this.querySelectorAll('button'), function (b) { b.classList.toggle('active', b === btn); });
+            render();
+        });
+
+        (async function () {
+            var idx;
+            try { idx = await (await fetch("./index.json")).json(); }
+            catch (e) { document.getElementById("intro").textContent = "Could not load draw data."; return; }
+            DRAWS = idx.draws || [];
+            if (!DRAWS.length) { document.getElementById("intro").textContent = "No draws yet."; return; }
+            render();
+        })();
+    </script>
+</body>
+
+</html>

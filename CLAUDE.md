@@ -65,8 +65,10 @@ verifier (`test_verify_site`), and the in-browser JS run under Node
   the chain (stdlib, reuses `verify.py`, no DB). Run by `refresh-pages.yml`.
 - `scripts/export_static.py` — (re)build the full `index.json` + site from a local
   SQLite cache via stdlib `sqlite3` (initial build / disaster recovery).
-- `web/` — `index.html` / `verify.html` / `stats.html` + `CNAME`. `static/` —
-  `verify.js` (verifier), `stats.js` (frequency + chi-square), `style.css`.
+- `web/` — `index.html` (+ next-draw ETA) / `verify.html` / `stats.html` /
+  `trend.html` (Sina-style 走势图) + `CNAME`. `static/` — `verify.js`, `stats.js`,
+  `trend.js`, `style.css`, `favicon.svg`. Light/minimal theme; front balls =
+  Litecoin, back = Bitcoin.
 - `SPEC.md` (frozen spec) · `docs/DEPLOY.md` · `docs/TDD.md`.
 
 ## Gotchas
