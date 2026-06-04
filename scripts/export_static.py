@@ -61,6 +61,11 @@ def main():
     web = os.path.join(REPO, "web")
     for name in ("index.html", "verify.html"):
         shutil.copy(os.path.join(web, name), os.path.join(args.out, name))
+    cname_src = os.path.join(web, "CNAME")
+    if os.path.exists(cname_src):
+        # Custom domain marker -- must ride along every publish or GitHub Pages
+        # drops the domain on the next (force-pushed) republish.
+        shutil.copy(cname_src, os.path.join(args.out, "CNAME"))
     shutil.copy(os.path.join(REPO, "static", "verify.js"), os.path.join(args.out, "verify.js"))
     shutil.copy(os.path.join(REPO, "static", "style.css"), os.path.join(args.out, "style.css"))
 

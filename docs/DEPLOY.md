@@ -79,6 +79,12 @@ export LOTTO_SEED_CSV_URL="https://github.com/RaynorZhong/lucky2049/releases/dow
 站点地址:`https://<owner>.github.io/<repo>/`。因为快照不含哈希(只 ~2MB),验证时按需
 从链上抓哈希 —— 链才是真值源,这也是最 trustless 的校验。
 
+**自定义域名(lucky2049.com)** —— `web/CNAME` 存着域名,发布时复制进 `site/`(`export_static.py`
+与 `refresh-pages.yml` 都会带上)。这一步**不能省**:两个发布脚本都是 force-push 重建 `gh-pages`,
+要是不带 `CNAME`,GitHub 会在下一次刷新时把自定义域名清掉、站点回到 404。DNS 侧:根域 `lucky2049.com`
+用 4 条 A 记录指向 `185.199.108–111.153`(根域不能用 CNAME),`www` 用 CNAME 指向 `<owner>.github.io`。
+首次需 `gh api -X PUT repos/<owner>/<repo>/pages -f cname=lucky2049.com` 登记一次(或 Settings > Pages 填一次)。
+
 ---
 
 ## 路径 C:GitHub Actions 自动刷新(已实现 —— 无需服务器)
