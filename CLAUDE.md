@@ -69,11 +69,13 @@ verifier (`test_verify_site`), and the in-browser JS run under Node
   on a window's hashes before committing — holds on disagreement). Run by `refresh-pages.yml`.
 - `scripts/export_static.py` — (re)build the full `index.json` + site from a local
   SQLite cache via stdlib `sqlite3` (initial build / disaster recovery).
+- `scripts/artifacts.py` — downstream beacon artifacts (`latest.json`, `feed.json`)
+  from the draws list; both publishers call `write_beacon()`. Consumer contract: `docs/SCHEMA.md`.
 - `web/` — `index.html` (+ next-draw ETA) / `verify.html` / `stats.html` /
   `trend.html` (Sina-style 走势图) + `CNAME`. `static/` — `verify.js`, `stats.js`,
   `trend.js`, `style.css`, `favicon.svg`. Light/minimal theme; front balls =
   blue, back = orange (don't surface "Litecoin"/"Bitcoin" as ball labels in the UI).
-- `SPEC.md` (frozen spec) · `docs/DEPLOY.md` · `docs/TDD.md`. Docs are
+- `SPEC.md` (frozen spec) · `docs/SCHEMA.md` (data contract) · `docs/DEPLOY.md` · `docs/TDD.md`. Docs are
   **English-canonical**; Chinese mirrors live in `docs/zh/` (same filenames) — edit
   both together (incl. the EN ↔ 中文 cross-link header). UI/code are English-only.
 

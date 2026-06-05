@@ -88,6 +88,12 @@ The site **is** the data source — no dynamic API:
   since the chain is the source of truth).
 - `head.json` — the history **head**: a 32-byte hash committing to the entire draw history
   (anchor it externally to pin history; see "Tamper-evidence").
+- `latest.json` — the newest draw + the head; poll this. `feed.json` — a
+  [JSON Feed](https://jsonfeed.org) of recent draws; subscribe to this.
+
+**Building on lucky2049?** The draws are a public beacon you can consume — see the data contract in
+[`docs/SCHEMA.md`](docs/SCHEMA.md). (This project publishes only the draw; prize pools / tickets /
+payouts are out of scope.)
 
 ## Verify
 

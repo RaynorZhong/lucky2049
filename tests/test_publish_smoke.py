@@ -105,6 +105,15 @@ class TestPublishSmoke(unittest.TestCase):
             head = _read_json(os.path.join(tmp, "head.json"))
             self.assertEqual(head, {"head": expect, "draw_id": 0, "count": 1, "algo_version": "v1"})
 
+            # downstream beacon artifacts are written alongside index.json
+            latest = _read_json(os.path.join(tmp, "latest.json"))
+            self.assertEqual(latest["latest"]["id"], 0)
+            self.assertEqual(latest["latest"]["verify_url"], "https://lucky2049.com/verify.html?draw=0")
+            self.assertEqual(latest["head"]["draw_id"], 0)
+            feed = _read_json(os.path.join(tmp, "feed.json"))
+            self.assertIn("jsonfeed.org", feed["version"])
+            self.assertEqual(feed["items"][0]["id"], "0")
+
     def test_holds_on_disagreement(self):
         # Two sources return DIFFERENT hashes for the window -> the draw is held,
         # nothing is committed to the irreversible chain, and the run still exits 0.

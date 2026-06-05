@@ -32,6 +32,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 
 from verify import GENESIS_PREV, ALGO_VERSION  # noqa: E402  (stdlib-only auditor)
+import artifacts  # noqa: E402  (local: downstream beacon artifacts)
 
 
 def read_draws(db_path):
@@ -89,6 +90,7 @@ def main():
                   f, separators=(",", ":"))
     with open(os.path.join(args.out, "head.json"), "w") as f:
         json.dump(head, f)
+    artifacts.write_beacon(args.out, records, head)  # latest.json + feed.json
 
     web = os.path.join(REPO, "web")
     for name in ("index.html", "verify.html", "stats.html", "trend.html"):

@@ -71,6 +71,10 @@ python -m http.server -d /tmp/site 8000           # 打开 http://localhost:8000
 - `index.json` — 全量精简快照：`{count, head, algo_version, draws:[…]}`，每期含 id / 高度区间 / 前后区 /
   算法版本 / 承诺 / 前一承诺 / 时间戳（**不含 144 哈希**，约 2MB；哈希按需从链上取，链才是真值源）。
 - `head.json` — 历史**链头**：承诺整段开奖历史的 32 字节哈希（外锚它即可固定历史，见「防篡改」）。
+- `latest.json` — 最新一期 + 链头，轮询它；`feed.json` — 最近开奖的 [JSON Feed](https://jsonfeed.org)，订阅它。
+
+**想在 lucky2049 上构建？** 开奖是一个可消费的公共信标——数据契约见 [`docs/SCHEMA.md`](SCHEMA.md)。
+（本项目只发布开奖；奖池 / 票务 / 兑奖不在范围内。）
 
 ## 独立验证
 

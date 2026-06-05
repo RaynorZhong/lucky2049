@@ -33,6 +33,7 @@ import urllib.request
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 import verify  # stdlib-only
+import artifacts  # local: downstream beacon artifacts (latest.json / feed.json)
 
 CONFIRMATIONS = int(os.environ.get("DRAW_CONFIRMATIONS", "6"))
 MAX_NEW = int(os.environ.get("MAX_NEW_DRAWS", "10"))
@@ -220,6 +221,10 @@ def main():
     # would 404 after any refresh that adds 0 draws (the common case).
     with open(os.path.join(os.path.dirname(path), "head.json"), "w") as f:
         json.dump(head, f)
+
+    # Downstream beacon artifacts (latest.json + feed.json), refreshed every run
+    # like head.json so consumers always see the current head even on a no-op.
+    artifacts.write_beacon(os.path.dirname(path), draws, head)
 
     print(f"ADDED={added} total={len(draws)} latest={(draws[-1]['id'] if draws else None)}"
           + (f" HELD={held}" if held is not None else ""))
