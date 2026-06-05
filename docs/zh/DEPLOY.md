@@ -22,8 +22,8 @@ lucky2049 是**纯静态、无服务器**的开奖引擎:出号、发布、验�
 - **链头外锚** — [`.github/workflows/anchor-head.yml`](../../.github/workflows/anchor-head.yml) 每周用
   OpenTimestamps 把当前链头(`head.json`)盖时间戳到比特币链上;证明提交进 `anchors/`,并服务于 `/anchors/`。
 
-> 一期开奖需 144 个区块(≈24h)才产生,日更 cron 已足够;想更快可把 `refresh-pages.yml` 的
-> cron 改成每小时,仍然无服务器。
+> 一个窗口约 144 个区块(≈24h)才成熟;`refresh-pages.yml` 的 cron **每小时**跑一次,成熟的窗口
+> 一小时内就会发布(多数是空跑,被 diff-guard 跳过)——仍然无服务器。
 
 ---
 

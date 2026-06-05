@@ -68,8 +68,8 @@ The whole "draw + publish + verify" loop runs on GitHub, with **no server and no
 - **Verifier** — `verify.py`: a standalone stdlib script that recomputes a draw + checks the
   commitment chain on the command line.
 
-> One draw needs 144 blocks (≈ 24h) to mature, so a daily cron is enough; bump it to hourly if
-> you want it faster.
+> A window takes ~144 blocks (≈ 24h) to mature; the cron runs **hourly**, so a matured window
+> publishes within the hour (most runs are no-ops, skipped by the diff-guard). Still server-less.
 
 ### Local preview
 

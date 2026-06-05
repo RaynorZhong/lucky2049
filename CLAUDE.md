@@ -41,7 +41,7 @@ It's a static site — nothing to serve in production. To preview locally:
 python scripts/export_static.py --out /tmp/site   # build index.json + pages from the local DB cache
 python -m http.server -d /tmp/site 8000           # open http://localhost:8000
 ```
-The published site self-updates: `.github/workflows/refresh-pages.yml` (daily
+The published site self-updates: `.github/workflows/refresh-pages.yml` (hourly
 cron) runs `scripts/extend_pages.py` to draw any newly-confirmed 144-block window
 from the chain and republish `gh-pages`. No server, no DB — stdlib + `verify.py`.
 

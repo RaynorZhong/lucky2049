@@ -6,7 +6,7 @@ name: refresh-pages
 # without any external host.
 on:
   schedule:
-    - cron: "20 1 * * *"   # daily ~01:20 UTC
+    - cron: "20 * * * *"   # hourly at :20 UTC -- publish a matured window within the hour
   workflow_dispatch: {}
 
 permissions:

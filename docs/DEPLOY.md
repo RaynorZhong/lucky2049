@@ -26,8 +26,8 @@ run on GitHub — no standing backend, no database on the critical path.
   weekly timestamps the current head (`head.json`) onto the Bitcoin chain via OpenTimestamps; proofs
   are committed under `anchors/` and served at `/anchors/`.
 
-> One draw needs 144 blocks (≈24h) to mature, so a daily cron is enough; bump the
-> `refresh-pages.yml` cron to hourly if you want it faster — still server-less.
+> A window takes ~144 blocks (≈24h) to mature; the `refresh-pages.yml` cron runs **hourly**, so a
+> matured window publishes within the hour (most runs are no-ops, skipped by the diff-guard) — still server-less.
 
 ---
 

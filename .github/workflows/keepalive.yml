@@ -1,0 +1,35 @@
+name: keepalive
+
+# GitHub auto-disables a public repo's *scheduled* workflows after 60 days with no
+# repository activity -- and commits by the github-actions bot (the daily gh-pages
+# publish, the weekly anchor) do NOT reset that timer. This makes one tiny empty
+# commit a month so refresh-pages / anchor-head never get paused.
+#
+# Reliability needs a real-account push: set the KEEPALIVE_PAT secret to a
+# fine-grained PAT with "Contents: write" on this repo. Without it the job falls
+# back to GITHUB_TOKEN (best effort -- a bot push may not reset the timer).
+on:
+  schedule:
+    - cron: "30 3 1 * *"   # 03:30 UTC on the 1st of each month (well under the 60-day limit)
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.KEEPALIVE_PAT || github.token }}
+      - name: Empty commit to reset the inactivity timer
+        run: |
+          git -c user.email=keepalive@users.noreply.github.com \
+              -c user.name="lucky2049 keepalive" \
+              commit --allow-empty -m "chore: keepalive [skip ci]"
+          git push
