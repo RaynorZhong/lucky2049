@@ -66,6 +66,23 @@
             </div>
         </section>
 
+        <section>
+            <h2>Economic-security bound</h2>
+            <p class="text-muted" style="font-size:0.9rem; margin:0.2rem 0 0.7rem;">
+                Why the draw is safe against manipulation, in live numbers. Only the miner of a window's
+                <em>last</em> block can re-roll the result, and each re-roll forfeits a whole block reward
+                <span class="mono">B</span> — so grinding never pays unless a single prize tops
+                <span class="mono">B / p</span>. lucky2049 runs <strong>no prize pool</strong>; this is simply the
+                ceiling any downstream prize must stay under to keep the beacon economically secure.
+            </p>
+            <div class="glass-panel next-card" id="econ">
+                <div class="nd-cell"><div class="nd-k">BTC price</div><div class="nd-v mono" id="ecPrice">—</div><div class="nd-sub" id="ecPriceSub">live · mempool.space</div></div>
+                <div class="nd-cell"><div class="nd-k">Block reward B</div><div class="nd-v mono" id="ecB" style="font-size:1.05rem;">—</div><div class="nd-sub">3.125 BTC subsidy + fees</div></div>
+                <div class="nd-cell"><div class="nd-k">Jackpot odds p</div><div class="nd-v mono" id="ecP" style="font-size:1.05rem;">—</div><div class="nd-sub">5 of 35 · 2 of 12</div></div>
+                <div class="nd-cell"><div class="nd-k">Safe prize ceiling (B / p)</div><div class="nd-v mono" id="ecMax">—</div><div class="nd-sub">grinding stays irrational below this</div></div>
+            </div>
+        </section>
+
         <nav class="nav-links" style="margin-top:1.5rem;">
             <a href="./verify.html" class="btn">Verify a Draw</a>
             <a href="./stats.html" class="btn">Statistics</a>
@@ -89,6 +106,12 @@
             var pad = function (x) { return (x < 10 ? "0" : "") + x; };
             return (d ? d + "d " : "") + pad(h) + ":" + pad(m) + ":" + pad(s);
         }
+        // Absolute time as UTC, matching the draws-list timestamps (no local tz).
+        function fmtUtc(d) {
+            var p = function (x) { return (x < 10 ? "0" : "") + x; };
+            return d.getUTCFullYear() + "-" + p(d.getUTCMonth() + 1) + "-" + p(d.getUTCDate())
+                + " " + p(d.getUTCHours()) + ":" + p(d.getUTCMinutes()) + ":" + p(d.getUTCSeconds()) + " UTC";
+        }
         function tick() {
             if (etaTarget == null) return;
             $("ndCd").textContent = fmtLeft(etaTarget - Date.now());
@@ -109,8 +132,34 @@
                 return;
             }
             etaTarget = Date.now() + remaining * 10 * 60 * 1000;
-            $("ndEta").textContent = new Date(etaTarget).toLocaleString();
+            $("ndEta").textContent = fmtUtc(new Date(etaTarget));
             tick();
+        }
+
+        // ---- economic-security bound: only the last-block miner can re-roll the
+        // result, and each re-roll forfeits a block reward B, so grinding pays off
+        // only if a single prize exceeds B / p (p = jackpot odds). Shown live. ----
+        var JACKPOT_COMBOS = (function () {
+            function C(n, k) { var r = 1; for (var i = 0; i < k; i++) r = r * (n - i) / (i + 1); return Math.round(r); }
+            return C(35, 5) * C(12, 2);   // 324632 * 66 = 21,425,712
+        })();
+        var BLOCK_SUBSIDY_BTC = 3.125;    // post-2024 halving; ~2028 -> 1.5625
+        function fmtUsd(n) {
+            if (n >= 1e12) return "$" + (n / 1e12).toFixed(2) + "T";
+            if (n >= 1e9) return "$" + (n / 1e9).toFixed(2) + "B";
+            if (n >= 1e6) return "$" + (n / 1e6).toFixed(2) + "M";
+            return "$" + Math.round(n).toLocaleString();
+        }
+        async function econBound() {
+            $("ecP").textContent = "1 in " + JACKPOT_COMBOS.toLocaleString();
+            var usd;
+            try { usd = (await (await fetch("https://mempool.space/api/v1/prices")).json()).USD; }
+            catch (e) { $("ecPrice").textContent = "—"; $("ecPriceSub").textContent = "price unavailable"; return; }
+            if (!usd) { $("ecPrice").textContent = "—"; return; }
+            $("ecPrice").textContent = "$" + Math.round(usd).toLocaleString();
+            var bUsd = BLOCK_SUBSIDY_BTC * usd;
+            $("ecB").textContent = BLOCK_SUBSIDY_BTC + " BTC ≈ " + fmtUsd(bUsd);
+            $("ecMax").textContent = fmtUsd(bUsd * JACKPOT_COMBOS);   // W_max = B / p
         }
 
         (async function () {
@@ -131,6 +180,8 @@
                     + "<td data-label='Time' class='text-secondary'>" + (d.timestamp || "") + "</td></tr>";
             }).join("");
 
+            econBound();
+            setInterval(econBound, 120000);
             if (draws.length) {
                 nextDraw(draws[draws.length - 1].id);
                 setInterval(tick, 1000);

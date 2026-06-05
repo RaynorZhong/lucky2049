@@ -8,7 +8,10 @@ Guidance for Claude Code working in this repo. Keep it short and current.
 Bitcoin mainnet block hashes into a Super Lotto result (front 5/35, back 2/12)
 via a deterministic algorithm anyone can reproduce. **Scope is deliberately just
 the draw** — no prize pool, ticketing, or payout (those are separate projects,
-to avoid legal risk). Don't add gambling/business features here.
+to avoid legal risk). Don't add gambling/business features here. (One nuance: the
+homepage surfaces an *economic-security ceiling* — the `W < B/p` grind-resistance
+bound from `SPEC.md` §8, with a live BTC price — as a transparency disclosure about
+the beacon's safety, **not** a prize pool.)
 
 It ships as a **static, server-less site** (GitHub Pages → lucky2049.com): a
 GitHub Actions cron draws + publishes, and the browser verifies. No backend, no
