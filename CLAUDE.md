@@ -78,10 +78,12 @@ verifier (`test_verify_site`), and the in-browser JS run under Node
 
 ## Gotchas
 
-- **Single publish source**: the cron owns `gh-pages`/`index.json`. Don't also run
-  `scripts/publish-pages.sh` locally — it force-pushes a DB export that can clash.
-- **Custom domain**: `web/CNAME` (lucky2049.com) must ride along every publish, or
-  a `gh-pages` force-push drops the domain → 404. Both publishers copy it.
+- **Single publish source**: the cron owns `gh-pages`/`index.json` (it rsyncs into the
+  branch and commits only on a real diff — a normal push, no force). Don't also run
+  `scripts/publish-pages.sh` locally — it force-rebuilds `gh-pages` from a DB export and
+  can clobber the cron's newer draws.
+- **Custom domain**: `web/CNAME` (lucky2049.com) must ride along every publish, or a
+  `gh-pages` republish drops the domain → 404. Both publishers copy it.
 - `data/database.db` is an **optional local cache** (gitignored, ~170MB, NOT in the
   repo), only read by `export_static.py` for a local rebuild. The cron never uses it.
 - Anchor `head.json` externally (OpenTimestamps / git tag) to make history truly

@@ -117,12 +117,25 @@
             if (etaTarget == null) return;
             $("ndCd").textContent = fmtLeft(etaTarget - Date.now());
         }
+        // Chain tip with fallback (mempool -> blockstream), same sources as verify.html.
+        var TIP_APIS = ["https://mempool.space/api/blocks/tip/height", "https://blockstream.info/api/blocks/tip/height"];
+        async function fetchTipHeight() {
+            for (var i = 0; i < TIP_APIS.length; i++) {
+                try {
+                    var resp = await fetch(TIP_APIS[i]);
+                    if (!resp.ok) throw new Error("HTTP " + resp.status);
+                    var h = parseInt((await resp.text()).trim(), 10);
+                    if (h > 0) return h;
+                } catch (e) { /* try the next source */ }
+            }
+            throw new Error("all explorers failed for the chain tip");
+        }
         async function nextDraw(latestId) {
             var nextId = latestId + 1;
             var target = nextId * 144 + 143 + 6;   // last block of the window + 6 confirmations
             $("ndId").textContent = "No. " + nextId;
             var tip;
-            try { tip = parseInt((await (await fetch("https://mempool.space/api/blocks/tip/height")).text()).trim(), 10); }
+            try { tip = await fetchTipHeight(); }
             catch (e) { $("ndEta").textContent = "—"; $("ndCd").textContent = "—"; $("ndBlocks").textContent = "—"; return; }
             var remaining = Math.max(0, target - tip);
             $("ndBlocks").textContent = remaining === 0 ? "0 — ready" : remaining + " blocks";
