@@ -65,7 +65,8 @@ verifier (`test_verify_site`), and the in-browser JS run under Node
   block-hash fetch (Core RPC / mempool.space / blockstream / sqlite), and the
   `--site` CLI verifier. Stdlib only.
 - `scripts/extend_pages.py` — the cron drawer/publisher: extends `index.json` from
-  the chain (stdlib, reuses `verify.py`, no DB). Run by `refresh-pages.yml`.
+  the chain (stdlib, reuses `verify.py`, no DB; needs ≥2 independent sources to agree
+  on a window's hashes before committing — holds on disagreement). Run by `refresh-pages.yml`.
 - `scripts/export_static.py` — (re)build the full `index.json` + site from a local
   SQLite cache via stdlib `sqlite3` (initial build / disaster recovery).
 - `web/` — `index.html` (+ next-draw ETA) / `verify.html` / `stats.html` /

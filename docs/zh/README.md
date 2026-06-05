@@ -50,7 +50,7 @@
 
 - **开奖机（cron）** — [`refresh-pages.yml`](../../.github/workflows/refresh-pages.yml) 定时
   运行 [`scripts/extend_pages.py`](../../scripts/extend_pages.py)：对每个**完全确认**的 144 区块新窗口，从
-  mempool.space 取哈希、用 `verify.py` 复算并接上承诺链，追加进 `index.json`，推回 `gh-pages`。纯 stdlib。
+  **≥2 个独立源**取哈希并**要求它们一致**、用 `verify.py` 复算并接上承诺链，追加进 `index.json`，推回 `gh-pages`（各源不一致则**暂缓**该期、不发布，单个出错/分叉的浏览器无法污染历史）。纯 stdlib。
 - **站点** — `web/`（`index.html`〔含下一期预计〕/ `verify.html` / `stats.html` / `trend.html`〔走势图〕）+ `static/`（`verify.js` / `stats.js` / `trend.js` /
   `style.css`）。浏览器里读 `index.json`，用自带 SHA-256/HMAC 复算校验，不信任服务器、不连数据库。
 - **验证器** — `verify.py`：独立 stdlib 脚本，命令行复算 + 校验承诺链。

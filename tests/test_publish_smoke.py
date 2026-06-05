@@ -22,19 +22,20 @@ import verify  # noqa: E402  (frozen engine, stdlib-only)
 import extend_pages  # noqa: E402
 
 
-def _fake_source(tip, hashes=None):
-    """One provider returning a fixed tip. hashes/timestamp raise unless a
-    `hashes` callable is given (so a no-op can prove it never fetches)."""
+def _src(name, tip, hashes=None):
+    """One provider. `hashes` is a callable (start, end) -> 144-hash list, or None
+    to assert it is never fetched (the no-op path)."""
     def _hashes(start, end):
         if hashes is None:
             raise AssertionError("fetched block hashes on a no-op refresh")
         return hashes(start, end)
-    return [{
-        "name": "fake",
-        "tip": lambda: tip,
-        "hashes": _hashes,
-        "timestamp": lambda block_hash: "2026-01-01 00:00:00 UTC",
-    }]
+    return {"name": name, "tip": lambda: tip, "hashes": _hashes,
+            "timestamp": lambda block_hash: "2026-01-01 00:00:00 UTC"}
+
+
+def _agreeing(tip, hashes=None, names=("mempool", "blockstream")):
+    """Several providers that share a tip and return the SAME hashes (they agree)."""
+    return [_src(n, tip, hashes) for n in names]
 
 
 def _write_index(tmp, draws):
@@ -69,7 +70,7 @@ class TestPublishSmoke(unittest.TestCase):
             idx = _write_index(tmp, [draw0])
             before = _read(idx)
             # tip 100 -> confirmed 94; the next window (144..287) is not confirmed.
-            rc = _run(idx, _fake_source(tip=100))
+            rc = _run(idx, _agreeing(tip=100))
             self.assertEqual(rc, 0)
             self.assertEqual(_read(idx), before, "index.json must be untouched on a no-op")
             head = _read_json(os.path.join(tmp, "head.json"))
@@ -80,7 +81,8 @@ class TestPublishSmoke(unittest.TestCase):
             idx = _write_index(tmp, [])  # empty -> first draw is id 0, window 0..143
             fake_hashes = lambda s, e: ["%064x" % h for h in range(s, e + 1)]
             # tip 200 -> confirmed 194: window 0..143 confirmed, 144..287 not.
-            rc = _run(idx, _fake_source(tip=200, hashes=fake_hashes))
+            # two sources return the same hashes -> they agree -> committed.
+            rc = _run(idx, _agreeing(tip=200, hashes=fake_hashes))
             self.assertEqual(rc, 0)
 
             data = _read_json(idx)
@@ -102,6 +104,39 @@ class TestPublishSmoke(unittest.TestCase):
 
             head = _read_json(os.path.join(tmp, "head.json"))
             self.assertEqual(head, {"head": expect, "draw_id": 0, "count": 1, "algo_version": "v1"})
+
+    def test_holds_on_disagreement(self):
+        # Two sources return DIFFERENT hashes for the window -> the draw is held,
+        # nothing is committed to the irreversible chain, and the run still exits 0.
+        with tempfile.TemporaryDirectory() as tmp:
+            idx = _write_index(tmp, [])
+            before = _read(idx)
+            ha = lambda s, e: ["%064x" % h for h in range(s, e + 1)]
+            hb = lambda s, e: ["%064x" % (h + 7) for h in range(s, e + 1)]  # forked / wrong
+            rc = _run(idx, [_src("mempool", 200, ha), _src("blockstream", 200, hb)])
+            self.assertEqual(rc, 0)
+            self.assertEqual(_read(idx), before, "a disputed draw must NOT be committed")
+            self.assertEqual(_read_json(idx)["count"], 0)
+            self.assertEqual(_read_json(os.path.join(tmp, "head.json"))["draw_id"], -1)
+
+    def test_holds_when_too_few_sources(self):
+        # Only one source reachable, but the default needs 2 to agree -> held.
+        with tempfile.TemporaryDirectory() as tmp:
+            idx = _write_index(tmp, [])
+            ha = lambda s, e: ["%064x" % h for h in range(s, e + 1)]
+            rc = _run(idx, [_src("mempool", 200, ha)])
+            self.assertEqual(rc, 0)
+            self.assertEqual(_read_json(idx)["count"], 0)
+
+    def test_min_agreement_one_allows_single_source(self):
+        # An operator who trusts their own node can set MIN_SOURCE_AGREEMENT=1.
+        with tempfile.TemporaryDirectory() as tmp:
+            idx = _write_index(tmp, [])
+            ha = lambda s, e: ["%064x" % h for h in range(s, e + 1)]
+            with mock.patch.object(extend_pages, "MIN_AGREEMENT", 1):
+                rc = _run(idx, [_src("mempool", 200, ha)])
+            self.assertEqual(rc, 0)
+            self.assertEqual(_read_json(idx)["count"], 1)
 
     def test_publish_inputs_present(self):
         # The workflow copies exactly these into the published site; a rename that

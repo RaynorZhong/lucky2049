@@ -16,8 +16,9 @@ run on GitHub — no standing backend, no database on the critical path.
 - **Drawer (cron)** — [`.github/workflows/refresh-pages.yml`](../.github/workflows/refresh-pages.yml)
   runs [`scripts/extend_pages.py`](../scripts/extend_pages.py) on a schedule (or manual
   `workflow_dispatch`): read the current `index.json` on `gh-pages` → for each **newly confirmed**
-  144-block window, fetch hashes from mempool.space, continue the computation with `verify.py` and
-  chain the commitment → push back to `gh-pages` → Pages rebuilds automatically. **Pure stdlib, no
+  144-block window, fetch the hashes from ≥2 independent sources and require them to agree, continue
+  the computation with `verify.py` and chain the commitment → push back to `gh-pages` → Pages
+  rebuilds automatically (a draw whose sources disagree is held until they do). **Pure stdlib, no
   DB, no server.**
 - **Site** — `index.json` / `head.json` + `web/` (pages) + `static/` (JS/CSS) on `gh-pages`. Hosted
   on GitHub Pages' free CDN; `verify.html` recomputes SHA-256/HMAC in the browser, trusting no server.

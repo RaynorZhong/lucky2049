@@ -15,7 +15,7 @@ lucky2049 是**纯静态、无服务器**的开奖引擎:出号、发布、验�
 
 - **开奖机(cron)** — [`.github/workflows/refresh-pages.yml`](../../.github/workflows/refresh-pages.yml)
   定时(也可手动 `workflow_dispatch`)运行 [`scripts/extend_pages.py`](../../scripts/extend_pages.py):
-  读 `gh-pages` 当前的 `index.json` → 对每个**新确认**的 144 区块窗口从 mempool.space 抓哈希、
+  读 `gh-pages` 当前的 `index.json` → 对每个**新确认**的 144 区块窗口从 ≥2 个独立源抓哈希并要求一致（不一致则暂缓该期）、
   用 `verify.py` 续算并接上承诺链 → 推回 `gh-pages` → Pages 自动重建。**纯 stdlib、无 DB、无服务器**。
 - **站点** — `gh-pages` 上的 `index.json`/`head.json` + `web/`(页面)+ `static/`(JS/CSS)。
   GitHub Pages 免费 CDN 托管;`verify.html` 在浏览器内自带 SHA-256/HMAC 复算,不信任服务器。

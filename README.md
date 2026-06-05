@@ -57,8 +57,10 @@ The whole "draw + publish + verify" loop runs on GitHub, with **no server and no
 
 - **Drawer (cron)** — [`.github/workflows/refresh-pages.yml`](.github/workflows/refresh-pages.yml)
   periodically runs [`scripts/extend_pages.py`](scripts/extend_pages.py): for each **fully
-  confirmed** new 144-block window it fetches the hashes, recomputes with `verify.py`, chains the
-  commitment, appends to `index.json`, and pushes back to `gh-pages`. Pure stdlib.
+  confirmed** new 144-block window it fetches the hashes from **≥2 independent sources and
+  requires them to agree**, recomputes with `verify.py`, chains the commitment, appends to
+  `index.json`, and pushes back to `gh-pages` (a draw whose sources disagree is held, not
+  published — so a single bad/forked explorer can't corrupt history). Pure stdlib.
 - **Site** — `web/` (`index.html` [+ next-draw ETA] / `verify.html` / `stats.html` /
   `trend.html` [trend chart]) + `static/` (`verify.js` / `stats.js` / `trend.js` / `style.css`).
   The browser reads `index.json` and recomputes with its own SHA-256/HMAC — trusting no server,

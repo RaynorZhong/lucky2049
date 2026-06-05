@@ -8,19 +8,23 @@ chain), finds the latest draw, and for each fully-confirmed 144-block window
 beyond it fetches the hashes, recomputes the result + chains the commitment, and
 appends it. Rewrites index.json + head.json in place.
 
-Tip / block hashes / timestamp come from an ordered list of sources with
-automatic fallback, so a single explorer being down, rate-limiting, or otherwise
-flaky can't stall publishing:
-  1. a self-hosted Bitcoin Core node (preferred) when BITCOIN_RPC_URL or
-     BITCOIN_RPC_USER/PASSWORD/HOST/PORT is set,
-  2. mempool.space,
-  3. blockstream.info.
+Sources, in order: a self-hosted Bitcoin Core node (when BITCOIN_RPC_* is set),
+then mempool.space, then blockstream.info.
+  - The 144 block hashes are the inputs baked into the *irreversible* commitment
+    chain, so they must AGREE across >= MIN_SOURCE_AGREEMENT (default 2)
+    independent sources before a draw is committed. On disagreement -- or too few
+    reachable sources -- that draw is HELD (not published) and retried next run,
+    so one bad / forked / compromised explorer can never corrupt history.
+  - Tip and timestamp are not part of the commitment, so they use plain
+    first-success fallback.
 
 Usage:  python scripts/extend_pages.py [site/index.json]
 Env:    DRAW_CONFIRMATIONS (default 6), MAX_NEW_DRAWS (default 10),
+        MIN_SOURCE_AGREEMENT (default 2),
         BITCOIN_RPC_URL or BITCOIN_RPC_USER/PASSWORD/HOST/PORT (optional Core source)
 """
 import datetime
+import hashlib
 import json
 import os
 import sys
@@ -32,6 +36,7 @@ import verify  # stdlib-only
 
 CONFIRMATIONS = int(os.environ.get("DRAW_CONFIRMATIONS", "6"))
 MAX_NEW = int(os.environ.get("MAX_NEW_DRAWS", "10"))
+MIN_AGREEMENT = int(os.environ.get("MIN_SOURCE_AGREEMENT", "2"))  # sources that must agree on a window's hashes
 ALGO = "v1"
 
 # Public explorers, tried in order. Both speak the same Esplora-style API:
@@ -121,6 +126,42 @@ def _call(providers, op, *args):
     raise RuntimeError(f"all sources failed for '{op}' -> " + " | ".join(errors))
 
 
+def _fingerprint(hash_list):
+    """Short, stable fingerprint of an ordered hash list, for disagreement logs."""
+    return hashlib.sha256("".join(hash_list).encode()).hexdigest()[:12]
+
+
+def _agreed_hashes(providers, start, end):
+    """Fetch the window's 144 hashes from every available source and return the
+    list that >= MIN_AGREEMENT of them agree on, plus the agreeing source names.
+
+    Raises if no list reaches the threshold (sources disagree, or too few are
+    reachable). The 144 hashes are the inputs baked into the *irreversible*
+    commitment chain, so the caller HOLDS the draw rather than commit hashes that
+    only a single (possibly bad / forked / compromised) explorer vouches for."""
+    results, errors = {}, []
+    for p in providers:
+        try:
+            results[p["name"]] = p["hashes"](start, end)
+        except Exception as e:  # an unreachable source simply doesn't get a vote
+            errors.append(f"{p['name']}: {e}")
+    groups = []  # [(hash_list, [source names])], most-agreed first
+    for name, hl in results.items():
+        for g in groups:
+            if g[0] == hl:
+                g[1].append(name)
+                break
+        else:
+            groups.append((hl, [name]))
+    groups.sort(key=lambda g: len(g[1]), reverse=True)
+    if groups and len(groups[0][1]) >= MIN_AGREEMENT:
+        return groups[0][0], groups[0][1]
+    seen = "; ".join(f"{'+'.join(names)}={_fingerprint(hl)}" for hl, names in groups) or "none returned hashes"
+    raise RuntimeError(
+        f"need {MIN_AGREEMENT} agreeing sources for heights {start}-{end}; saw {seen}"
+        + ("" if not errors else " | unreachable: " + " | ".join(errors)))
+
+
 def main():
     path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, "site", "index.json")
     with open(path) as f:
@@ -133,11 +174,19 @@ def main():
     providers = _providers()
     confirmed_tip = _call(providers, "tip") - CONFIRMATIONS
     added = 0
+    held = None
     while added < MAX_NEW:
         start, end = verify.heights_for(next_id)
         if end > confirmed_tip:
             break  # window not fully confirmed yet
-        hashes = _call(providers, "hashes", start, end)
+        try:
+            hashes, agreed_by = _agreed_hashes(providers, start, end)
+        except Exception as e:
+            # Hold this draw (and every later one) until independent sources agree:
+            # never bake unverified hashes into the irreversible commitment chain.
+            held = next_id
+            print(f"WARNING: holding draw {next_id} -- {e}")
+            break
         front, back, seed = verify.generate(hashes)
         commitment = verify.commitment_for(prev_commitment, next_id, ALGO, seed, front, back, start, end)
         draws.append({
@@ -154,6 +203,7 @@ def main():
         prev_commitment = commitment
         next_id += 1
         added += 1
+        print(f"committed draw {draws[-1]['id']} (agree: {', '.join(agreed_by)})")
 
     head = ({"head": prev_commitment, "draw_id": draws[-1]["id"],
              "count": len(draws), "algo_version": ALGO} if draws
@@ -171,7 +221,8 @@ def main():
     with open(os.path.join(os.path.dirname(path), "head.json"), "w") as f:
         json.dump(head, f)
 
-    print(f"ADDED={added} total={len(draws)} latest={(draws[-1]['id'] if draws else None)}")
+    print(f"ADDED={added} total={len(draws)} latest={(draws[-1]['id'] if draws else None)}"
+          + (f" HELD={held}" if held is not None else ""))
     return 0
 
 
