@@ -11,7 +11,7 @@
     --accent: #2563eb;
     --accent-soft: rgba(37, 99, 235, 0.08);
 
-    /* Ball brand colours (fixed): front = Litecoin, back = Bitcoin */
+    /* Ball colours (fixed): front = blue, back = orange */
     --ball-ltc: radial-gradient(circle at 32% 28%, #7da2d9, #345d9d 62%, #21386b);
     --ball-btc: radial-gradient(circle at 32% 28%, #ffc46b, #f7931a 60%, #c2710a);
 

@@ -27,7 +27,7 @@
         .legend { color: var(--muted); font-size: 0.82rem; display: flex; gap: 1.1rem; flex-wrap: wrap; align-items: center; margin: 0.25rem 0 0.9rem; }
         .legend .dot { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 50%; vertical-align: -1px; margin-right: 0.32rem; }
         .legend .ltc { background: var(--ball-ltc); } .legend .btc { background: var(--ball-btc); }
-        .legend .rh { background: #cbd5e1; box-shadow: 0 0 0 2px #16a34a; } .legend .rv { background: #cbd5e1; box-shadow: 0 0 0 2px #9333ea; }
+        .legend .run { background: #fff; box-shadow: inset 0 0 0 2px #94a3b8; }
         .legend .sw { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 3px; background: #fdecec; border: 1px solid #f3b6b6; vertical-align: -1px; margin-right: 0.32rem; }
 
         .grid-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); width: fit-content; max-width: 100%; margin: 0 auto; -webkit-overflow-scrolling: touch; }
@@ -46,10 +46,10 @@
             background: var(--ball-ltc); color: #fff; font-weight: 700; font-size: 9.5px; text-shadow: 0 1px 1px rgba(0,0,0,0.3);
             box-shadow: inset 0 1px 1.5px rgba(255,255,255,0.4), 0 1px 2px rgba(16,24,40,0.22); }
         .ttab .b.bk { background: var(--ball-btc); }
-        /* runs of 3+ highlighted with another colour: green = horizontal, violet = vertical */
-        .ttab .b.hrun { box-shadow: inset 0 1px 1.5px rgba(255,255,255,0.4), 0 1px 2px rgba(16,24,40,0.22), 0 0 0 2px #16a34a; }
-        .ttab .b.vrun { box-shadow: inset 0 1px 1.5px rgba(255,255,255,0.4), 0 1px 2px rgba(16,24,40,0.22), 0 0 0 2px #9333ea; }
-        .ttab .b.hrun.vrun { box-shadow: inset 0 1px 1.5px rgba(255,255,255,0.4), 0 1px 2px rgba(16,24,40,0.22), 0 0 0 2px #16a34a, 0 0 0 3.5px #9333ea; }
+        /* runs of 3+ (horizontal or vertical) — white ball with a coloured number; front blue, back orange */
+        .ttab .b.hrun, .ttab .b.vrun { background: #fff; color: #345d9d; text-shadow: none;
+            box-shadow: inset 0 0 0 1.5px #345d9d, 0 1px 2px rgba(16,24,40,0.2); }
+        .ttab .b.bk.hrun, .ttab .b.bk.vrun { color: #f7931a; box-shadow: inset 0 0 0 1.5px #f7931a, 0 1px 2px rgba(16,24,40,0.2); }
         .ttab .g { color: #cdd2d8; font-style: normal; font-size: 10px; }
         .ttab tfoot td { border-top: 2px solid #dfe2e6; }
         .ttab tfoot .ff { color: #1f2937; } .ttab tfoot .fg { color: #9aa3af; font-style: normal; } .ttab tfoot .hot { color: #dc2626; }
@@ -62,7 +62,7 @@
             <div class="brand"><img src="./favicon.svg" alt=""><h1>Trend</h1></div>
             <p id="intro" class="text-secondary">One row per draw: the front area (1–35) split into three zones and the back
                 area (1–12) — hits are balls, misses show the gap (draws since it last appeared, over all history). Runs of
-                three or more (horizontal or vertical) are ringed, and a zone with no number that draw is shaded. Computed in
+                three or more (horizontal or vertical) show as white balls with a coloured number, and a zone with no number that draw is shaded. Computed in
                 your browser from the published snapshot.</p>
         </header>
 
@@ -76,10 +76,9 @@
             <span id="range" class="text-muted" style="font-size:0.85rem;"></span>
         </div>
         <div class="legend">
-            <span><span class="dot ltc"></span>Front (Litecoin)</span>
-            <span><span class="dot btc"></span>Back (Bitcoin)</span>
-            <span><span class="dot rh"></span>3+ in a row</span>
-            <span><span class="dot rv"></span>3+ repeats</span>
+            <span><span class="dot ltc"></span>Front</span>
+            <span><span class="dot btc"></span>Back</span>
+            <span><span class="dot run"></span>3+ consecutive</span>
             <span><span class="sw"></span>empty zone</span>
             <span>number = miss gap</span>
         </div>

@@ -68,7 +68,7 @@ verifier (`test_verify_site`), and the in-browser JS run under Node
 - `web/` — `index.html` (+ next-draw ETA) / `verify.html` / `stats.html` /
   `trend.html` (Sina-style 走势图) + `CNAME`. `static/` — `verify.js`, `stats.js`,
   `trend.js`, `style.css`, `favicon.svg`. Light/minimal theme; front balls =
-  Litecoin, back = Bitcoin.
+  blue, back = orange (don't surface "Litecoin"/"Bitcoin" as ball labels in the UI).
 - `SPEC.md` (frozen spec) · `docs/DEPLOY.md` · `docs/TDD.md`.
 
 ## Gotchas
