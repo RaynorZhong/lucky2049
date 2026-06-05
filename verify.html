@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify a Draw — lucky2049</title>
+    <meta name="description" content="Recompute any lucky2049 draw in your browser from the 144 Bitcoin block hashes and check it against the published result and tamper-evidence chain — no server trust.">
+    <meta name="theme-color" content="#f4f5f7">
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="lucky2049">
+    <meta property="og:title" content="Verify a Draw — lucky2049">
+    <meta property="og:description" content="Recompute any draw in your browser from the chain and check it against the published result and commitment chain. No server trust.">
+    <meta property="og:url" content="https://lucky2049.com/verify.html">
+    <meta name="twitter:card" content="summary">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./style.css">
+    <style>
+        .row { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+        .row .k { color: var(--text-secondary); }
+        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; word-break: break-all; }
+        .badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; font-weight: 600; font-size: 0.85rem; }
+        .badge.pass { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+        .badge.fail { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
+        .badge.wait { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
+        input#drawId { background: var(--surface); border: 1px solid var(--border-strong); color: var(--text);
+            padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); width: 8rem; font-size: 1rem; }
+        .note { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5; }
+        .verify-grid { display: grid; gap: 0.75rem; margin: 1rem 0; }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <div class="brand"><img src="./favicon.svg" alt=""><h1>Verify a Draw</h1></div>
+            <p class="note">
+                Fully static and trustless: this page fetches the draw's 144 Bitcoin block hashes
+                straight from a public explorer and recomputes the result <strong>in your browser</strong>
+                (its own SHA-256/HMAC, no server, no external scripts), then checks them against the
+                published result and tamper-evidence chain.
+            </p>
+        </header>
+
+        <section>
+            <div class="row" style="align-items:center; gap:0.5rem; margin-bottom:1rem;">
+                <label for="drawId" class="k">Draw No.</label>
+                <input id="drawId" type="number" min="0" value="0">
+                <button class="btn" id="goBtn">Verify</button>
+                <span id="status" class="note"></span>
+            </div>
+
+            <div class="glass-panel" id="panel" style="display:none;">
+                <div class="row"><span class="k">Draw</span><span id="vId" class="mono"></span></div>
+                <div class="row"><span class="k">Algorithm</span><span id="vAlgo" class="mono"></span></div>
+                <div class="row"><span class="k">Block heights</span><span id="vHeights" class="mono"></span></div>
+
+                <h2 style="margin-top:1rem;">Published result</h2>
+                <div class="row">
+                    <div class="d-flex" id="vFront"></div>
+                    <div class="d-flex" id="vBack"></div>
+                </div>
+
+                <div class="verify-grid" style="margin-top:1rem;">
+                    <div class="row"><span class="k">Result reproduced from chain</span><span id="bResult" class="badge wait">…</span></div>
+                    <div class="row"><span class="k">Commitment chain links to prev</span><span id="bChain" class="badge wait">…</span></div>
+                </div>
+
+                <div class="verify-grid">
+                    <div class="row"><span class="k">seed (recomputed)</span><span id="vSeed" class="mono"></span></div>
+                    <div class="row"><span class="k">commitment</span><span id="vCommit" class="mono"></span></div>
+                    <div class="row"><span class="k">prev commitment</span><span id="vPrev" class="mono"></span></div>
+                </div>
+            </div>
+
+            <div class="glass-panel" style="margin-top:1rem;">
+                <div class="row"><span class="k">History head (commits to all draws)</span><span id="vHead" class="mono">…</span></div>
+                <p class="note" style="margin-top:0.5rem;">
+                    Prefer a terminal? <span class="mono">python verify.py &lt;id&gt; --source mempool</span> does the same check.
+                </p>
+            </div>
+
+            <nav class="nav-links" style="margin-top:1.5rem;">
+                <a href="./index.html" class="btn">← Home</a>
+                <a href="./stats.html" class="btn">Statistics</a>
+                <a href="./trend.html" class="btn">Trend</a>
+            </nav>
+        </section>
+    </div>
+
+    <script src="./verify.js"></script>
+    <script>
+        var V = window.Lucky2049Verify;
+        var $ = function (id) { return document.getElementById(id); };
+        var INDEX = null;  // cached index.json
+
+        function setBadge(el, ok) { el.className = "badge " + (ok ? "pass" : "fail"); el.textContent = ok ? "PASS" : "FAIL"; }
+        function balls(c, nums, extra) {
+            c.innerHTML = "";
+            (nums || []).forEach(function (n) { var d = document.createElement("div"); d.className = "white-balls" + (extra ? " " + extra : ""); d.textContent = n; c.appendChild(d); });
+        }
+        function eq(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+
+        async function loadIndex() {
+            if (INDEX) return INDEX;
+            INDEX = await (await fetch("./index.json")).json();
+            var h = INDEX.head || {};
+            $("vHead").textContent = (h.head || "(none)") + "  ·  " + (INDEX.count || 0) + " draws";
+            return INDEX;
+        }
+
+        // Fetch the 144 block hashes for a height range from mempool.space (CORS-enabled),
+        // with limited concurrency and a progress indicator.
+        async function fetchHashes(start, end) {
+            var heights = []; for (var h = start; h <= end; h++) heights.push(h);
+            var out = new Array(heights.length); var next = 0, done = 0;
+            async function worker() {
+                while (next < heights.length) {
+                    var idx = next++;
+                    var resp = await fetch("https://mempool.space/api/block-height/" + heights[idx]);
+                    if (!resp.ok) throw new Error("explorer HTTP " + resp.status + " for height " + heights[idx]);
+                    out[idx] = (await resp.text()).trim().toLowerCase();
+                    done++;
+                    $("status").textContent = "Fetching block hashes from the chain… " + done + "/" + heights.length;
+                }
+            }
+            await Promise.all(Array.from({ length: 8 }, worker));
+            return out;
+        }
+
+        async function verify(id) {
+            $("panel").style.display = "none";
+            $("status").textContent = "Loading…";
+            var index;
+            try { index = await loadIndex(); } catch (e) { $("status").textContent = "Could not load index.json: " + e; return; }
+            var rec = (index.draws || []).find(function (d) { return d.id === id; });
+            if (!rec) { $("status").textContent = "Draw " + id + " not found (have 0.." + (index.count - 1) + ")."; return; }
+
+            var start = id * 144, end = id * 144 + 143;
+            $("vId").textContent = id;
+            $("vAlgo").textContent = rec.algo_version;
+            $("vHeights").textContent = start + " … " + end + " (144 blocks)";
+            balls($("vFront"), rec.front);
+            balls($("vBack"), rec.back, "powerball");
+            $("vCommit").textContent = rec.commitment || "(none)";
+            $("vPrev").textContent = rec.prev_commitment || "(none)";
+            $("vSeed").textContent = "(recomputing…)";
+            ["bResult", "bChain"].forEach(function (b) { $(b).className = "badge wait"; $(b).textContent = "…"; });
+            $("panel").style.display = "block";
+
+            var hashes;
+            try { hashes = await fetchHashes(start, end); }
+            catch (e) { $("status").textContent = "Chain fetch failed (" + e + "). Try again, or run: python verify.py " + id + " --source mempool"; return; }
+
+            var r = V.generate(hashes);
+            $("vSeed").textContent = r.seedHex;
+            setBadge($("bResult"), eq(r.front, rec.front) && eq(r.back, rec.back));
+            if (rec.commitment && rec.prev_commitment) {
+                var c = V.commitmentFor(rec.prev_commitment, id, rec.algo_version, r.seedHex, r.front, r.back, start, end);
+                setBadge($("bChain"), c === rec.commitment);
+            } else { $("bChain").className = "badge wait"; $("bChain").textContent = "N/A"; }
+            $("status").textContent = "Done — verified locally against the chain, no server trust.";
+        }
+
+        function currentId() { var v = parseInt($("drawId").value, 10); return isNaN(v) ? 0 : v; }
+        $("goBtn").addEventListener("click", function () { history.replaceState(null, "", "?draw=" + currentId()); verify(currentId()); });
+        var q = new URLSearchParams(location.search).get("draw");
+        if (q !== null) $("drawId").value = q;
+        loadIndex();
+        if (q !== null) verify(currentId());
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,188 @@
+:root {
+    /* Light / minimal palette */
+    --bg: #f4f5f7;
+    --surface: #ffffff;
+    --surface-2: #f8f9fb;
+    --border: #e6e8ec;
+    --border-strong: #d6d9de;
+    --text: #111827;
+    --text-secondary: #5b6573;
+    --muted: #9aa3af;
+    --accent: #2563eb;
+    --accent-soft: rgba(37, 99, 235, 0.08);
+
+    /* Ball colours (fixed): front = blue, back = orange */
+    --ball-ltc: radial-gradient(circle at 32% 28%, #7da2d9, #345d9d 62%, #21386b);
+    --ball-btc: radial-gradient(circle at 32% 28%, #ffc46b, #f7931a 60%, #c2710a);
+
+    --radius-lg: 16px;
+    --radius-md: 11px;
+    --radius-sm: 8px;
+
+    --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+    --shadow: 0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.04);
+    --shadow-md: 0 6px 20px rgba(16, 24, 40, 0.08);
+
+    --font-heading: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-body: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent); text-decoration: none; transition: color 0.15s ease; }
+a:hover { color: #1d4ed8; }
+
+/* Layout */
+.container { width: 100%; max-width: 1200px; padding: 2.5rem 2rem 3rem; margin: 0 auto; }
+
+header { text-align: center; margin-bottom: 2.25rem; }
+
+h1 {
+    font-family: var(--font-heading);
+    font-size: 2.6rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #0f172a;
+    margin-bottom: 0.4rem;
+}
+
+h2 {
+    font-family: var(--font-heading);
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 1rem;
+    color: #0f172a;
+}
+
+p { color: var(--text-secondary); max-width: 760px; margin: 0 auto 1rem; }
+.text-secondary { color: var(--text-secondary); }
+.text-muted { color: var(--muted); }
+
+/* Brand wordmark + clover in the header */
+.brand { display: inline-flex; align-items: center; gap: 0.6rem; }
+.brand img { width: 2.4rem; height: 2.4rem; }
+
+/* Cards (class kept as .glass-panel for compatibility — now a clean light card) */
+.glass-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    box-shadow: var(--shadow);
+    margin-bottom: 1.5rem;
+}
+
+/* Tables */
+table { width: 100%; border-collapse: separate; border-spacing: 0; }
+
+th, td { padding: 0.85rem 1rem; text-align: left; border-bottom: 1px solid var(--border); }
+
+th {
+    color: var(--muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    border-bottom: 1px solid var(--border-strong);
+}
+
+tr:last-child td { border-bottom: none; }
+tbody tr { transition: background 0.12s ease; }
+tbody tr:hover td { background: var(--surface-2); }
+
+/* Balls */
+.d-flex { display: flex; gap: 0.45rem; flex-wrap: wrap; }
+
+.white-balls {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: #fff;
+    background: var(--ball-ltc);
+    box-shadow: inset 0 2px 3px rgba(255, 255, 255, 0.45), 0 2px 5px rgba(16, 24, 40, 0.22);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.32);
+    transition: transform 0.18s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.white-balls:hover { transform: scale(1.08); }
+
+.powerball {
+    background: var(--ball-btc);
+    box-shadow: inset 0 2px 3px rgba(255, 255, 255, 0.5), 0 2px 6px rgba(247, 147, 26, 0.32);
+}
+
+/* Navigation & buttons */
+.nav-links { display: flex; justify-content: center; gap: 0.75rem; margin-top: 1.75rem; flex-wrap: wrap; }
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.55rem 1.1rem;
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+    font-weight: 500;
+    box-shadow: var(--shadow-sm);
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.btn:hover { background: var(--surface-2); border-color: var(--muted); color: var(--text); }
+.btn:active { transform: translateY(1px); }
+
+.btn-primary { background: #111827; border-color: #111827; color: #fff; }
+.btn-primary:hover { background: #1f2937; border-color: #1f2937; color: #fff; }
+
+.btn-sm { padding: 0.32rem 0.7rem; font-size: 0.85rem; border-radius: var(--radius-sm); }
+
+/* Responsive */
+@media (max-width: 768px) {
+    .container { padding: 1.5rem 1rem 2rem; }
+    header { margin-bottom: 1.75rem; }
+    h1 { font-size: 2rem; }
+    h2 { font-size: 1.3rem; }
+    .glass-panel { padding: 1.15rem 1rem; }
+    .white-balls { width: 2rem; height: 2rem; font-size: 0.9rem; }
+    th, td { padding: 0.7rem 0.5rem; font-size: 0.9rem; }
+}
+
+/* Phones: turn the wide draws table into a stacked card per draw. */
+@media (max-width: 640px) {
+    .draws-table thead { display: none; }
+    .draws-table, .draws-table tbody, .draws-table tr, .draws-table td { display: block; width: 100%; }
+    .draws-table tr { padding: 0.9rem 0.25rem; border-bottom: 1px solid var(--border); }
+    .draws-table tr:last-child { border-bottom: none; }
+    .draws-table tr:hover td { background: none; }
+    .draws-table td { border: none; padding: 0.28rem 0; display: flex; align-items: center; gap: 0.75rem; }
+    .draws-table td[data-label]::before {
+        content: attr(data-label);
+        flex: 0 0 4.5rem;
+        color: var(--muted);
+        font-size: 0.68rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .draws-table td:first-child { margin-bottom: 0.3rem; }
+}

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>lucky2049 — Statistics</title>
+    <meta name="description" content="Per-number frequency and chi-square uniformity stats for lucky2049 draws, recomputed in your browser from the published snapshot.">
+    <meta name="theme-color" content="#f4f5f7">
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="lucky2049">
+    <meta property="og:title" content="lucky2049 — Statistics">
+    <meta property="og:description" content="Per-number frequency and a chi-square uniformity test for the draws, recomputed in your browser from the published snapshot.">
+    <meta property="og:url" content="https://lucky2049.com/stats.html">
+    <meta name="twitter:card" content="summary">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./style.css">
+    <style>
+        .stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .stat-cards .card { background: var(--surface-2); border: 1px solid var(--border); padding: 1rem; border-radius: var(--radius-sm); }
+        .stat-cards .k { font-size: 0.8rem; color: var(--text-secondary); }
+        .stat-cards .v { font-size: 1.5rem; font-weight: 700; font-family: var(--font-heading); color: #0f172a; }
+        .stat-cards .v.small { font-size: 1rem; font-weight: 600; }
+        .chart { position: relative; height: 220px; padding: 0.5rem 0; }
+        .chart .bars { display: flex; align-items: flex-end; gap: 2px; height: 100%; }
+        .chart .bar { flex: 1; min-height: 2px; background: linear-gradient(180deg, #5b8fd6, #345d9d); border-radius: 3px 3px 0 0; }
+        .chart .bar.back { background: linear-gradient(180deg, #ffb24d, #f7931a); }
+        .chart .bar:hover { filter: brightness(1.06); }
+        .chart .expected { position: absolute; left: 0; right: 0; border-top: 2px dashed #ef4444; opacity: 0.8; }
+        .caption { color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.75rem; }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <div class="brand"><img src="./favicon.svg" alt=""><h1>Statistics</h1></div>
+            <p id="intro" class="text-secondary">Distribution analysis recomputed in your browser from the
+                published snapshot — a flat distribution near the dashed line is what fair, unbiased draws look like.</p>
+        </header>
+
+        <div id="sections"></div>
+
+        <nav class="nav-links" style="margin-top:2rem;">
+            <a href="./index.html" class="btn">← Home</a>
+            <a href="./verify.html" class="btn">Verify a Draw</a>
+            <a href="./trend.html" class="btn">Trend</a>
+        </nav>
+    </div>
+
+    <script src="./stats.js"></script>
+    <script>
+        function chartSection(title, sec, kind) {
+            var bars = sec.bars.map(function (b) {
+                return '<div class="bar' + (kind === 'back' ? ' back' : '') + '" style="height:' + b.pct + '%;" title="#' + b.n + ': drawn ' + b.count + ' times"></div>';
+            }).join("");
+            var pColor = sec.stats.p_value > 0.05 ? 'var(--accent)' : '#dc2626';
+            return '<section class="glass-panel">'
+                + '<h2>' + title + '</h2>'
+                + '<div class="stat-cards">'
+                + '<div class="card"><div class="k">Chi-square statistic</div><div class="v">' + sec.stats.chi2 + '</div></div>'
+                + '<div class="card"><div class="k">p-value</div><div class="v" style="color:' + pColor + ';">' + sec.stats.p_value + '</div></div>'
+                + '<div class="card"><div class="k">Conclusion</div><div class="v small">' + sec.stats.conclusion + '</div></div>'
+                + '</div>'
+                + '<div class="chart">'
+                + '<div class="expected" style="bottom:' + sec.expected_pct + '%;" title="Expected if perfectly uniform (~' + sec.expected + ')"></div>'
+                + '<div class="bars">' + bars + '</div>'
+                + '</div>'
+                + '<p class="caption">Each bar = how often a number was drawn; the dashed line is the uniform expectation (~'
+                + sec.expected + '). Hover a bar for its count.</p>'
+                + '</section>';
+        }
+        (async function () {
+            var idx;
+            try { idx = await (await fetch("./index.json")).json(); }
+            catch (e) { document.getElementById("intro").textContent = "Could not load draw data."; return; }
+            var ov = window.Lucky2049Stats.computeStats(idx.draws || []);
+            if (!ov) { document.getElementById("intro").textContent = "No draws yet."; return; }
+            document.getElementById("intro").textContent =
+                "Distribution analysis over " + ov.draws + " draws, recomputed in your browser from the published "
+                + "snapshot — a flat distribution near the dashed line is what fair, unbiased draws look like.";
+            document.getElementById("sections").innerHTML =
+                chartSection("Front Area (1–35)", ov.front, 'front') + chartSection("Back Area (1–12)", ov.back, 'back');
+        })();
+    </script>
+</body>
+
+</html>

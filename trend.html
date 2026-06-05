@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trend — lucky2049</title>
+    <meta name="description" content="lucky2049 trend chart: one table per draw — front 1–35 in three zones + back 1–12, with full-history miss gaps. Runs of 3+ and empty zones are highlighted. Computed in your browser from the published snapshot.">
+    <meta name="theme-color" content="#f4f5f7">
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="lucky2049">
+    <meta property="og:title" content="Trend — lucky2049">
+    <meta property="og:description" content="A Sina-style trend chart: front 1–35 in three zones + back 1–12, full-history miss gaps, runs of 3+ and empty zones highlighted.">
+    <meta property="og:url" content="https://lucky2049.com/trend.html">
+    <meta name="twitter:card" content="summary">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./style.css">
+    <style>
+        .trend-controls { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+        .seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--radius-md); overflow: hidden; box-shadow: var(--shadow-sm); }
+        .seg button { border: none; background: var(--surface); color: var(--text-secondary); padding: 0.4rem 0.9rem; font: inherit; font-size: 0.9rem; cursor: pointer; }
+        .seg button + button { border-left: 1px solid var(--border); }
+        .seg button.active { background: #111827; color: #fff; }
+        .legend { color: var(--muted); font-size: 0.82rem; display: flex; gap: 1.1rem; flex-wrap: wrap; align-items: center; margin: 0.25rem 0 0.9rem; }
+        .legend .dot { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 50%; vertical-align: -1px; margin-right: 0.32rem; }
+        .legend .ltc { background: var(--ball-ltc); } .legend .btc { background: var(--ball-btc); }
+        .legend .run { background: #fff; box-shadow: inset 0 0 0 2px #94a3b8; }
+        .legend .sw { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 3px; background: #fdecec; border: 1px solid #f3b6b6; vertical-align: -1px; margin-right: 0.32rem; }
+
+        .grid-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); width: fit-content; max-width: 100%; margin: 0 auto; -webkit-overflow-scrolling: touch; }
+        table.ttab { table-layout: fixed; border-collapse: collapse; font-size: 11px; line-height: 1; color: #374151; }
+        col.ci { width: 56px; } col.cn { width: 22px; }
+        .ttab th, .ttab td { height: 26px; text-align: center; border: 1px solid #eef0f3; padding: 0; }
+        .ttab th { color: #5b6573; font-weight: 600; background: #f3f5f8; }
+        .ttab .z0 { background: #f3f8fd; } .ttab .z1 { background: #ffffff; } .ttab .cb { background: #fff8f0; }
+        .ttab thead .z0 { background: #e9f1fb; } .ttab thead .z1 { background: #eef4fb; } .ttab thead .cb { background: #fdeedd; }
+        .ttab td.ez { background: #fdecec; }                 /* empty zone for this draw */
+        .ttab .sep { border-left: 2px solid #cdd2d8; }
+        .ttab .zh { font-weight: 700; color: #334155; } .ttab .zh .zr { font-weight: 500; color: #94a3b8; margin-left: 0.25rem; font-size: 10px; }
+        .ttab .issue { width: 56px; position: sticky; left: 0; z-index: 2; background: #fff; color: #6b7280; font-weight: 600; box-shadow: 1px 0 0 #e6e8ec; }
+        .ttab thead .issue, .ttab tfoot .issue { background: #f3f5f8; z-index: 4; }
+        .ttab .b { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%;
+            background: var(--ball-ltc); color: #fff; font-weight: 700; font-size: 9.5px; text-shadow: 0 1px 1px rgba(0,0,0,0.3);
+            box-shadow: inset 0 1px 1.5px rgba(255,255,255,0.4), 0 1px 2px rgba(16,24,40,0.22); }
+        .ttab .b.bk { background: var(--ball-btc); }
+        /* runs of 3+ (horizontal or vertical) — white ball with a coloured number; front blue, back orange */
+        .ttab .b.hrun, .ttab .b.vrun { background: #fff; color: #345d9d; text-shadow: none;
+            box-shadow: inset 0 0 0 1.5px #345d9d, 0 1px 2px rgba(16,24,40,0.2); }
+        .ttab .b.bk.hrun, .ttab .b.bk.vrun { color: #f7931a; box-shadow: inset 0 0 0 1.5px #f7931a, 0 1px 2px rgba(16,24,40,0.2); }
+        .ttab .g { color: #cdd2d8; font-style: normal; font-size: 10px; }
+        .ttab tfoot td { border-top: 2px solid #dfe2e6; }
+        .ttab tfoot .ff { color: #1f2937; } .ttab tfoot .fg { color: #9aa3af; font-style: normal; } .ttab tfoot .hot { color: #dc2626; }
+    </style>
+</head>
+
+<body>
+    <div class="container" style="max-width:1320px;">
+        <header>
+            <div class="brand"><img src="./favicon.svg" alt=""><h1>Trend</h1></div>
+            <p id="intro" class="text-secondary">One row per draw: the front area (1–35) split into three zones and the back
+                area (1–12) — hits are balls, misses show the gap (draws since it last appeared, over all history). Runs of
+                three or more (horizontal or vertical) show as white balls with a coloured number, and a zone with no number that draw is shaded. Computed in
+                your browser from the published snapshot.</p>
+        </header>
+
+        <div class="trend-controls">
+            <span class="text-secondary" style="font-size:0.9rem;">Last</span>
+            <div class="seg" id="seg">
+                <button data-n="30" class="active">30</button>
+                <button data-n="50">50</button>
+                <button data-n="100">100</button>
+            </div>
+            <span id="range" class="text-muted" style="font-size:0.85rem;"></span>
+        </div>
+        <div class="legend">
+            <span><span class="dot ltc"></span>Front</span>
+            <span><span class="dot btc"></span>Back</span>
+            <span><span class="dot run"></span>3+ consecutive</span>
+            <span><span class="sw"></span>empty zone</span>
+            <span>number = miss gap</span>
+        </div>
+
+        <div class="grid-wrap" id="grid"></div>
+
+        <nav class="nav-links" style="margin-top:2rem;">
+            <a href="./index.html" class="btn">← Home</a>
+            <a href="./verify.html" class="btn">Verify</a>
+            <a href="./stats.html" class="btn">Statistics</a>
+        </nav>
+    </div>
+
+    <script src="./trend.js"></script>
+    <script>
+        var DRAWS = null, WINDOW = 30;
+        var ZONE_LABELS = ['Zone 1', 'Zone 2', 'Zone 3'];
+
+        function zoneIdx(n, zones) {
+            for (var i = 0; i < zones.length; i++) if (n >= zones[i][0] && n <= zones[i][1]) return i;
+            return 0;
+        }
+        function footVal(v, ri, isFront) {
+            if (ri === 0) return '<b class="ff">' + v + '</b>';
+            if (ri === 2 && v >= (isFront ? 14 : 11)) return '<b class="hot">' + v + '</b>';
+            return '<i class="fg">' + v + '</i>';
+        }
+        function ball(n, isBack, cell) {
+            return '<span class="b' + (isBack ? ' bk' : '') + (cell.hrun ? ' hrun' : '') + (cell.vrun ? ' vrun' : '') + '">' + n + '</span>';
+        }
+
+        function buildTable(t) {
+            var f = t.front, b = t.back, zones = f.zones, n;
+            var cg = '<colgroup><col class="ci">';
+            for (n = 0; n < f.maxBall + b.maxBall; n++) cg += '<col class="cn">';
+            cg += '</colgroup>';
+
+            var h = '<tr><th class="issue" rowspan="2">Issue</th>';
+            zones.forEach(function (z, zi) {
+                h += '<th colspan="' + (z[1] - z[0] + 1) + '" class="zh z' + (zi % 2) + (zi > 0 ? ' sep' : '') + '">'
+                    + ZONE_LABELS[zi] + '<span class="zr">' + z[0] + '–' + z[1] + '</span></th>';
+            });
+            h += '<th colspan="' + b.maxBall + '" class="zh cb sep">Back<span class="zr">1–' + b.maxBall + '</span></th></tr>';
+            h += '<tr>';
+            for (n = 1; n <= f.maxBall; n++) { var zi = zoneIdx(n, zones); h += '<th class="z' + (zi % 2) + (n === zones[zi][0] && zi > 0 ? ' sep' : '') + '">' + n + '</th>'; }
+            for (n = 1; n <= b.maxBall; n++) h += '<th class="cb' + (n === 1 ? ' sep' : '') + '">' + n + '</th>';
+            h += '</tr>';
+
+            var body = '';
+            for (var i = 0; i < f.rows.length; i++) {
+                var fr = f.rows[i], br = b.rows[i], empty = fr.emptyZones || [];
+                body += '<tr><td class="issue">' + fr.id + '</td>';
+                for (n = 1; n <= f.maxBall; n++) {
+                    var zi2 = zoneIdx(n, zones), c = fr.cells[n - 1];
+                    var cls = 'z' + (zi2 % 2) + (n === zones[zi2][0] && zi2 > 0 ? ' sep' : '') + (empty.indexOf(zi2) >= 0 ? ' ez' : '');
+                    body += '<td class="' + cls + '">' + (c.drawn ? ball(n, false, c) : '<i class="g">' + c.gap + '</i>') + '</td>';
+                }
+                for (n = 1; n <= b.maxBall; n++) {
+                    var cb = br.cells[n - 1];
+                    body += '<td class="cb' + (n === 1 ? ' sep' : '') + '">' + (cb.drawn ? ball(n, true, cb) : '<i class="g">' + cb.gap + '</i>') + '</td>';
+                }
+                body += '</tr>';
+            }
+
+            var foot = '';
+            [['Freq', f.freq, b.freq], ['Max gap', f.maxGap, b.maxGap], ['Cur gap', f.curGap, b.curGap]].forEach(function (rd, ri) {
+                foot += '<tr class="ft"><td class="issue">' + rd[0] + '</td>';
+                for (n = 1; n <= f.maxBall; n++) { var zi3 = zoneIdx(n, zones); foot += '<td class="z' + (zi3 % 2) + (n === zones[zi3][0] && zi3 > 0 ? ' sep' : '') + '">' + footVal(rd[1][n - 1], ri, true) + '</td>'; }
+                for (n = 1; n <= b.maxBall; n++) foot += '<td class="cb' + (n === 1 ? ' sep' : '') + '">' + footVal(rd[2][n - 1], ri, false) + '</td>';
+                foot += '</tr>';
+            });
+
+            return '<table class="ttab">' + cg + '<thead>' + h + '</thead><tbody>' + body + '</tbody><tfoot>' + foot + '</tfoot></table>';
+        }
+
+        function render() {
+            if (!DRAWS) return;
+            var t = window.Lucky2049Trend.computeTrend(DRAWS, { window: WINDOW });
+            document.getElementById('grid').innerHTML = buildTable(t);
+            var rows = t.front.rows;
+            if (rows.length) document.getElementById('range').textContent =
+                rows.length + ' draws (No. ' + rows[0].id + ' – ' + rows[rows.length - 1].id + ')';
+        }
+
+        document.getElementById('seg').addEventListener('click', function (e) {
+            var btn = e.target.closest('button'); if (!btn) return;
+            WINDOW = parseInt(btn.dataset.n, 10);
+            [].forEach.call(this.querySelectorAll('button'), function (x) { x.classList.toggle('active', x === btn); });
+            render();
+        });
+
+        (async function () {
+            var idx;
+            try { idx = await (await fetch("./index.json")).json(); }
+            catch (e) { document.getElementById("intro").textContent = "Could not load draw data."; return; }
+            DRAWS = idx.draws || [];
+            if (!DRAWS.length) { document.getElementById("intro").textContent = "No draws yet."; return; }
+            render();
+        })();
+    </script>
+</body>
+
+</html>
