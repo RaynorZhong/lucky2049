@@ -106,8 +106,8 @@
         chi2: _round(chi2, 2),
         p_value: _round(p, 4),
         conclusion: p > 0.05
-          ? "Uniform distribution (good randomness)"
-          : "Non-uniform distribution (possible bias)"
+          ? "No statistically significant deviation (p > 0.05)"
+          : "Statistically significant deviation (p < 0.05)"
       }
     };
   }

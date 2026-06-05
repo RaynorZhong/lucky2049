@@ -112,17 +112,34 @@
             return INDEX;
         }
 
-        // Fetch the 144 block hashes for a height range from mempool.space (CORS-enabled),
-        // with limited concurrency and a progress indicator.
+        // Fetch the 144 block hashes for a height range from a public explorer,
+        // trying mempool.space then blockstream.info per height (both CORS-enabled),
+        // so one explorer being down or rate-limiting doesn't block verification.
+        var EXPLORERS = [
+            { name: "mempool.space", url: function (h) { return "https://mempool.space/api/block-height/" + h; } },
+            { name: "blockstream.info", url: function (h) { return "https://blockstream.info/api/block-height/" + h; } }
+        ];
+        async function fetchHashAt(height) {
+            var errs = [];
+            for (var i = 0; i < EXPLORERS.length; i++) {
+                try {
+                    var resp = await fetch(EXPLORERS[i].url(height));
+                    if (!resp.ok) throw new Error("HTTP " + resp.status);
+                    var hash = (await resp.text()).trim().toLowerCase();
+                    if (!/^[0-9a-f]{64}$/.test(hash)) throw new Error("unexpected response");
+                    return hash;
+                } catch (e) { errs.push(EXPLORERS[i].name + " (" + e.message + ")"); }
+            }
+            throw new Error("all explorers failed for height " + height + ": " + errs.join(", "));
+        }
+        // Limited concurrency + a progress indicator.
         async function fetchHashes(start, end) {
             var heights = []; for (var h = start; h <= end; h++) heights.push(h);
             var out = new Array(heights.length); var next = 0, done = 0;
             async function worker() {
                 while (next < heights.length) {
                     var idx = next++;
-                    var resp = await fetch("https://mempool.space/api/block-height/" + heights[idx]);
-                    if (!resp.ok) throw new Error("explorer HTTP " + resp.status + " for height " + heights[idx]);
-                    out[idx] = (await resp.text()).trim().toLowerCase();
+                    out[idx] = await fetchHashAt(heights[idx]);
                     done++;
                     $("status").textContent = "Fetching block hashes from the chain… " + done + "/" + heights.length;
                 }

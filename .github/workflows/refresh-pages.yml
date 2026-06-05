@@ -40,15 +40,21 @@ jobs:
           cp -r anchors site/anchors 2>/dev/null || true   # serve OpenTimestamps proofs at /anchors/
           touch site/.nojekyll
 
-      - name: Publish to gh-pages
+      - name: Publish to gh-pages (only when changed)
         run: |
-          cd site
-          git init -q
-          git checkout -q -b gh-pages
+          # Mirror the freshly built site into the checked-out gh-pages tree and
+          # publish only if something actually changed: no new draw and no asset
+          # edit means no commit, no force-push, and no redundant Pages deploy.
+          rsync -a --delete --exclude='.git' site/ _published/
+          cd _published
           git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to publish."
+            exit 0
+          fi
           git -c user.email=pages@users.noreply.github.com -c user.name="lucky2049 pages bot" \
             commit -q -m "Refresh static snapshot"
-          git push -f -q "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+          git push -q "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:gh-pages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
