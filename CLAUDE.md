@@ -72,7 +72,9 @@ verifier (`test_verify_site`), and the in-browser JS run under Node
   `trend.html` (Sina-style 走势图) + `CNAME`. `static/` — `verify.js`, `stats.js`,
   `trend.js`, `style.css`, `favicon.svg`. Light/minimal theme; front balls =
   blue, back = orange (don't surface "Litecoin"/"Bitcoin" as ball labels in the UI).
-- `SPEC.md` (frozen spec) · `docs/DEPLOY.md` · `docs/TDD.md`.
+- `SPEC.md` (frozen spec) · `docs/DEPLOY.md` · `docs/TDD.md`. Docs are
+  **English-canonical**; Chinese mirrors live in `docs/zh/` (same filenames) — edit
+  both together (incl. the EN ↔ 中文 cross-link header). UI/code are English-only.
 
 ## Gotchas
 

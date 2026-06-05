@@ -1,182 +1,195 @@
-# lucky2049 开奖算法规范 / Draw Algorithm Specification
+# lucky2049 Draw Algorithm Specification
+
+> 🌏 **English** · [中文](docs/zh/SPEC.md)
 
 **Algorithm Version: `v1`**
-**Status: FROZEN（已冻结，不可更改）**
+**Status: FROZEN**
 
-本文件是 lucky2049 开奖系统的规范性（normative）定义。任何人按本文件描述的步骤，
-使用相同的比特币区块哈希，都能**逐位元复现**任意一期的开奖结果。
+This document is the normative definition of the lucky2049 draw system. Anyone who follows the
+steps described here, using the same Bitcoin block hashes, can **reproduce any draw bit for bit**.
 
-> 冻结意味着 `v1` 的任何字节都不再改动。若未来需要修改规则，必须发布新版本号
-> （`v2`、`v3` …），且**只对发布之后的新期次生效**，历史期次永远按其声明的版本可验证。
-> 每一期开奖都会声明其所用的算法版本（发布的 `index.json` 中每期记录都带 `algo_version` 字段）。
+> "Frozen" means no byte of `v1` ever changes. If the rules must change in the future, a new
+> version (`v2`, `v3`, …) is released that **applies only to draws published after it**;
+> historical draws stay verifiable under the version they declared. Every draw declares the
+> algorithm version it used (each record in the published `index.json` carries an `algo_version`
+> field).
 
 ---
 
-## 1. 彩种参数 / Game Parameters
+## 1. Game Parameters
 
-本系统模拟 **超级大乐透 (Super Lotto)** 规则：
+The system mirrors **Super Lotto** rules:
 
-| 区域 | 取数个数 | 取值范围 |
+| Area | Count | Range |
 |------|----------|----------|
-| 前区 (front) | 5 个互不相同 | 1 – 35 |
-| 后区 (back)  | 2 个互不相同 | 1 – 12 |
+| front | 5 distinct | 1 – 35 |
+| back  | 2 distinct | 1 – 12 |
 
-常量：
-- `NUM_BLOCKCHAIN = 144` —— 每一期使用的连续区块数量。
+Constants:
+- `NUM_BLOCKCHAIN = 144` — the number of consecutive blocks each draw uses.
 - `BLUE_BALL_MAX = 35`, `BLUE_BALL_NUM = 5`
 - `RED_BALL_MAX = 12`, `RED_BALL_NUM = 2`
 
 ---
 
-## 2. 输入选择规则 / Input Selection（确定性，创世锚定）
+## 2. Input Selection (deterministic, genesis-anchored)
 
-第 `N` 期（`N` 为非负整数，`draw_id = N`）使用的比特币主网区块高度区间为：
+Draw `N` (`N` a non-negative integer, `draw_id = N`) uses the Bitcoin mainnet block height range:
 
 ```
-[ N * 144 ,  N * 144 + 143 ]   （含两端，共 144 个连续区块）
+[ N * 144 ,  N * 144 + 143 ]   (inclusive, 144 consecutive blocks)
 ```
 
-例如：第 0 期 = 高度 0..143（第 0 期首块即比特币创世块）；第 6315 期 = 高度 909360..909503。
+For example: draw 0 = heights 0..143 (draw 0's first block is the Bitcoin genesis block);
+draw 6315 = heights 909360..909503.
 
-**这是一个对期号的纯确定性函数，从创世块（高度 0）锚定，运营方对"用哪些块"没有任何
-自由度。** 规则本身即为永久承诺——无需逐期单独承诺高度区间。
+**This is a pure deterministic function of the draw id, anchored at the genesis block (height 0);
+the operator has zero discretion over "which blocks" are used.** The rule itself is a permanent
+commitment — no per-draw commitment of the height range is needed.
 
 ---
 
-## 3. 区块哈希格式 / Block Hash Format
+## 3. Block Hash Format
 
-每个区块的哈希取其**规范显示哈希**：64 个字符的**小写十六进制**字符串
-（即比特币 `getblockhash` / 各区块浏览器展示的 big-endian 区块哈希），例如：
+Each block's hash is its **canonical display hash**: a 64-character **lowercase hexadecimal**
+string (the big-endian block hash shown by Bitcoin's `getblockhash` / every block explorer), e.g.:
 
 ```
-000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f   ← 高度 0（创世块）
+000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f   ← height 0 (genesis block)
 ```
 
 ---
 
-## 4. 生成步骤 / Generation Steps
+## 4. Generation Steps
 
-### Step 1 — 拼接 (concatenate)
-将该期 144 个区块按**高度升序**排列，把它们的 64 字符小写十六进制哈希
-**无分隔符**首尾相接，得到字符串 `combined`（长度 = 144 × 64 = 9216 字符）。
+### Step 1 — concatenate
+Order the draw's 144 blocks by **ascending height** and join their 64-char lowercase-hex hashes
+**with no separator** into `combined` (length = 144 × 64 = 9216 chars).
 
-### Step 2 — 生成种子 (seed)
+### Step 2 — seed
 ```
-seed = SHA256( combined.encode("utf-8") )        # 32 字节原始摘要 (digest)，非 hex 字符串
+seed = SHA256( combined.encode("utf-8") )        # 32-byte raw digest, not a hex string
 ```
 
-### Step 3 — 确定性随机数 (deterministic RNG)
-对 `counter = 0, 1, 2, …` 依次计算：
+### Step 3 — deterministic RNG
+For `counter = 0, 1, 2, …` in turn:
 ```
-r_k = HMAC_SHA256( key = seed, msg = ascii(str(counter)) ).digest()   # 32 字节
-int_k = int.from_bytes(r_k, "big")                                    # 256 位无符号大端整数
+r_k = HMAC_SHA256( key = seed, msg = ascii(str(counter)) ).digest()   # 32 bytes
+int_k = int.from_bytes(r_k, "big")                                    # 256-bit unsigned big-endian integer
 ```
-共需 `BLUE_BALL_NUM + RED_BALL_NUM = 7` 个整数，使用 `counter = 0..6`。
+A total of `BLUE_BALL_NUM + RED_BALL_NUM = 7` integers are needed, using `counter = 0..6`.
 
-> 取模偏差说明：被除数为完整 256 位整数，对 35 / 12 等小模数取模引入的偏差量级约
-> `m / 2^256 ≈ 10^-75`，可忽略，分布实质均匀。
+> Modulo-bias note: the dividend is a full 256-bit integer; the bias from reducing it modulo small
+> numbers like 35 / 12 is on the order of `m / 2^256 ≈ 10^-75`, negligible — the distribution is
+> effectively uniform.
 
-### Step 4 — 前区 (front)
+### Step 4 — front
 ```
 pool = [1, 2, …, 35]
 front = []
 for i in 0..4:
     idx = int_i mod len(pool)
-    front.append( pool.pop(idx) )      # 取出后从池中移除，保证互不相同
-front.sort()                           # 升序
+    front.append( pool.pop(idx) )      # pop after picking, so numbers are distinct
+front.sort()                           # ascending
 ```
 
-### Step 5 — 后区 (back)
+### Step 5 — back
 ```
 pool = [1, 2, …, 12]
 back = []
 for i in 0..1:
     idx = int_(5+i) mod len(pool)
     back.append( pool.pop(idx) )
-back.sort()                            # 升序
+back.sort()                            # ascending
 ```
 
-### 输出 / Output
-`front`（5 个升序整数） 与 `back`（2 个升序整数）。
+### Output
+`front` (5 ascending integers) and `back` (2 ascending integers).
 
 ---
 
-## 5. 验证 / Verification
+## 5. Verification
 
-任何人只要：
-1. 从任意可信来源（自建全节点、`getblockhash`、或任意区块浏览器）取得高度
-   `N*144 .. N*144+143` 的 144 个区块哈希；
-2. 按第 4 节步骤重算；
-3. 与系统发布的该期结果（`index.json` 中第 N 期记录，或用 `verify.py` / `verify.html`）比对。
+Anyone can independently confirm a draw was not manipulated by:
+1. obtaining the 144 block hashes for heights `N*144 .. N*144+143` from any trusted source
+   (your own full node, `getblockhash`, or any block explorer);
+2. recomputing per the steps in §4;
+3. comparing against the system's published result for that draw (record N in `index.json`, or
+   via `verify.py` / `verify.html`).
 
-即可独立确认该期未被操纵。仓库内附 `verify.py` 可一键完成此过程。
+The repo's `verify.py` does this in one command.
 
-**比特币区块哈希由全网共识决定、客观且不可篡改**，因此真值源是区块链本身，而非本系统
-数据库或任何单一 API——这正是该开奖系统"公开透明、可独立复现"的根基。
+**Bitcoin block hashes are determined by network-wide consensus — objective and tamper-proof** —
+so the source of truth is the blockchain itself, not this system's database or any single API.
+This is the foundation of the draw being "transparent and independently reproducible."
 
 ---
 
-## 6. 测试向量 / Test Vectors（v1）
+## 6. Test Vectors (v1)
 
-| draw_id | 高度区间 | SHA256 seed (hex) | front | back |
+| draw_id | heights | SHA256 seed (hex) | front | back |
 |---------|----------|-------------------|-------|------|
 | 0    | 0 .. 143         | `cbc014f38f94d72431f9e1d2f978ff3db74a0be3ffa0e8fcfc1af92818ea324c` | [11, 14, 19, 30, 35] | [2, 11] |
 | 1    | 144 .. 287       | `a6fa3f9ae093938dd22eed0d25215a6b97bfaade8aeda3e1eef7038817279746` | [8, 10, 11, 18, 23]  | [6, 11] |
 | 6315 | 909360 .. 909503 | `0c794f8b23f2dd36f702c9a3fe39d240a38ad04a8af3023fae706301fdba16a6` | [1, 22, 25, 30, 35]  | [4, 11] |
 
-第 0 期首块哈希 = 比特币创世块
-`000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f`。
+Draw 0's first block hash = the Bitcoin genesis block
+`000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f`.
 
 ---
 
-## 7. 残余风险声明 / Residual Risk
+## 7. Residual Risk
 
-本规范保证**可复现性**与**运营方零自由度**，但不保证对**矿工操纵**的绝对免疫：
-挖出某区块的矿工对该区块哈希有有限的研磨（grinding）能力。本系统通过**聚合 144 个连续
-区块**（约一天）将攻击成本推至极高——攻击者需在约 24 小时内控制其中大量区块并放弃巨额
-出块奖励。这是**经济安全**而非密码学绝对安全，残余风险随下游奖池规模上升。如需更强保证，
-可在种子之上叠加 VDF（可验证延迟函数）。
+This spec guarantees **reproducibility** and **zero operator discretion**, but does not guarantee
+absolute immunity to **miner manipulation**: the miner who mines a given block has limited grinding
+power over that block's hash. The system pushes the attack cost very high by **aggregating 144
+consecutive blocks** (about a day) — an attacker would need to control a large fraction of those
+blocks within ~24 hours and forgo enormous block rewards. This is **economic** security, not
+absolute cryptographic security, and the residual risk grows with downstream prize size. For a
+stronger guarantee, a VDF (verifiable delay function) can be layered on top of the seed.
 
 ---
 
-## 8. 经济安全上限 / Economic-Security Bound（informative · 非规范）
+## 8. Economic-Security Bound (informative · non-normative)
 
-> 本节为**信息性说明**，不属于冻结的 `v1` 算法，不影响任何一期的复现——它只是把第 7 节
-> “残余风险随下游奖池规模上升”这句话**量化**出来。
+> This section is **informative** and is not part of the frozen `v1` algorithm; it does not affect
+> any draw's reproducibility. It simply **quantifies** §7's note that "residual risk grows with
+> downstream prize size."
 
-挖出该期**最后一个区块**的矿工，是唯一能“研磨”（grind）结果的人：他每重摇一次，就要
-放弃一个完整的出块奖励 `B`（区块补贴 + 手续费），而重摇出的新结果并不保证对他有利。设某
-奖项中奖概率为 `p`、奖金为 `W`，则一次研磨的期望收益约为 `p · W`。**当且仅当**
+The miner of a window's **last** block is the only party who can "grind" the result: each re-roll
+costs them a whole block reward `B` (subsidy + fees), and the re-rolled result is not guaranteed to
+favor them. For a prize of value `W` won with probability `p`, the expected gain of one grind is
+about `p · W`. Grinding is profitable **iff**
 
 ```
 p · W > B        ⟺        W > B / p
 ```
 
-研磨才在经济上划算。于是**任何下游奖池的单注奖金都应低于上限**：
+so **any downstream prize should stay below the ceiling**:
 
 ```
 W_max = B / p
 ```
 
-本彩种头奖（命中全部前区 5 + 后区 2）的概率：
+This game's jackpot (matching all 5 front + both back) has probability:
 
 ```
 p_jackpot = 1 / ( C(35,5) · C(12,2) ) = 1 / ( 324,632 × 66 ) = 1 / 21,425,712
 ```
 
-以 2024 年减半后的区块补贴 `B = 3.125 BTC`（约 2028 年再减半至 1.5625）为例：
+Taking the post-2024-halving block subsidy `B = 3.125 BTC` (halving again to 1.5625 around 2028):
 
 ```
 W_max = 3.125 BTC × 21,425,712 ≈ 6.70 × 10^7 BTC
 ```
 
-即单注奖金需高达约 **6700 万 BTC**（按现价为数万亿美元）才会让“最后一个区块研磨”在经济上
-有利可图——远高于任何现实奖金。**因此对任何现实规模的奖池，本开奖作为公共随机信标在经济
-上是安全的。**
+i.e. a single prize would have to reach roughly **67 million BTC** (trillions of USD at current
+prices) before last-block grinding becomes profitable — far above any realistic prize. **So for
+any realistically sized prize, this draw is economically secure as a public randomness beacon.**
 
-- 这是**一阶经济安全**界（单区块、单次研磨假设），非密码学绝对保证，与第 7 节口径一致；
-  如需更强保证可在种子之上叠加 VDF。
-- **lucky2049 自身不设奖池、不售票、不兑奖**；此上限仅用于约束**下游**项目，并在首页按
-  实时 BTC 价格展示 `B / p` 的当前数值。
-- 理论依据：Bonneau、Clark、Goldfeder, *On Bitcoin as a Public Randomness Source* (2015)
-  （精炼通译见 `docs/bitcoin-beacon-paper-zh.md`）。
+- This is a **first-order economic-security** bound (single block, single grind), not an absolute
+  cryptographic guarantee, consistent with §7; a VDF on top of the seed gives a stronger guarantee.
+- **lucky2049 itself runs no prize pool, sells no tickets, and pays out nothing**; this ceiling
+  only bounds **downstream** projects, and the homepage displays the current `B / p` value from a
+  live BTC price.
+- Theoretical basis: Bonneau, Clark, Goldfeder, *On Bitcoin as a Public Randomness Source* (2015).

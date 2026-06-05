@@ -1,5 +1,7 @@
 # Test-Driven Development guide
 
+> 🌏 **English** · [中文](zh/TDD.md)
+
 This project is set up for a fast red → green → refactor loop.
 
 ## The loop
