@@ -37,6 +37,7 @@ jobs:
       - name: Upgrade earlier pending proofs to full Bitcoin attestations
         run: |
           for f in anchors/*.ots; do ots upgrade "$f" || true; done
+          rm -f anchors/*.ots.bak   # ots upgrade leaves .bak backups -- don't version-control them
         continue-on-error: true
 
       - name: Commit new / upgraded proofs to main
