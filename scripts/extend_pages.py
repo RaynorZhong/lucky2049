@@ -28,7 +28,6 @@ import hashlib
 import json
 import os
 import sys
-import urllib.request
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
@@ -89,19 +88,14 @@ def _core_provider():
         return None
 
     def rpc(method, params):
-        payload = json.dumps({"jsonrpc": "1.0", "id": "extend", "method": method, "params": params})
-        req = urllib.request.Request(rpc_url, data=payload.encode(), headers={"Content-Type": "text/plain"})
-        with urllib.request.urlopen(req, timeout=30) as r:
-            res = json.loads(r.read().decode())
-        if res.get("error"):
-            raise RuntimeError(f"RPC error: {res['error']}")
-        return res["result"]
+        return verify._rpc_call(rpc_url, method, params)  # correct Basic-Auth handling lives in verify.py
 
     return {
         "name": "core",
         "tip": lambda: int(rpc("getblockcount", [])),
         "hashes": lambda start, end: [verify._normalize(rpc("getblockhash", [h])) for h in range(start, end + 1)],
-        "timestamp": lambda block_hash: _fmt_ts(rpc("getblock", [block_hash])["time"]),
+        # getblockheader (not getblock) so a pruned node can answer for any height.
+        "timestamp": lambda block_hash: _fmt_ts(rpc("getblockheader", [block_hash])["time"]),
     }
 
 

@@ -26,12 +26,14 @@ Examples
   python verify.py 6315 --source db --db data/database.db
 """
 import argparse
+import base64
 import hashlib
 import hmac
 import json
 import os
 import sys
 import time
+import urllib.parse
 import urllib.request
 
 # ---- Algorithm constants (FROZEN, must match SPEC.md / static/verify.js v1) ----
@@ -104,6 +106,30 @@ def _http_get(url, timeout=30):
         return r.read().decode("utf-8")
 
 
+def _rpc_call(rpc_url, method, params, timeout=30):
+    """One Bitcoin Core JSON-RPC POST.
+
+    Sends an explicit HTTP Basic-Auth header parsed from the URL's `user:pass@`:
+    urllib does NOT authenticate from URL userinfo on its own, and would even try
+    to resolve `user:pass@host` as a hostname -- so we strip the userinfo and add
+    the Authorization header ourselves, then connect to the clean host."""
+    parts = urllib.parse.urlsplit(rpc_url)
+    headers = {"Content-Type": "text/plain"}
+    url = rpc_url
+    if parts.username is not None:
+        token = base64.b64encode(f"{parts.username}:{parts.password or ''}".encode()).decode()
+        headers["Authorization"] = "Basic " + token
+        netloc = parts.hostname + (f":{parts.port}" if parts.port else "")
+        url = urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+    payload = json.dumps({"jsonrpc": "1.0", "id": "lucky2049", "method": method, "params": params})
+    req = urllib.request.Request(url, data=payload.encode(), headers=headers)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        res = json.loads(r.read().decode())
+    if res.get("error"):
+        raise RuntimeError(f"RPC error: {res['error']}")
+    return res["result"]
+
+
 def fetch_from_core(start, end):
     """Bitcoin Core JSON-RPC: getblockhash(height). Source of truth."""
     rpc_url = os.environ.get("BITCOIN_RPC_URL")
@@ -115,19 +141,7 @@ def fetch_from_core(start, end):
         if not user:
             raise RuntimeError("Set BITCOIN_RPC_URL or BITCOIN_RPC_USER/PASSWORD/HOST/PORT")
         rpc_url = f"http://{user}:{pw}@{host}:{port}"
-
-    def rpc(method, params):
-        payload = json.dumps({"jsonrpc": "1.0", "id": "verify", "method": method, "params": params})
-        req = urllib.request.Request(
-            rpc_url, data=payload.encode(), headers={"Content-Type": "text/plain"}
-        )
-        with urllib.request.urlopen(req, timeout=30) as r:
-            res = json.loads(r.read().decode())
-        if res.get("error"):
-            raise RuntimeError(f"RPC error: {res['error']}")
-        return res["result"]
-
-    return [_normalize(rpc("getblockhash", [h])) for h in range(start, end + 1)]
+    return [_normalize(_rpc_call(rpc_url, "getblockhash", [h])) for h in range(start, end + 1)]
 
 
 def fetch_from_mempool(start, end):
