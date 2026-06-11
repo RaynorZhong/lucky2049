@@ -30,6 +30,15 @@ jobs:
           python-version: "3.13"
 
       - name: Extend snapshot from the chain (stdlib only, no DB)
+        # Optional self-hosted Core source: when the BITCOIN_RPC_URL secret is set,
+        # the node becomes the preferred source and one of the agreement voters
+        # (CF_ACCESS_* = Cloudflare Access service token in front of it). Unset
+        # secrets resolve to empty strings -> the publisher behaves exactly as
+        # before, explorers only.
+        env:
+          BITCOIN_RPC_URL: ${{ secrets.BITCOIN_RPC_URL }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
           mkdir -p site
           cp _published/index.json site/index.json

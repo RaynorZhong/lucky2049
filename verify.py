@@ -20,6 +20,8 @@ Examples
 
   # Use your own Bitcoin Core node as the source of truth:
   export BITCOIN_RPC_URL="http://user:pass@127.0.0.1:8332"
+  # (node behind Cloudflare Access? also set the service token:)
+  #   export CF_ACCESS_CLIENT_ID="....access"  CF_ACCESS_CLIENT_SECRET="..."
   python verify.py 6315 --source core
 
   # Offline check against the local database:
@@ -114,7 +116,16 @@ def _rpc_call(rpc_url, method, params, timeout=30):
     to resolve `user:pass@host` as a hostname -- so we strip the userinfo and add
     the Authorization header ourselves, then connect to the clean host."""
     parts = urllib.parse.urlsplit(rpc_url)
-    headers = {"Content-Type": "text/plain"}
+    # Real User-Agent like _http_get's: urllib's default ("Python-urllib/3.x")
+    # gets 403'd by bot protection on proxied endpoints (e.g. Cloudflare).
+    headers = {"Content-Type": "text/plain", "User-Agent": "lucky2049-verify/1.0"}
+    # Optional Cloudflare Access service token, for a node published through
+    # Zero Trust (the edge rejects requests without these headers).
+    cf_id = os.environ.get("CF_ACCESS_CLIENT_ID")
+    cf_secret = os.environ.get("CF_ACCESS_CLIENT_SECRET")
+    if cf_id and cf_secret:
+        headers["CF-Access-Client-Id"] = cf_id
+        headers["CF-Access-Client-Secret"] = cf_secret
     url = rpc_url
     if parts.username is not None:
         token = base64.b64encode(f"{parts.username}:{parts.password or ''}".encode()).decode()

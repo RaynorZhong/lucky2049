@@ -21,7 +21,9 @@ then mempool.space, then blockstream.info.
 Usage:  python scripts/extend_pages.py [site/index.json]
 Env:    DRAW_CONFIRMATIONS (default 6), MAX_NEW_DRAWS (default 10),
         MIN_SOURCE_AGREEMENT (default 2),
-        BITCOIN_RPC_URL or BITCOIN_RPC_USER/PASSWORD/HOST/PORT (optional Core source)
+        BITCOIN_RPC_URL or BITCOIN_RPC_USER/PASSWORD/HOST/PORT (optional Core source),
+        CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET (optional Cloudflare Access
+        service token, when the Core endpoint sits behind Zero Trust)
 """
 import datetime
 import hashlib
@@ -90,9 +92,18 @@ def _core_provider():
     def rpc(method, params):
         return verify._rpc_call(rpc_url, method, params)  # correct Basic-Auth handling lives in verify.py
 
+    def _tip():
+        # A node still in initial block download reports a stale height; abstain
+        # from the tip so the explorers serve it (hashes for synced heights are
+        # still valid -- getblockhash answers from the header index).
+        info = rpc("getblockchaininfo", [])
+        if info.get("initialblockdownload"):
+            raise RuntimeError(f"node in initial block download (height {info.get('blocks')})")
+        return int(info["blocks"])
+
     return {
         "name": "core",
-        "tip": lambda: int(rpc("getblockcount", [])),
+        "tip": _tip,
         "hashes": lambda start, end: [verify._normalize(rpc("getblockhash", [h])) for h in range(start, end + 1)],
         # getblockheader (not getblock) so a pruned node can answer for any height.
         "timestamp": lambda block_hash: _fmt_ts(rpc("getblockheader", [block_hash])["time"]),
@@ -110,12 +121,13 @@ def _providers():
 
 
 def _call(providers, op, *args):
-    """Run `op` on each provider in turn; return the first success. If every
-    source fails, raise with all of their errors so the cron log says why."""
+    """Run `op` on each provider in turn; return (result, provider_name) for the
+    first success. If every source fails, raise with all of their errors so the
+    cron log says why."""
     errors = []
     for p in providers:
         try:
-            return p[op](*args)
+            return p[op](*args), p["name"]
         except Exception as e:  # network / HTTP / parse / RPC -- try the next source
             errors.append(f"{p['name']}: {e}")
     raise RuntimeError(f"all sources failed for '{op}' -> " + " | ".join(errors))
@@ -167,7 +179,9 @@ def main():
     prev_commitment = draws[-1]["commitment"] if draws else verify.GENESIS_PREV
 
     providers = _providers()
-    confirmed_tip = _call(providers, "tip") - CONFIRMATIONS
+    tip, tip_src = _call(providers, "tip")
+    print(f"tip {tip} (via {tip_src})")
+    confirmed_tip = tip - CONFIRMATIONS
     added = 0
     held = None
     while added < MAX_NEW:
@@ -193,7 +207,7 @@ def main():
             "algo_version": ALGO,
             "commitment": commitment,
             "prev_commitment": prev_commitment,
-            "timestamp": _call(providers, "timestamp", hashes[-1]),
+            "timestamp": _call(providers, "timestamp", hashes[-1])[0],
         })
         prev_commitment = commitment
         next_id += 1

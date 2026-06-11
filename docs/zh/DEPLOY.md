@@ -54,6 +54,23 @@ lucky2049 是**纯静态、无服务器**的开奖引擎:出号、发布、验�
 
 ---
 
+## 可选:用自己的 Bitcoin Core 节点作为发布源
+
+在仓库的 **Actions secrets** 里配置后,cron 会把你的节点当作*优先*源,并成为哈希一致性投票者之一
+(与 mempool.space / blockstream.info 并列):
+
+- `BITCOIN_RPC_URL` — `https://rpcuser:rpcpassword@你的RPC域名/`(Basic 认证会以显式请求头发送;
+  urllib 单靠 URL 里的 userinfo 是不会认证的)。
+- `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` — 仅当端点位于 Cloudflare Access 服务令牌
+  (Zero Trust)之后;设置后客户端会附带令牌请求头。
+
+行为:不配 secrets → 只用区块浏览器,与之前完全一致。节点离线/不可达 → 它的票自然缺席,两个浏览器
+仍满足 `MIN_SOURCE_AGREEMENT=2`,发布照常。节点仍在初始区块下载(IBD)→ 它对链尖弃权(过期高度
+不能拖延开奖),但哈希查询仍由其头索引照常应答。剪枝节点没问题——任意高度的区块哈希与头时间戳都
+来自头索引。cron 日志会显示链尖来自哪个源(`tip <h> (via core)`)以及每期哈希由谁达成一致。
+
+---
+
 ## 重建 / 灾备
 
 `index.json` 是系统的权威快照,建议定期备份(它在 `gh-pages` git 历史里,也可发个 Release)。链头已由

@@ -67,6 +67,8 @@ verifier (`test_verify_site`), and the in-browser JS run under Node
 - `scripts/extend_pages.py` — the cron drawer/publisher: extends `index.json` from
   the chain (stdlib, reuses `verify.py`, no DB; needs ≥2 independent sources to agree
   on a window's hashes before committing — holds on disagreement). Run by `refresh-pages.yml`.
+  Secrets `BITCOIN_RPC_URL` (+ `CF_ACCESS_CLIENT_ID/SECRET` for Cloudflare Access) add the
+  self-hosted Core node (Mac mini, btc-rpc.lucky2049.com) as preferred source — absent = no-op.
 - `scripts/export_static.py` — (re)build the full `index.json` + site from a local
   SQLite cache via stdlib `sqlite3` (initial build / disaster recovery).
 - `scripts/artifacts.py` — downstream beacon artifacts (`latest.json`, `feed.json`)

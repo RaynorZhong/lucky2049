@@ -63,6 +63,25 @@ the next refresh and the site falls back to 404.
 
 ---
 
+## Optional: your own Bitcoin Core node as a publish source
+
+Set repository **Actions secrets** and the cron picks your node up as the *preferred* source and
+one of the hash-agreement voters (alongside mempool.space / blockstream.info):
+
+- `BITCOIN_RPC_URL` — `https://rpcuser:rpcpassword@your-rpc-host/` (Basic auth is sent as an
+  explicit header; URL userinfo alone wouldn't authenticate under urllib).
+- `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` — only if the endpoint sits behind a
+  Cloudflare Access service token (Zero Trust); the client sends the token headers when set.
+
+Behaviour: secrets unset → explorers only, exactly as before. Node offline or unreachable → its
+vote is simply absent; the two explorers still satisfy `MIN_SOURCE_AGREEMENT=2` and publishing
+continues. Node still in initial block download → it abstains from the chain tip (stale height
+must not delay draws) while still answering hash queries from its header index. A pruned node is
+fine — block hashes and header timestamps come from the header index at any height. The cron log
+shows which source served the tip (`tip <h> (via core)`) and who agreed on each draw's hashes.
+
+---
+
 ## Rebuild / disaster recovery
 
 `index.json` is the system's authoritative snapshot; back it up periodically (it lives in `gh-pages`
