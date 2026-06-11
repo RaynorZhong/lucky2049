@@ -6,10 +6,13 @@ no prize pool, tickets, or payouts; those belong to separate downstream projects
 
   latest.json  - the newest draw + the history head; poll this for "what's new"
   feed.json    - JSON Feed 1.1 of the most recent draws; subscribe to this
+  status.json  - per-source health of the last refresh (probe results for the
+                 Core node / mempool / blockstream); the operator's RPC monitor
 
 Schemas + the stability promise live in docs/SCHEMA.md. Field names are stable;
 changes are additive only, and the algorithm version is declared per draw.
 """
+import datetime
 import json
 import os
 
@@ -65,6 +68,29 @@ def write_feed(out_dir, draws):
         "description": "Verifiable Super Lotto draws derived from 144 Bitcoin block hashes.",
         "items": items,
     })
+
+
+def write_status(out_dir, sources, checked_unix, head, added=0, held=None, note=None):
+    """status.json -- health of the last refresh, one entry per hash source.
+
+    `sources` comes from the publisher's per-run probe: [{name, ok, tip, ms} |
+    {name, ok: false, error, ms}], in preference order. Lets the operator see at
+    a glance whether their self-hosted Core RPC (and the explorers) answered."""
+    ts = datetime.datetime.fromtimestamp(int(checked_unix), tz=datetime.timezone.utc)
+    obj = {
+        "schema": "lucky2049/status/v1",
+        "checked_at": ts.strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "checked_at_unix": int(checked_unix),
+        "tip_source": next((s["name"] for s in sources if s.get("ok")), None),
+        "sources": sources,
+        "head": head,
+        "added": added,
+    }
+    if held is not None:
+        obj["held"] = held
+    if note:
+        obj["note"] = note
+    _write(out_dir, "status.json", obj)
 
 
 def write_beacon(out_dir, draws, head):

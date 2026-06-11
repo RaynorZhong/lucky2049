@@ -69,7 +69,8 @@ The whole "draw + publish + verify" loop runs on GitHub, with **no server and no
   commitment chain on the command line.
 
 > A window takes ~144 blocks (≈ 24h) to mature; the cron runs **hourly**, so a matured window
-> publishes within the hour (most runs are no-ops, skipped by the diff-guard). Still server-less.
+> publishes within the hour (runs without a new draw just refresh the `status.json` source-health
+> heartbeat). Still server-less.
 
 ### Local preview
 

@@ -27,7 +27,8 @@ run on GitHub — no standing backend, no database on the critical path.
   are committed under `anchors/` and served at `/anchors/`.
 
 > A window takes ~144 blocks (≈24h) to mature; the `refresh-pages.yml` cron runs **hourly**, so a
-> matured window publishes within the hour (most runs are no-ops, skipped by the diff-guard) — still server-less.
+> matured window publishes within the hour (runs without a new draw just refresh the `status.json`
+> source-health heartbeat, committed as "Refresh source health") — still server-less.
 
 ---
 
@@ -79,6 +80,11 @@ continues. Node still in initial block download → it abstains from the chain t
 must not delay draws) while still answering hash queries from its header index. A pruned node is
 fine — block hashes and header timestamps come from the header index at any height. The cron log
 shows which source served the tip (`tip <h> (via core)`) and who agreed on each draw's hashes.
+
+**Monitoring your node:** every hourly run probes all sources and publishes the results to
+[`status.json`](https://lucky2049.com/status.json) (per source: ok / tip / latency / error), also
+rendered as the homepage "Sources (last refresh)" strip — green means your Core RPC answered on
+the last refresh. Schema in `docs/SCHEMA.md`.
 
 ---
 

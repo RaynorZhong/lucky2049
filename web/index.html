@@ -27,6 +27,10 @@
         .nd-v { font-size: 1.5rem; font-weight: 700; font-family: var(--font-heading); color: #0f172a; line-height: 1.1; }
         .nd-v.mono { font-variant-numeric: tabular-nums; }
         .nd-sub { font-size: 0.78rem; color: var(--text-secondary); margin-top: 0.2rem; }
+        .src-health { display: flex; gap: 1.1rem; flex-wrap: wrap; align-items: center;
+            color: var(--muted); font-size: 0.82rem; margin-top: 0.6rem; }
+        .src-health .dot { display: inline-block; width: 0.6rem; height: 0.6rem;
+            border-radius: 50%; margin-right: 0.3rem; vertical-align: -1px; }
         @media (max-width: 640px) {
             .next-card { flex-wrap: wrap; }
             .nd-cell { flex: 1 1 50%; border-left: none; border-top: 1px solid var(--border); }
@@ -53,6 +57,7 @@
                 <div class="nd-cell"><div class="nd-k">Countdown</div><div class="nd-v mono" id="ndCd">—</div></div>
                 <div class="nd-cell"><div class="nd-k">Blocks left</div><div class="nd-v mono" id="ndBlocks">—</div></div>
             </div>
+            <div class="src-health" id="srcHealth" style="display:none;"></div>
         </section>
 
         <section>
@@ -177,6 +182,36 @@
             $("ecMax").textContent = fmtUsd(bUsd * JACKPOT_COMBOS);   // W_max = B / p
         }
 
+        // ---- source health: which hash sources answered on the last refresh
+        // (status.json is written by every publisher run; see docs/SCHEMA.md) ----
+        async function sourceHealth() {
+            var el = $("srcHealth"), st;
+            try { st = await (await fetch("./status.json")).json(); } catch (e) { return; }
+            if (!st || !st.sources || !st.sources.length) return;
+            el.textContent = "";
+            var label = document.createElement("span");
+            label.textContent = "Sources (last refresh):";
+            el.appendChild(label);
+            var oks = st.sources.filter(function (s) { return s.ok; }).map(function (s) { return s.tip; });
+            var best = oks.length ? Math.max.apply(null, oks) : 0;
+            st.sources.forEach(function (s) {
+                var sp = document.createElement("span");
+                var dot = document.createElement("span");
+                dot.className = "dot";
+                dot.style.background = !s.ok ? "#dc2626" : (s.tip >= best - 2 ? "#16a34a" : "#d97706");
+                sp.appendChild(dot);
+                sp.appendChild(document.createTextNode(s.name + (s.ok ? " · " + s.tip : " · down")));
+                sp.title = s.ok ? ("tip " + s.tip + " in " + s.ms + " ms") : (s.error || "unreachable");
+                el.appendChild(sp);
+            });
+            var age = Math.round((Date.now() / 1000 - st.checked_at_unix) / 60);
+            var when = document.createElement("span");
+            when.textContent = "checked " + (age < 1 ? "just now" : age + " min ago");
+            if (age > 150) { when.textContent += " — stale"; when.style.color = "#dc2626"; }
+            el.appendChild(when);
+            el.style.display = "flex";
+        }
+
         (async function () {
             var idx;
             try { idx = await (await fetch("./index.json")).json(); }
@@ -197,6 +232,8 @@
 
             econBound();
             setInterval(econBound, 120000);
+            sourceHealth();
+            setInterval(sourceHealth, 120000);
             if (draws.length) {
                 nextDraw(draws[draws.length - 1].id);
                 setInterval(tick, 1000);

@@ -30,6 +30,7 @@ import hashlib
 import json
 import os
 import sys
+import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
@@ -133,6 +134,27 @@ def _call(providers, op, *args):
     raise RuntimeError(f"all sources failed for '{op}' -> " + " | ".join(errors))
 
 
+def _probe_sources(providers):
+    """Probe every source's chain tip (health check), in preference order.
+
+    Returns [{name, ok, tip, ms} | {name, ok: False, error, ms}]. Published as
+    status.json so the operator can see whether each source -- especially a
+    self-hosted Core node -- answered on the last refresh."""
+    out = []
+    for p in providers:
+        t0 = time.monotonic()
+        entry = {"name": p["name"]}
+        try:
+            entry["tip"] = int(p["tip"]())
+            entry["ok"] = True
+        except Exception as e:  # unreachable / auth / IBD -- recorded, not fatal
+            entry["ok"] = False
+            entry["error"] = str(e)[:200]
+        entry["ms"] = int((time.monotonic() - t0) * 1000)
+        out.append(entry)
+    return out
+
+
 def _fingerprint(hash_list):
     """Short, stable fingerprint of an ordered hash list, for disagreement logs."""
     return hashlib.sha256("".join(hash_list).encode()).hexdigest()[:12]
@@ -179,12 +201,24 @@ def main():
     prev_commitment = draws[-1]["commitment"] if draws else verify.GENESIS_PREV
 
     providers = _providers()
-    tip, tip_src = _call(providers, "tip")
-    print(f"tip {tip} (via {tip_src})")
-    confirmed_tip = tip - CONFIRMATIONS
+    probes = _probe_sources(providers)
+    for s in probes:
+        print(f"source {s['name']}: " + (f"ok tip={s['tip']} ({s['ms']}ms)" if s["ok"]
+                                         else f"FAIL ({s.get('error')})"))
+    healthy = [s for s in probes if s["ok"]]
+    if healthy:
+        tip, tip_src = healthy[0]["tip"], healthy[0]["name"]
+        print(f"tip {tip} (via {tip_src})")
+        confirmed_tip = tip - CONFIRMATIONS
+    else:
+        # Don't crash: skip drawing but still publish, so the all-red status.json
+        # goes live instead of the site serving a stale green one. The workflow
+        # alarms (fails the run) right after the publish step.
+        print("WARNING: ALL SOURCES DOWN -- no chain tip; publishing health status only")
+        confirmed_tip = None
     added = 0
     held = None
-    while added < MAX_NEW:
+    while confirmed_tip is not None and added < MAX_NEW:
         start, end = verify.heights_for(next_id)
         if end > confirmed_tip:
             break  # window not fully confirmed yet
@@ -233,6 +267,9 @@ def main():
     # Downstream beacon artifacts (latest.json + feed.json), refreshed every run
     # like head.json so consumers always see the current head even on a no-op.
     artifacts.write_beacon(os.path.dirname(path), draws, head)
+    # Per-source health of THIS refresh (the operator's RPC monitor).
+    artifacts.write_status(os.path.dirname(path), probes, time.time(), head,
+                           added=added, held=held)
 
     print(f"ADDED={added} total={len(draws)} latest={(draws[-1]['id'] if draws else None)}"
           + (f" HELD={held}" if held is not None else ""))

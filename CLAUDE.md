@@ -71,8 +71,9 @@ verifier (`test_verify_site`), and the in-browser JS run under Node
   self-hosted Core node (Mac mini, btc-rpc.lucky2049.com) as preferred source — absent = no-op.
 - `scripts/export_static.py` — (re)build the full `index.json` + site from a local
   SQLite cache via stdlib `sqlite3` (initial build / disaster recovery).
-- `scripts/artifacts.py` — downstream beacon artifacts (`latest.json`, `feed.json`)
-  from the draws list; both publishers call `write_beacon()`. Consumer contract: `docs/SCHEMA.md`.
+- `scripts/artifacts.py` — downstream beacon artifacts (`latest.json`, `feed.json`,
+  `status.json` source-health) from the draws list; both publishers write them.
+  Consumer contract: `docs/SCHEMA.md`.
 - `web/` — `index.html` (+ next-draw ETA) / `verify.html` / `stats.html` /
   `trend.html` (Sina-style 走势图) + `CNAME`. `static/` — `verify.js`, `stats.js`,
   `trend.js`, `style.css`, `favicon.svg`. Light/minimal theme; front balls =
@@ -84,7 +85,9 @@ verifier (`test_verify_site`), and the in-browser JS run under Node
 ## Gotchas
 
 - **Single publish source**: the cron owns `gh-pages`/`index.json` (it rsyncs into the
-  branch and commits only on a real diff — a normal push, no force). Don't also run
+  branch and commits only on a real diff — a normal push, no force). `status.json` is a
+  per-run heartbeat, so hourly "Refresh source health" commits on `gh-pages` are normal;
+  draw/asset changes commit as "Refresh static snapshot". Don't also run
   `scripts/publish-pages.sh` locally — it force-rebuilds `gh-pages` from a DB export and
   can clobber the cron's newer draws.
 - **Custom domain**: `web/CNAME` (lucky2049.com) must ride along every publish, or a

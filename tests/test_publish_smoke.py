@@ -76,6 +76,13 @@ class TestPublishSmoke(unittest.TestCase):
             head = _read_json(os.path.join(tmp, "head.json"))
             self.assertEqual(head, {"head": "c0", "draw_id": 0, "count": 1, "algo_version": "v1"})
 
+            # status.json records every source's probe, even on a no-op
+            st = _read_json(os.path.join(tmp, "status.json"))
+            self.assertEqual([s["name"] for s in st["sources"]], ["mempool", "blockstream"])
+            self.assertTrue(all(s["ok"] and s["tip"] == 100 for s in st["sources"]))
+            self.assertEqual((st["added"], st["tip_source"]), (0, "mempool"))
+            self.assertNotIn("held", st)
+
     def test_appends_confirmed_draw(self):
         with tempfile.TemporaryDirectory() as tmp:
             idx = _write_index(tmp, [])  # empty -> first draw is id 0, window 0..143
@@ -105,6 +112,9 @@ class TestPublishSmoke(unittest.TestCase):
             head = _read_json(os.path.join(tmp, "head.json"))
             self.assertEqual(head, {"head": expect, "draw_id": 0, "count": 1, "algo_version": "v1"})
 
+            st = _read_json(os.path.join(tmp, "status.json"))
+            self.assertEqual(st["added"], 1)
+
             # downstream beacon artifacts are written alongside index.json
             latest = _read_json(os.path.join(tmp, "latest.json"))
             self.assertEqual(latest["latest"]["id"], 0)
@@ -127,6 +137,8 @@ class TestPublishSmoke(unittest.TestCase):
             self.assertEqual(_read(idx), before, "a disputed draw must NOT be committed")
             self.assertEqual(_read_json(idx)["count"], 0)
             self.assertEqual(_read_json(os.path.join(tmp, "head.json"))["draw_id"], -1)
+            st = _read_json(os.path.join(tmp, "status.json"))
+            self.assertEqual((st["added"], st["held"]), (0, 0), "the held draw must be visible in status.json")
 
     def test_holds_when_too_few_sources(self):
         # Only one source reachable, but the default needs 2 to agree -> held.
@@ -136,6 +148,33 @@ class TestPublishSmoke(unittest.TestCase):
             rc = _run(idx, [_src("mempool", 200, ha)])
             self.assertEqual(rc, 0)
             self.assertEqual(_read_json(idx)["count"], 0)
+
+    def test_all_sources_down_publishes_red_status(self):
+        # Every source failing must NOT crash the run: the draw loop is skipped,
+        # nothing is committed, and an all-red status.json is still written so
+        # the outage goes live instead of the site serving a stale green one.
+        with tempfile.TemporaryDirectory() as tmp:
+            draw0 = {"id": 0, "start_height": 0, "end_height": 143,
+                     "front": [1, 2, 3, 4, 5], "back": [1, 2], "algo_version": "v1",
+                     "commitment": "c0", "prev_commitment": verify.GENESIS_PREV}
+            idx = _write_index(tmp, [draw0])
+            before = _read(idx)
+
+            def boom():
+                raise RuntimeError("connection refused")
+            srcs = [{"name": n, "tip": boom, "hashes": None, "timestamp": None}
+                    for n in ("mempool", "blockstream")]
+            rc = _run(idx, srcs)
+            self.assertEqual(rc, 0, "a total outage must not crash the publisher")
+            self.assertEqual(_read(idx), before)
+
+            st = _read_json(os.path.join(tmp, "status.json"))
+            self.assertEqual([s["ok"] for s in st["sources"]], [False, False])
+            self.assertIn("connection refused", st["sources"][0]["error"])
+            self.assertIsNone(st["tip_source"])
+            self.assertEqual(st["added"], 0)
+            # head.json still written (unchanged head), so the site stays whole
+            self.assertEqual(_read_json(os.path.join(tmp, "head.json"))["draw_id"], 0)
 
     def test_min_agreement_one_allows_single_source(self):
         # An operator who trusts their own node can set MIN_SOURCE_AGREEMENT=1.

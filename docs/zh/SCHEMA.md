@@ -15,6 +15,7 @@ lucky2049 是一个**可验证的公共随机信标**:它只发布**开奖**(号
 |------|------|
 | [`latest.json`](https://lucky2049.com/latest.json) | 最新一期 + 历史链头。**轮询它**看「有没有新开奖」。 |
 | [`feed.json`](https://lucky2049.com/feed.json) | 最近约 30 期的 [JSON Feed 1.1](https://jsonfeed.org)。**订阅它。** |
+| [`status.json`](https://lucky2049.com/status.json) | 最近一次刷新的健康度:逐源探测结果(Core 节点 / 浏览器)。 |
 | [`index.json`](https://lucky2049.com/index.json) | 全量历史:每一期 + 链头(约 2 MB,gzip 后约 350 KB)。 |
 | [`head.json`](https://lucky2049.com/head.json) | 单独的承诺链头(承诺整段历史的 32 字节哈希)。 |
 | `anchors/<id>.head.json.ots` | 把链头外锚到比特币链的 OpenTimestamps 证明。 |
@@ -58,6 +59,33 @@ lucky2049 是一个**可验证的公共随机信标**:它只发布**开奖**(号
 标准 [JSON Feed 1.1](https://jsonfeed.org/version/1.1):`version`、`title`、`home_page_url`、
 `feed_url`、`items[]`。每个 item:`id`(期号字符串)、`url`(验证页链接)、`title`、
 `content_text`、`date_published`(RFC 3339)。
+
+### `status.json`
+每次发布器运行(每小时)写入:每个哈希源有没有应答、答了什么?
+
+```jsonc
+{
+  "schema": "lucky2049/status/v1",
+  "checked_at": "2026-06-11 07:20:12 UTC",
+  "checked_at_unix": 1781075212,
+  "tip_source": "core",                    // 本次链尖由谁提供
+  "sources": [                             // 按优先序;"core" 仅在配置后出现
+    { "name": "core", "ok": true, "tip": 953202, "ms": 312 },
+    { "name": "mempool", "ok": true, "tip": 953202, "ms": 145 },
+    { "name": "blockstream", "ok": false, "error": "HTTP Error 503: ...", "ms": 1042 }
+  ],
+  "head": { "head": "<64-hex>", "draw_id": 6618, "count": 6619, "algo_version": "v1" },
+  "added": 0,                              // 本次发布的期数
+  "held": 6619                             // 仅当有期被暂缓(源不一致)时出现
+}
+```
+首页把它渲染成「Sources (last refresh)」状态条。cron 为每小时,所以 `checked_at`
+超过约 2.5 小时即说明 cron 本身没在跑。
+
+两个特殊形态:**离线重建**(`export_static.py`,灾备)写入的是占位——`sources: []`、
+`tip_source: null` 外加一个 `note` 字段说明本次未探测,下一次小时级运行会用真实探测覆盖;
+而当探测了但**全部源都不正常**时,发布器仍会把这份(全红的)文件发上线,随后 workflow
+以失败告警。
 
 ## 怎么消费
 

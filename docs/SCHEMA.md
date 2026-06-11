@@ -17,6 +17,7 @@ Pages — no API, no auth, no rate limits beyond the CDN.
 |------|-----|
 | [`latest.json`](https://lucky2049.com/latest.json) | Newest draw + the history head. **Poll this** for "what's new". |
 | [`feed.json`](https://lucky2049.com/feed.json) | [JSON Feed 1.1](https://jsonfeed.org) of the ~30 most recent draws. **Subscribe to this.** |
+| [`status.json`](https://lucky2049.com/status.json) | Health of the last refresh: per-source probe results (Core node / explorers). |
 | [`index.json`](https://lucky2049.com/index.json) | Full history: every draw + the head (~2 MB, ~350 KB gzipped). |
 | [`head.json`](https://lucky2049.com/head.json) | The commitment head alone (a 32-byte hash committing to all history). |
 | `anchors/<id>.head.json.ots` | OpenTimestamps proofs anchoring a head onto the Bitcoin chain. |
@@ -61,6 +62,33 @@ to the in-browser verifier.
 Standard [JSON Feed 1.1](https://jsonfeed.org/version/1.1): `version`, `title`, `home_page_url`,
 `feed_url`, `items[]`. Each item: `id` (draw id as a string), `url` (verifier link), `title`,
 `content_text`, `date_published` (RFC 3339).
+
+### `status.json`
+Written by every publisher run (hourly): did each hash source answer, and what did it say?
+
+```jsonc
+{
+  "schema": "lucky2049/status/v1",
+  "checked_at": "2026-06-11 07:20:12 UTC",
+  "checked_at_unix": 1781075212,
+  "tip_source": "core",                    // who served the gating chain tip
+  "sources": [                             // preference order; "core" only when configured
+    { "name": "core", "ok": true, "tip": 953202, "ms": 312 },
+    { "name": "mempool", "ok": true, "tip": 953202, "ms": 145 },
+    { "name": "blockstream", "ok": false, "error": "HTTP Error 503: ...", "ms": 1042 }
+  ],
+  "head": { "head": "<64-hex>", "draw_id": 6618, "count": 6619, "algo_version": "v1" },
+  "added": 0,                              // draws published by this run
+  "held": 6619                             // present only when a draw was held (source disagreement)
+}
+```
+The homepage renders this as the "Sources (last refresh)" strip. An hourly cadence means
+`checked_at` older than ~2.5 h indicates the cron itself isn't running.
+
+Two special shapes: an **offline rebuild** (`export_static.py`, disaster recovery) writes a stub
+with `sources: []`, `tip_source: null` and a `note` field explaining that nothing was probed — the
+next hourly run replaces it with real probes. And when sources were probed but **none were ok**,
+the publisher still ships the (all-red) file and the workflow run then fails loudly as the alarm.
 
 ## Consume
 

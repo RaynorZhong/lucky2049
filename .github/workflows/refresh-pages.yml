@@ -49,11 +49,13 @@ jobs:
           cp -r anchors site/anchors 2>/dev/null || true   # serve OpenTimestamps proofs at /anchors/
           touch site/.nojekyll
 
-      - name: Publish to gh-pages (only when changed)
+      - name: Publish to gh-pages
         run: |
-          # Mirror the freshly built site into the checked-out gh-pages tree and
-          # publish only if something actually changed: no new draw and no asset
-          # edit means no commit, no force-push, and no redundant Pages deploy.
+          # Mirror the freshly built site into the checked-out gh-pages tree.
+          # status.json is a per-run health heartbeat (checked_at/latency change
+          # every probe), so most hourly runs publish a small "Refresh source
+          # health" commit; new draws / asset edits get "Refresh static snapshot"
+          # so they stay findable. The diff gate still skips truly empty runs.
           rsync -a --delete --exclude='.git' site/ _published/
           cd _published
           git add -A
@@ -61,9 +63,25 @@ jobs:
             echo "No changes to publish."
             exit 0
           fi
+          if git diff --cached --name-only | grep -qv '^status\.json$'; then
+            msg="Refresh static snapshot"
+          else
+            msg="Refresh source health"
+          fi
           git -c user.email=pages@users.noreply.github.com -c user.name="lucky2049 pages bot" \
-            commit -q -m "Refresh static snapshot"
+            commit -q -m "$msg"
           git push -q "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:gh-pages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+
+      - name: Alarm if every source was down (the red status.json is already live)
+        run: |
+          python - <<'EOF'
+          import json, sys
+          st = json.load(open("site/status.json"))
+          srcs = st.get("sources") or []
+          if srcs and not any(s.get("ok") for s in srcs):
+              sys.exit("ALL SOURCES DOWN -- https://lucky2049.com/status.json is red; investigate")
+          print("at least one source healthy")
+          EOF
