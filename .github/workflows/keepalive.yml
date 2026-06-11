@@ -26,7 +26,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.KEEPALIVE_PAT || github.token }}
+          # The PAT secret may be saved as KEEPALIVE_PAT or KEEPALIVE -- accept both.
+          token: ${{ secrets.KEEPALIVE_PAT || secrets.KEEPALIVE || github.token }}
       - name: Empty commit to reset the inactivity timer
         run: |
           git -c user.email=keepalive@users.noreply.github.com \
