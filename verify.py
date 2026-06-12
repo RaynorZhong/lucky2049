@@ -35,6 +35,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -102,10 +103,34 @@ def _normalize(h):
 
 
 # ----------------------------- hash sources -----------------------------
-def _http_get(url, timeout=30):
+def _retry_after(http_error):
+    """Numeric Retry-After header (seconds) from an HTTPError, capped; None if absent/odd."""
+    try:
+        v = http_error.headers.get("Retry-After")
+        return min(float(v), 10.0) if v else None
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def _http_get(url, timeout=30, retries=3):
+    """GET with a small bounded retry/backoff. A single transient blip -- an HTTP
+    429 (rate-limit), a 5xx, or a dropped connection -- anywhere in a 144-request
+    window would otherwise cost a whole source its vote and force a needless HOLD;
+    retrying recovers it. Honors a numeric Retry-After on 429/503."""
     req = urllib.request.Request(url, headers={"User-Agent": "lucky2049-verify/1.0"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read().decode("utf-8")
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read().decode("utf-8")
+        except urllib.error.HTTPError as e:
+            if e.code not in (429, 500, 502, 503, 504) or attempt == retries - 1:
+                raise
+            time.sleep(_retry_after(e) or 0.5 * (2 ** attempt))
+        except (urllib.error.URLError, OSError):  # DNS / connection reset / timeout
+            if attempt == retries - 1:
+                raise
+            time.sleep(0.5 * (2 ** attempt))
+    raise RuntimeError("unreachable")  # the loop always returns or raises
 
 
 def _rpc_call(rpc_url, method, params, timeout=30):

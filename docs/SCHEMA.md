@@ -83,17 +83,20 @@ Written by every publisher run (hourly): did each hash source answer, and what d
   ],
   "head": { "head": "<64-hex>", "draw_id": 6618, "count": 6619, "algo_version": "v1" },
   "added": 0,                              // draws published by this run
-  "held": 6619                             // present only when a draw was held (source disagreement)
+  "held": 6619,                            // present only when a draw was held (source disagreement)
+  "note": "…"                              // present only on an anomaly (see below) or an offline rebuild
 }
 ```
 The homepage renders this as the "Sources (last refresh)" strip. The cron is hourly, but
 GitHub Actions schedules drift, so `checked_at` older than ~4 h (not ~1 h) is what indicates
 the cron itself isn't running.
 
-Two special shapes: an **offline rebuild** (`export_static.py`, disaster recovery) writes a stub
-with `sources: []`, `tip_source: null` and a `note` field explaining that nothing was probed — the
-next hourly run replaces it with real probes. And when sources were probed but **none were ok**,
-the publisher still ships the (all-red) file and the workflow run then fails loudly as the alarm.
+`note` is set only on something worth attention: in a **live run** either a reorg self-audit
+result mismatch (a recently-committed draw no longer matches the chain) or a quorum tip that
+regressed below the last committed window — the workflow alarms on either. An **offline rebuild**
+(`export_static.py`, disaster recovery) also sets `note`, to say nothing was probed (`sources: []`,
+`tip_source: null`); the next hourly run replaces it with real probes. And when sources were probed
+but **none were ok**, the publisher still ships the (all-red) file and the run fails loudly as the alarm.
 
 ## Consume
 

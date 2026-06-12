@@ -16,7 +16,12 @@ then mempool.space, then blockstream.info.
     reachable sources -- that draw is HELD (not published) and retried next run,
     so one bad / forked / compromised explorer can never corrupt history.
   - Tip and timestamp are not part of the commitment, so they use plain
-    first-success fallback.
+    first-success fallback (a timestamp outage falls back to null, never sinking
+    an otherwise-good draw).
+  - Defense-in-depth: an idle run re-verifies the most recent published draw
+    against the live chain (reorg self-audit); a result mismatch, or a quorum tip
+    that regressed below the last committed window, is recorded in status.json
+    `note` and ALARMED by the workflow -- never silently rewritten.
 
 Usage:  python scripts/extend_pages.py [site/index.json]
 Env:    DRAW_CONFIRMATIONS (default 6), MAX_NEW_DRAWS (default 10),
@@ -41,6 +46,10 @@ import artifacts  # local: downstream beacon artifacts (latest.json / feed.json)
 CONFIRMATIONS = int(os.environ.get("DRAW_CONFIRMATIONS", "6"))
 MAX_NEW = int(os.environ.get("MAX_NEW_DRAWS", "10"))
 MIN_AGREEMENT = int(os.environ.get("MIN_SOURCE_AGREEMENT", "2"))  # sources that must agree on a window's hashes
+# Re-verify the latest published draw against the live chain while it's still within
+# this many blocks of the tip -- a reorg horizon far beyond CONFIRMATIONS (the commit
+# gate) yet beyond anything mainnet has ever seen, so the audit cost stays bounded.
+REORG_AUDIT_DEPTH = int(os.environ.get("REORG_AUDIT_DEPTH", "36"))
 ALGO = "v1"
 
 # Public explorers, tried in order. Both speak the same Esplora-style API:
@@ -201,6 +210,39 @@ def _agreed_hashes(providers, start, end):
         + ("" if not errors else " | unreachable: " + " | ".join(errors)))
 
 
+def _safe_timestamp(providers, block_hash):
+    """The display-only timestamp must never sink an otherwise-good draw: the 144
+    hashes are quorum-agreed and already determine the result, so a transient
+    block-detail outage falls back to null (artifacts / feed tolerate it) instead
+    of aborting the commit loop after the hashes were already agreed."""
+    try:
+        return _call(providers, "timestamp", block_hash)[0]
+    except Exception as e:
+        print(f"WARNING: timestamp unavailable (using null): {_redact(e)}")
+        return None
+
+
+def _reorg_audit_one(providers, d, confirmed_tip):
+    """Re-verify one already-published draw against the live chain. A draw is
+    committed at only CONFIRMATIONS depth, so a deeper reorg could in theory alter
+    its window after the fact. Returns a warning string on a RESULT mismatch -- the
+    caller ALARMS, it never rewrites (the commitment chain makes a silent rewrite
+    illegal). None when the draw still matches or is buried past the reorg horizon."""
+    if confirmed_tip - d["end_height"] >= REORG_AUDIT_DEPTH:
+        return None  # buried far past any feasible reorg -- effectively immutable
+    try:
+        hashes, _ = _agreed_hashes(providers, d["start_height"], d["end_height"])
+    except Exception as e:
+        print(f"reorg-audit: skip draw {d['id']} (re-fetch didn't reach quorum: {_redact(e)})")
+        return None
+    front, back, _ = verify.generate(hashes)
+    if front == d["front"] and back == d["back"]:
+        return None
+    return (f"REORG/MISMATCH at draw {d['id']}: published {d['front']}+{d['back']}, chain now "
+            f"yields {front}+{back} -- a deep reorg may have altered a committed window; "
+            f"NOT auto-correcting (history is append-only)")
+
+
 def main():
     path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, "site", "index.json")
     with open(path) as f:
@@ -223,11 +265,21 @@ def main():
     # not that the window is buried deep enough). Too few healthy sources -> no draw,
     # but still publish health status; the workflow alarms after the publish step.
     confirmed_tip = None
+    note = None
+    last_end = draws[-1]["end_height"] if draws else -1
     if len(healthy) >= MIN_AGREEMENT:
         quorum_tip = sorted((s["tip"] for s in healthy), reverse=True)[MIN_AGREEMENT - 1]
-        lead = next(s["name"] for s in healthy if s["tip"] >= quorum_tip)
-        print(f"tip {quorum_tip} (quorum of {MIN_AGREEMENT}; leading source {lead})")
-        confirmed_tip = quorum_tip - CONFIRMATIONS
+        if quorum_tip < last_end:
+            # Two+ sources agree on a tip BELOW the last committed window -- impossible
+            # for a real chain (that window was confirmed when the tip was higher
+            # still). Don't let bad/forked source data gate maturity; record + alarm.
+            note = (f"quorum tip {quorum_tip} regressed below the last committed window "
+                    f"(end {last_end}) -- bad source data; no draw this run")
+            print("WARNING: " + note)
+        else:
+            lead = next(s["name"] for s in healthy if s["tip"] >= quorum_tip)
+            print(f"tip {quorum_tip} (quorum of {MIN_AGREEMENT}; leading source {lead})")
+            confirmed_tip = quorum_tip - CONFIRMATIONS
     elif healthy:
         print(f"WARNING: only {len(healthy)} healthy source(s) < MIN_SOURCE_AGREEMENT="
               f"{MIN_AGREEMENT}; publishing health status only, no draw")
@@ -258,12 +310,19 @@ def main():
             "algo_version": ALGO,
             "commitment": commitment,
             "prev_commitment": prev_commitment,
-            "timestamp": _call(providers, "timestamp", hashes[-1])[0],
+            "timestamp": _safe_timestamp(providers, hashes[-1]),
         })
         prev_commitment = commitment
         next_id += 1
         added += 1
         print(f"committed draw {draws[-1]['id']} (agree: {', '.join(agreed_by)})")
+
+    # Reorg self-audit: on an idle run (nothing committed just now), re-verify the
+    # most recent published draw -- the only one a feasible >CONFIRMATIONS-deep reorg
+    # could still alter -- against the live chain. A mismatch ALARMS (via note); it
+    # never rewrites. Skipped when we just committed (those windows were verified now).
+    if confirmed_tip is not None and note is None and added == 0 and draws:
+        note = _reorg_audit_one(providers, draws[-1], confirmed_tip)
 
     head = ({"head": prev_commitment, "draw_id": draws[-1]["id"],
              "count": len(draws), "algo_version": ALGO} if draws
@@ -284,7 +343,7 @@ def main():
     artifacts.write_beacon(os.path.dirname(path), draws, head)
     # Per-source health of THIS refresh (the operator's RPC monitor).
     artifacts.write_status(os.path.dirname(path), probes, time.time(), head,
-                           added=added, held=held)
+                           added=added, held=held, note=note)
 
     print(f"ADDED={added} total={len(draws)} latest={(draws[-1]['id'] if draws else None)}"
           + (f" HELD={held}" if held is not None else ""))

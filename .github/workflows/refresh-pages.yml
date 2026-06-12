@@ -90,6 +90,8 @@ jobs:
               problems.append(f"only {healthy} healthy source(s) < MIN_SOURCE_AGREEMENT={need} -- drawing stalled")
           if st.get("held") is not None:
               problems.append(f"draw {st['held']} HELD -- sources disagree on a confirmed window")
+          if st.get("note"):   # extend_pages sets note only on an anomaly (implausible tip / reorg mismatch)
+              problems.append(st["note"])
           if problems:
               sys.exit("status.json degraded: " + "; ".join(problems)
                        + " -- see https://lucky2049.com/status.json")

@@ -69,8 +69,10 @@ class TestPublishSmoke(unittest.TestCase):
                      "commitment": "c0", "prev_commitment": verify.GENESIS_PREV}
             idx = _write_index(tmp, [draw0])
             before = _read(idx)
-            # tip 100 -> confirmed 94; the next window (144..287) is not confirmed.
-            rc = _run(idx, _agreeing(tip=100))
+            # tip 200 -> confirmed 194; the next window (144..287) is not confirmed,
+            # and draw 0 is already buried > REORG_AUDIT_DEPTH so the reorg audit
+            # doesn't re-fetch -- a genuine no-op that touches no source hashes.
+            rc = _run(idx, _agreeing(tip=200))
             self.assertEqual(rc, 0)
             self.assertEqual(_read(idx), before, "index.json must be untouched on a no-op")
             head = _read_json(os.path.join(tmp, "head.json"))
@@ -79,9 +81,10 @@ class TestPublishSmoke(unittest.TestCase):
             # status.json records every source's probe, even on a no-op
             st = _read_json(os.path.join(tmp, "status.json"))
             self.assertEqual([s["name"] for s in st["sources"]], ["mempool", "blockstream"])
-            self.assertTrue(all(s["ok"] and s["tip"] == 100 for s in st["sources"]))
+            self.assertTrue(all(s["ok"] and s["tip"] == 200 for s in st["sources"]))
             self.assertEqual((st["added"], st["tip_source"]), (0, "mempool"))
             self.assertNotIn("held", st)
+            self.assertNotIn("note", st)   # clean no-op must not raise any anomaly note
 
     def test_appends_confirmed_draw(self):
         with tempfile.TemporaryDirectory() as tmp:
