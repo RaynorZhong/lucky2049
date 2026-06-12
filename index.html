@@ -207,7 +207,9 @@
             var age = Math.round((Date.now() / 1000 - st.checked_at_unix) / 60);
             var when = document.createElement("span");
             when.textContent = "checked " + (age < 1 ? "just now" : age + " min ago");
-            if (age > 150) { when.textContent += " — stale"; when.style.color = "#dc2626"; }
+            // Hourly cron, but GitHub Actions schedule runs drift (often 5-20+ min late); only
+            // flag stale past ~4 h so jitter or a few skipped runs (~3-4 missed hours) don't false-alarm.
+            if (age > 240) { when.textContent += " — stale"; when.style.color = "#dc2626"; }
             el.appendChild(when);
             el.style.display = "flex";
         }
