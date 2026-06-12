@@ -26,6 +26,34 @@ console.log(JSON.stringify({abc, seed: r.seedHex, front: r.front, back: r.back, 
 """
 
 
+# Exercises V.verifyChain on an honest index and four tampering scenarios. A
+# rewritten *middle* draw must be caught even though each draw recomputes fine in
+# isolation -- the linkage scan is the only thing that makes the anchored head
+# meaningful without a full ~144xN-fetch replay.
+NODE_SCRIPT_CHAIN = r"""
+const V = require('./static/verify.js');
+const Z = "0".repeat(64);
+const ok = {draws:[
+  {id:0, prev_commitment: Z,    commitment:"c0"},
+  {id:1, prev_commitment:"c0",  commitment:"c1"},
+  {id:2, prev_commitment:"c1",  commitment:"c2"},
+], head:{head:"c2", draw_id:2}};
+const clone = o => JSON.parse(JSON.stringify(o));
+const midCommit = clone(ok); midCommit.draws[1].commitment = "X";       // breaks draw 2's link
+const midPrev   = clone(ok); midPrev.draws[1].prev_commitment = "X";    // breaks draw 1's link
+const badHead   = clone(ok); badHead.head.head = "X";                   // head != last commitment
+const genesis   = clone(ok); genesis.draws[0].prev_commitment = "X";    // draw 0 not genesis
+console.log(JSON.stringify({
+  genesisConst: V.GENESIS_PREV,
+  ok: V.verifyChain(ok),
+  midCommit: V.verifyChain(midCommit),
+  midPrev: V.verifyChain(midPrev),
+  badHead: V.verifyChain(badHead),
+  genesis: V.verifyChain(genesis),
+}));
+"""
+
+
 @unittest.skipUnless(NODE, "node not available")
 class TestVerifyJs(unittest.TestCase):
     def test_js_matches_golden_vector(self):
@@ -36,6 +64,15 @@ class TestVerifyJs(unittest.TestCase):
         self.assertEqual(res["front"], [11, 14, 19, 30, 35])
         self.assertEqual(res["back"], [2, 11])
         self.assertEqual(res["commit"], "def4cd38f63acc6f39a9c4dbe0df021c00e219907cbfeb58752be198092b0739")
+
+    def test_chain_linkage_detects_rewrites(self):
+        r = json.loads(subprocess.check_output([NODE, "-e", NODE_SCRIPT_CHAIN], cwd=REPO_ROOT, text=True))
+        self.assertEqual(r["genesisConst"], "0" * 64)
+        self.assertEqual(r["ok"], {"ok": True, "brokenAt": None})
+        self.assertEqual(r["midCommit"], {"ok": False, "brokenAt": 2})  # neighbour catches it
+        self.assertEqual(r["midPrev"], {"ok": False, "brokenAt": 1})
+        self.assertEqual(r["badHead"], {"ok": False, "brokenAt": "head"})
+        self.assertEqual(r["genesis"], {"ok": False, "brokenAt": 0})
 
 
 if __name__ == "__main__":

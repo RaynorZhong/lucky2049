@@ -206,16 +206,23 @@ def main():
         print(f"source {s['name']}: " + (f"ok tip={s['tip']} ({s['ms']}ms)" if s["ok"]
                                          else f"FAIL ({s.get('error')})"))
     healthy = [s for s in probes if s["ok"]]
-    if healthy:
-        tip, tip_src = healthy[0]["tip"], healthy[0]["name"]
-        print(f"tip {tip} (via {tip_src})")
-        confirmed_tip = tip - CONFIRMATIONS
+    # Confirmation depth gets the SAME quorum as the hashes: gate window maturity on
+    # the MIN_AGREEMENT-th highest healthy tip, never a single source. A lone
+    # compromised/buggy source reporting an inflated tip then can't pull an
+    # under-confirmed window forward (the agreement check only proves hashes match,
+    # not that the window is buried deep enough). Too few healthy sources -> no draw,
+    # but still publish health status; the workflow alarms after the publish step.
+    confirmed_tip = None
+    if len(healthy) >= MIN_AGREEMENT:
+        quorum_tip = sorted((s["tip"] for s in healthy), reverse=True)[MIN_AGREEMENT - 1]
+        lead = next(s["name"] for s in healthy if s["tip"] >= quorum_tip)
+        print(f"tip {quorum_tip} (quorum of {MIN_AGREEMENT}; leading source {lead})")
+        confirmed_tip = quorum_tip - CONFIRMATIONS
+    elif healthy:
+        print(f"WARNING: only {len(healthy)} healthy source(s) < MIN_SOURCE_AGREEMENT="
+              f"{MIN_AGREEMENT}; publishing health status only, no draw")
     else:
-        # Don't crash: skip drawing but still publish, so the all-red status.json
-        # goes live instead of the site serving a stale green one. The workflow
-        # alarms (fails the run) right after the publish step.
         print("WARNING: ALL SOURCES DOWN -- no chain tip; publishing health status only")
-        confirmed_tip = None
     added = 0
     held = None
     while confirmed_tip is not None and added < MAX_NEW:

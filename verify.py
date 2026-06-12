@@ -288,25 +288,33 @@ def main():
             if not hashes_ok:
                 exit_code = 1
 
-        # Tamper-evidence: recompute this draw's commitment from the previous
-        # draw's commitment and check it matches what the site published.
+        # Tamper-evidence: recompute this draw's commitment from the PREVIOUS
+        # DRAW'S commitment -- resolved from draw N-1's own record, never from this
+        # record's self-declared prev_commitment field. Otherwise a rewritten middle
+        # draw whose neighbours keep the old links would pass. Draw 0 chains from the
+        # genesis sentinel.
         published_commitment = pub["commitment"]
         if published_commitment:
             algo = pub["algo_version"]
-            prev = pub["prev_commitment"]
-            if prev is None:  # live API record carries no prev -- resolve it
-                if args.draw_id == 0:
-                    prev = GENESIS_PREV
-                else:
-                    try:
-                        prev = _fetch_published(args.site, args.draw_id - 1)["commitment"]
-                    except Exception as e:
-                        print(f"WARN: could not fetch previous commitment: {e}", file=sys.stderr)
+            if args.draw_id == 0:
+                prev = GENESIS_PREV
+            else:
+                try:
+                    prev = _fetch_published(args.site, args.draw_id - 1)["commitment"]
+                except Exception as e:
+                    print(f"WARN: could not fetch previous commitment: {e}", file=sys.stderr)
+                    prev = None
             if prev:
                 recomputed = commitment_for(prev, args.draw_id, algo, seed, front, back, start, end)
                 chain_ok = (recomputed == published_commitment)
                 print(f"CHAIN MATCH : {'PASS' if chain_ok else 'FAIL'} (links to draw {args.draw_id - 1})")
                 if not chain_ok:
+                    exit_code = 1
+                # Flag a self-declared prev that disagrees with the real predecessor.
+                declared = pub.get("prev_commitment")
+                if declared is not None and declared != prev:
+                    print("CHAIN MATCH : FAIL (record's prev_commitment != draw "
+                          f"{args.draw_id - 1}'s commitment -- chain tampered)")
                     exit_code = 1
 
     return exit_code

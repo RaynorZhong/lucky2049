@@ -121,7 +121,33 @@
     return hex(sha256(utf8(payload)));
   }
 
-  var api = { sha256: sha256, hmacSha256: hmacSha256, hex: hex, generate: generate, commitmentFor: commitmentFor };
+  // ---- tamper-evidence chain ----
+  var GENESIS_PREV = "0000000000000000000000000000000000000000000000000000000000000000";
+
+  // Linkage scan over a published index ({draws:[...], head:{...}}). Each draw's
+  // prev_commitment must equal the PREVIOUS record's commitment (draw 0 = the
+  // genesis sentinel), and head.head must equal the head draw's commitment. This
+  // is what makes a rewritten *middle* draw detectable -- recomputing one draw in
+  // isolation only proves that draw, never that the records chain together.
+  // Pure, in-memory; the verifier already has the whole index.
+  function verifyChain(index) {
+    var draws = (index && index.draws) || [];
+    var byId = {};
+    for (var i = 0; i < draws.length; i++) byId[draws[i].id] = draws[i];
+    for (i = 0; i < draws.length; i++) {
+      var d = draws[i];
+      var expected = d.id === 0 ? GENESIS_PREV : (byId[d.id - 1] ? byId[d.id - 1].commitment : null);
+      if (expected === null || d.prev_commitment !== expected) return { ok: false, brokenAt: d.id };
+    }
+    var head = (index && index.head) || {};
+    if (head.head && byId[head.draw_id] && head.head !== byId[head.draw_id].commitment) {
+      return { ok: false, brokenAt: "head" };
+    }
+    return { ok: true, brokenAt: null };
+  }
+
+  var api = { sha256: sha256, hmacSha256: hmacSha256, hex: hex, generate: generate,
+    commitmentFor: commitmentFor, verifyChain: verifyChain, GENESIS_PREV: GENESIS_PREV };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.Lucky2049Verify = api;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -186,6 +186,37 @@ class TestPublishSmoke(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertEqual(_read_json(idx)["count"], 1)
 
+    def test_inflated_single_source_tip_cannot_confirm_a_window(self):
+        # One source reports an inflated tip; the quorum (MIN_AGREEMENT-th highest)
+        # tip still gates maturity, so an under-confirmed draw is NOT committed --
+        # a lone compromised/buggy tip source can't pull a window forward.
+        with tempfile.TemporaryDirectory() as tmp:
+            idx = _write_index(tmp, [])  # draw 0 window 0..143 needs tip >= 149
+            # core inflated to 200 (would confirm if it gated alone); mempool real at 100.
+            # hashes=None asserts the hashes are never even fetched (no confirmed window).
+            rc = _run(idx, [_src("core", 200), _src("mempool", 100)])
+            self.assertEqual(rc, 0)
+            self.assertEqual(_read_json(idx)["count"], 0, "inflated lone tip must not confirm a window")
+            self.assertEqual(_read_json(os.path.join(tmp, "status.json"))["added"], 0)
+
+    def test_quorum_tip_confirms_window(self):
+        # When >= MIN_AGREEMENT sources agree the tip is high enough, it matures.
+        with tempfile.TemporaryDirectory() as tmp:
+            idx = _write_index(tmp, [])
+            fake_hashes = lambda s, e: ["%064x" % h for h in range(s, e + 1)]
+            rc = _run(idx, [_src("core", 200, fake_hashes), _src("mempool", 200, fake_hashes)])
+            self.assertEqual(rc, 0)
+            self.assertEqual(_read_json(idx)["count"], 1)
+
+    def test_one_healthy_source_holds_draw_even_with_high_tip(self):
+        # A single healthy source (< MIN_AGREEMENT) never confirms a window, no
+        # matter how high its tip -- depth needs a quorum just like the hashes.
+        with tempfile.TemporaryDirectory() as tmp:
+            idx = _write_index(tmp, [])
+            rc = _run(idx, [_src("core", 10_000)])
+            self.assertEqual(rc, 0)
+            self.assertEqual(_read_json(idx)["count"], 0)
+
     def test_publish_inputs_present(self):
         # The workflow copies exactly these into the published site; a rename that
         # silently drops one would 404 in production -- guard the list here.

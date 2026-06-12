@@ -75,13 +75,23 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
 
-      - name: Alarm if every source was down (the red status.json is already live)
+      - name: Alarm on a degraded refresh (the status.json is already published)
         run: |
           python - <<'EOF'
-          import json, sys
+          import json, os, sys
           st = json.load(open("site/status.json"))
-          srcs = st.get("sources") or []
-          if srcs and not any(s.get("ok") for s in srcs):
-              sys.exit("ALL SOURCES DOWN -- https://lucky2049.com/status.json is red; investigate")
-          print("at least one source healthy")
+          srcs = st.get("sources") or []          # empty for an offline rebuild stub -> skip
+          healthy = sum(1 for s in srcs if s.get("ok"))
+          need = int(os.environ.get("MIN_SOURCE_AGREEMENT") or "2")
+          problems = []
+          if srcs and healthy == 0:
+              problems.append("ALL SOURCES DOWN")
+          elif srcs and healthy < need:
+              problems.append(f"only {healthy} healthy source(s) < MIN_SOURCE_AGREEMENT={need} -- drawing stalled")
+          if st.get("held") is not None:
+              problems.append(f"draw {st['held']} HELD -- sources disagree on a confirmed window")
+          if problems:
+              sys.exit("status.json degraded: " + "; ".join(problems)
+                       + " -- see https://lucky2049.com/status.json")
+          print(f"healthy sources: {healthy}/{len(srcs)}; no hold")
           EOF

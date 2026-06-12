@@ -6,7 +6,7 @@ name: anchor-head
 # main; the refresh-pages workflow then serves them at /anchors/.
 on:
   schedule:
-    - cron: "40 2 * * 0"   # weekly, Sunday ~01:40 UTC
+    - cron: "40 2 * * 0"   # weekly, Sunday ~02:40 UTC
   workflow_dispatch: {}
 
 permissions:
@@ -20,12 +20,18 @@ jobs:
   anchor:
     runs-on: ubuntu-latest
     steps:
+      # Don't leave the push token on disk while third-party PyPI code (the OTS
+      # client + its deps) runs -- this workflow can write verify.py/index.json,
+      # exactly the tamper class the project exists to prevent. The final step
+      # pushes with an explicit token URL instead.
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Install the OpenTimestamps client
-        run: pip install opentimestamps-client
+      - name: Install the OpenTimestamps client (pinned)
+        run: pip install 'opentimestamps-client>=0.7,<0.8'
 
       - name: Stamp the current published head (skips draws already anchored)
         run: |
@@ -49,4 +55,7 @@ jobs:
           git -c user.email=anchor@users.noreply.github.com \
               -c user.name="lucky2049 anchor bot" \
               commit -m "Anchor commitment head via OpenTimestamps"
-          git push
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}

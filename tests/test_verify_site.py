@@ -6,6 +6,8 @@ The public deployment is the static GitHub Pages snapshot (index.json, no API),
 so --site must fall back from the live manifest API to index.json and still
 surface the result + commitment chain. Stdlib only -- runs in the fast CI job.
 """
+import contextlib
+import io
 import json
 import os
 import sys
@@ -88,6 +90,60 @@ class TestFetchPublishedStaticFallback(unittest.TestCase):
         with mock.patch.object(verify, "_http_get", _static_only_http_get):
             with self.assertRaises(Exception):
                 verify._fetch_published(SITE, 999)
+
+
+class TestStaticChainLinkage(unittest.TestCase):
+    """`verify.py <N> --site` must chain N to draw N-1's OWN record, never to N's
+    self-declared prev_commitment -- else a rewritten middle draw whose neighbours
+    keep the old links passes the check."""
+
+    HASHES = ["%064x" % h for h in range(144, 288)]  # 144 valid hex hashes for draw 1
+
+    def _index(self, draw1_prev):
+        front1, back1, seed1 = verify.generate(self.HASHES)
+        c1 = verify.commitment_for(DRAW0_COMMITMENT, 1, "v1", seed1, front1, back1, 144, 287)
+        return c1, {
+            "count": 2, "algo_version": "v1",
+            "head": {"head": c1, "draw_id": 1, "count": 2, "algo_version": "v1"},
+            "draws": [
+                {"id": 0, "start_height": 0, "end_height": 143, "front": DRAW0_FRONT,
+                 "back": DRAW0_BACK, "algo_version": "v1", "commitment": DRAW0_COMMITMENT,
+                 "prev_commitment": verify.GENESIS_PREV, "timestamp": "t"},
+                {"id": 1, "start_height": 144, "end_height": 287, "front": front1,
+                 "back": back1, "algo_version": "v1", "commitment": c1,
+                 "prev_commitment": draw1_prev, "timestamp": "t"},
+            ],
+        }
+
+    def _verify1(self, idx):
+        def http_get(url, timeout=30):
+            if url.endswith("/index.json"):
+                return json.dumps(idx)
+            raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+        out = io.StringIO()
+        with mock.patch.object(sys, "argv", ["verify.py", "1", "--source", "mempool", "--site", SITE]), \
+             mock.patch.object(verify, "_http_get", http_get), \
+             mock.patch.dict(verify.SOURCES, {"mempool": lambda s, e: self.HASHES}), \
+             contextlib.redirect_stdout(out):
+            code = verify.main()
+        return code, out.getvalue()
+
+    def test_honest_chain_passes(self):
+        _c1, idx = self._index(draw1_prev=DRAW0_COMMITMENT)  # correctly links to draw 0
+        code, log = self._verify1(idx)
+        self.assertIn("RESULT MATCH: PASS", log)
+        self.assertIn("CHAIN MATCH : PASS", log)
+        self.assertNotIn("tampered", log)
+        self.assertEqual(code, 0)
+
+    def test_tampered_prev_field_is_flagged(self):
+        # commitment still chains to draw 0 (so the recompute passes), but the
+        # record lies about its prev_commitment -- the linkage check catches it.
+        _c1, idx = self._index(draw1_prev="dead" + "0" * 60)
+        code, log = self._verify1(idx)
+        self.assertIn("RESULT MATCH: PASS", log)
+        self.assertIn("chain tampered", log)
+        self.assertEqual(code, 1)
 
 
 class TestFetchPublishedLiveApi(unittest.TestCase):
