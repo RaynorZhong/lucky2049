@@ -58,7 +58,11 @@ lucky2049 是一个**可验证的公共随机信标**:它只发布**开奖**(号
 ### `feed.json`
 标准 [JSON Feed 1.1](https://jsonfeed.org/version/1.1):`version`、`title`、`home_page_url`、
 `feed_url`、`items[]`。每个 item:`id`(期号字符串)、`url`(验证页链接)、`title`、
-`content_text`、`date_published`(RFC 3339)。
+`content_text`、`date_published`(RFC 3339)。最近约 30 期,最新在前。
+
+每个 item 还带一个 `_lucky2049` 扩展对象(JSON Feed 约定 `_` 前缀成员留给发布方扩展,普通阅读器
+会忽略),携带结构化号码,消费方无需再解析展示字符串:`{ "front": [5个int], "back": [2个int],
+"start_height", "end_height" }`。
 
 ### `status.json`
 每次发布器运行(每小时)写入:每个哈希源有没有应答、答了什么?

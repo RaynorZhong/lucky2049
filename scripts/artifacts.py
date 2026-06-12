@@ -72,6 +72,15 @@ def write_feed(out_dir, draws):
             "url": f"{SITE_URL}/verify.html?draw={d['id']}",
             "title": f"Draw {d['id']}: {front} + {back}",
             "content_text": f"Front {front} | Back {back}  (heights {d['start_height']}-{d['end_height']})",
+            # JSON Feed extension (members starting with "_" are ignored by plain
+            # feed readers): structured fields so a consumer -- e.g. our own
+            # homepage table -- can render without re-parsing the display strings.
+            "_lucky2049": {
+                "front": d["front"],
+                "back": d["back"],
+                "start_height": d["start_height"],
+                "end_height": d["end_height"],
+            },
         }
         iso = _rfc3339(d.get("timestamp"))
         if iso:

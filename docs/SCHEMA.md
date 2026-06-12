@@ -61,7 +61,11 @@ to the in-browser verifier.
 ### `feed.json`
 Standard [JSON Feed 1.1](https://jsonfeed.org/version/1.1): `version`, `title`, `home_page_url`,
 `feed_url`, `items[]`. Each item: `id` (draw id as a string), `url` (verifier link), `title`,
-`content_text`, `date_published` (RFC 3339).
+`content_text`, `date_published` (RFC 3339). The ~30 most recent draws, newest first.
+
+Each item also carries a `_lucky2049` extension object (JSON Feed reserves `_`-prefixed members for
+publisher extensions; plain feed readers ignore it) with the structured numbers, so a consumer need
+not re-parse the display strings: `{ "front": [int×5], "back": [int×2], "start_height", "end_height" }`.
 
 ### `status.json`
 Written by every publisher run (hourly): did each hash source answer, and what did it say?
