@@ -151,7 +151,9 @@
             return out;
         }
 
+        var RUN = 0;  // run token: a slow fetch from an earlier verify() must not write stale badges
         async function verify(id) {
+            var myRun = ++RUN;
             $("panel").style.display = "none";
             $("status").textContent = "Loading…";
             var index;
@@ -173,7 +175,8 @@
 
             var hashes;
             try { hashes = await fetchHashes(start, end); }
-            catch (e) { $("status").textContent = "Chain fetch failed (" + e + "). Try again, or run: python verify.py " + id + " --source mempool"; return; }
+            catch (e) { if (myRun === RUN) $("status").textContent = "Chain fetch failed (" + e + "). Try again, or run: python verify.py " + id + " --source mempool"; return; }
+            if (myRun !== RUN) return;  // a newer verify() superseded this run -- don't write stale badges
 
             var r = V.generate(hashes);
             $("vSeed").textContent = r.seedHex;
