@@ -1,23 +1,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" font-family="Inter, Outfit, system-ui, sans-serif">
+  <defs>
+    <radialGradient id="gloss" cx="0.35" cy="0.3" r="0.75">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.5"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
   <rect width="1200" height="630" fill="#f4f5f7"/>
   <rect x="0" y="0" width="1200" height="10" fill="#2563eb"/>
   <rect x="0" y="620" width="1200" height="10" fill="#f97316"/>
-  <text x="90" y="180" font-size="92" font-weight="700" fill="#0f172a">lucky2049</text>
-  <text x="92" y="248" font-size="40" font-weight="600" fill="#334155">Verifiable Bitcoin-Hash Draws</text>
-  <text x="92" y="306" font-size="27" fill="#64748b">Super Lotto 5/35 + 2/12, derived deterministically from 144 Bitcoin block hashes.</text>
-  <text x="92" y="344" font-size="27" fill="#64748b">No server, no trust required — recompute every draw yourself.</text>
-  <!-- sample draw: front (blue) + back (orange) -->
-  <g transform="translate(92,420)">
-    <g fill="#2563eb">
-      <circle cx="46" cy="46" r="46"/><circle cx="158" cy="46" r="46"/><circle cx="270" cy="46" r="46"/><circle cx="382" cy="46" r="46"/><circle cx="494" cy="46" r="46"/>
+  <text x="90" y="168" font-size="92" font-weight="700" fill="#0f172a">lucky2049</text>
+  <text x="92" y="232" font-size="40" font-weight="600" fill="#334155">Verifiable Bitcoin-Hash Draws</text>
+  <text x="92" y="288" font-size="27" fill="#64748b">Super Lotto 5/35 + 2/12, derived deterministically from 144 Bitcoin block hashes.</text>
+  <text x="92" y="326" font-size="27" fill="#64748b">No server, no trust required — recompute every draw yourself.</text>
+
+  <!-- Generic ball motif: front (blue) + back (orange). Intentionally blank --
+       it's the brand mark / game shape, NOT a specific draw result. -->
+  <g transform="translate(92,398)">
+    <g>
+      <circle cx="44" cy="44" r="44" fill="#2563eb"/><circle cx="148" cy="44" r="44" fill="#2563eb"/><circle cx="252" cy="44" r="44" fill="#2563eb"/><circle cx="356" cy="44" r="44" fill="#2563eb"/><circle cx="460" cy="44" r="44" fill="#2563eb"/>
+      <circle cx="592" cy="44" r="44" fill="#f97316"/><circle cx="696" cy="44" r="44" fill="#f97316"/>
     </g>
-    <g fill="#f97316">
-      <circle cx="638" cy="46" r="46"/><circle cx="750" cy="46" r="46"/>
-    </g>
-    <g fill="#ffffff" font-size="40" font-weight="700" text-anchor="middle">
-      <text x="46" y="60">04</text><text x="158" y="60">06</text><text x="270" y="60">14</text><text x="382" y="60">19</text><text x="494" y="60">27</text>
-      <text x="638" y="60">03</text><text x="750" y="60">11</text>
+    <g fill="url(#gloss)">
+      <circle cx="44" cy="44" r="44"/><circle cx="148" cy="44" r="44"/><circle cx="252" cy="44" r="44"/><circle cx="356" cy="44" r="44"/><circle cx="460" cy="44" r="44"/>
+      <circle cx="592" cy="44" r="44"/><circle cx="696" cy="44" r="44"/>
     </g>
   </g>
-  <text x="92" y="572" font-size="26" font-weight="600" fill="#2563eb">lucky2049.com</text>
+  <text x="92" y="538" font-size="25" font-weight="600" fill="#475569">Front <tspan fill="#2563eb">5 / 35</tspan>  ·  Back <tspan fill="#f97316">2 / 12</tspan></text>
+  <text x="1108" y="538" font-size="26" font-weight="600" fill="#2563eb" text-anchor="end">lucky2049.com</text>
 </svg>
