@@ -30,6 +30,9 @@
         .badge.pass { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
         .badge.fail { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
         .badge.wait { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
+        .copy-btn { margin-left: 0.4rem; padding: 0.05rem 0.45rem; font-size: 0.72rem; cursor: pointer; flex: none;
+            border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-secondary); border-radius: var(--radius-sm); }
+        .copy-btn:hover { color: var(--text); }
         input#drawId { background: var(--surface); border: 1px solid var(--border-strong); color: var(--text);
             padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); width: 8rem; font-size: 1rem; }
         .note { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5; }
@@ -127,13 +130,48 @@
             return INDEX_P;
         }
 
-        // Fetch the 144 block hashes for a height range from a public explorer,
-        // trying mempool.space then blockstream.info per height (both CORS-enabled),
-        // so one explorer being down or rate-limiting doesn't block verification.
+        // Fetch the 144 block hashes for a height range from a public explorer
+        // (mempool.space then blockstream.info, both CORS-enabled).
+        // Fast path: GET /api/blocks/{h} returns 10 blocks descending from h, so a
+        // 144-block window is ~15 requests instead of 144. If a batch page fails or
+        // returns an unexpected shape, we fall back to one-request-per-height, so an
+        // explorer API change can never break verification (only slow it down).
+        var BATCH_APIS = [
+            { name: "mempool.space", url: function (h) { return "https://mempool.space/api/blocks/" + h; } },
+            { name: "blockstream.info", url: function (h) { return "https://blockstream.info/api/blocks/" + h; } }
+        ];
         var EXPLORERS = [
             { name: "mempool.space", url: function (h) { return "https://mempool.space/api/block-height/" + h; } },
             { name: "blockstream.info", url: function (h) { return "https://blockstream.info/api/block-height/" + h; } }
         ];
+        function progress(out, total) {
+            var done = 0; for (var i = 0; i < out.length; i++) if (out[i]) done++;
+            $("status").textContent = "Fetching block hashes from the chain… " + done + "/" + total;
+        }
+        async function fetchHashesBatched(start, end, out) {
+            var total = end - start + 1;
+            for (var top = end; top >= start; top -= 10) {   // /blocks/{top} -> [top .. top-9]
+                var page = null;
+                for (var i = 0; i < BATCH_APIS.length; i++) {
+                    try {
+                        var resp = await fetch(BATCH_APIS[i].url(top));
+                        if (!resp.ok) throw new Error("HTTP " + resp.status);
+                        var arr = await resp.json();
+                        if (!Array.isArray(arr) || !arr.length) throw new Error("bad shape");
+                        page = arr; break;
+                    } catch (e) { /* try the next explorer for this page */ }
+                }
+                if (!page) return false;   // a page failed on every explorer -> fall back
+                for (var j = 0; j < page.length; j++) {
+                    var hgt = page[j].height, id = (page[j].id || "").toLowerCase();
+                    if (typeof hgt !== "number" || !/^[0-9a-f]{64}$/.test(id)) return false;
+                    if (hgt >= start && hgt <= end) out[hgt - start] = id;
+                }
+                progress(out, total);
+            }
+            for (var k = 0; k < total; k++) if (!out[k]) return false;  // every slot filled?
+            return true;
+        }
         async function fetchHashAt(height) {
             var errs = [];
             for (var i = 0; i < EXPLORERS.length; i++) {
@@ -147,19 +185,22 @@
             }
             throw new Error("all explorers failed for height " + height + ": " + errs.join(", "));
         }
-        // Limited concurrency + a progress indicator.
-        async function fetchHashes(start, end) {
-            var heights = []; for (var h = start; h <= end; h++) heights.push(h);
-            var out = new Array(heights.length); var next = 0, done = 0;
+        async function fetchHashesPerHeight(start, end, out) {  // fallback: concurrency 8
+            var total = end - start + 1, next = 0;
             async function worker() {
-                while (next < heights.length) {
+                while (next < total) {
                     var idx = next++;
-                    out[idx] = await fetchHashAt(heights[idx]);
-                    done++;
-                    $("status").textContent = "Fetching block hashes from the chain… " + done + "/" + heights.length;
+                    out[idx] = await fetchHashAt(start + idx);
+                    progress(out, total);
                 }
             }
             await Promise.all(Array.from({ length: 8 }, worker));
+        }
+        async function fetchHashes(start, end) {
+            var out = new Array(end - start + 1);
+            if (await fetchHashesBatched(start, end, out)) return out;
+            for (var i = 0; i < out.length; i++) out[i] = undefined;  // drop partials, refetch cleanly
+            await fetchHashesPerHeight(start, end, out);
             return out;
         }
 
@@ -210,6 +251,43 @@
 
         function currentId() { var v = parseInt($("drawId").value, 10); return isNaN(v) ? 0 : v; }
         $("verifyForm").addEventListener("submit", function (e) { e.preventDefault(); history.replaceState(null, "", "?draw=" + currentId()); verify(currentId()); });
+        // Copy-to-clipboard for the hex fields a verifier cross-checks against the CLI.
+        // navigator.clipboard needs a secure context (the verifier also targets plain
+        // HTTP), so fall back to a hidden-textarea execCommand copy when it's absent.
+        function fallbackCopy(text) {
+            try {
+                var ta = document.createElement("textarea");
+                ta.value = text; ta.setAttribute("readonly", "");
+                ta.style.position = "fixed"; ta.style.opacity = "0";
+                document.body.appendChild(ta); ta.select();
+                var ok = document.execCommand("copy");
+                document.body.removeChild(ta);
+                return ok;
+            } catch (e) { return false; }
+        }
+        function copyText(text) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return fallbackCopy(text); });
+            }
+            return Promise.resolve(fallbackCopy(text));
+        }
+        ["vSeed", "vCommit", "vHead"].forEach(function (id) {
+            var span = $(id);
+            var btn = document.createElement("button");
+            btn.type = "button"; btn.className = "copy-btn"; btn.textContent = "copy";
+            btn.setAttribute("aria-label", "Copy " + id.slice(1).toLowerCase());
+            btn.addEventListener("click", function () {
+                var t = (span.textContent || "").trim();
+                if (id === "vHead") t = t.split("  ·  ")[0];   // copy just the head hash, not the meta
+                if (!t || t === "(none)" || t === "(recomputing…)" || t === "…") return;
+                copyText(t).then(function (ok) {
+                    btn.textContent = ok ? "copied" : "failed";
+                    setTimeout(function () { btn.textContent = "copy"; }, 1200);
+                });
+            });
+            span.parentNode.appendChild(btn);
+        });
+
         var q = new URLSearchParams(location.search).get("draw");
         if (q !== null) $("drawId").value = q;
         loadIndex();
