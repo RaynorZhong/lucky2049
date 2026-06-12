@@ -95,6 +95,17 @@ def commitment_for(prev_hex, draw_id, algo_version, seed_hex, front, back, start
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def head_for(draws):
+    """The published `head` object for a draws list (oldest-first): the last draw's
+    commitment + its id/count, or the genesis sentinel for an empty history. One
+    definition so both publishers (extend_pages, export_static) agree byte-for-byte."""
+    if not draws:
+        return {"head": GENESIS_PREV, "draw_id": -1, "count": 0, "algo_version": ALGO_VERSION}
+    last = draws[-1]
+    return {"head": last["commitment"], "draw_id": last["id"],
+            "count": len(draws), "algo_version": ALGO_VERSION}
+
+
 def _normalize(h):
     h = h.strip().lower()
     if len(h) != 64 or any(c not in "0123456789abcdef" for c in h):

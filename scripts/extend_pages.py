@@ -324,9 +324,7 @@ def main():
     if confirmed_tip is not None and note is None and added == 0 and draws:
         note = _reorg_audit_one(providers, draws[-1], confirmed_tip)
 
-    head = ({"head": prev_commitment, "draw_id": draws[-1]["id"],
-             "count": len(draws), "algo_version": ALGO} if draws
-            else {"head": verify.GENESIS_PREV, "draw_id": -1, "count": 0, "algo_version": ALGO})
+    head = verify.head_for(draws)
 
     if added:
         data["count"] = len(draws)

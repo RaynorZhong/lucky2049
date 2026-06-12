@@ -32,7 +32,7 @@ import time
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 
-from verify import GENESIS_PREV, ALGO_VERSION  # noqa: E402  (stdlib-only auditor)
+from verify import GENESIS_PREV, ALGO_VERSION, head_for  # noqa: E402  (stdlib-only auditor)
 import artifacts  # noqa: E402  (local: downstream beacon artifacts)
 
 
@@ -67,13 +67,7 @@ def read_draws(db_path):
         })
         prev = commitment
 
-    if records:
-        last = records[-1]
-        head = {"head": last["commitment"], "draw_id": last["id"],
-                "count": len(records), "algo_version": ALGO_VERSION}
-    else:
-        head = {"head": GENESIS_PREV, "draw_id": -1, "count": 0, "algo_version": ALGO_VERSION}
-    return records, head
+    return records, head_for(records)
 
 
 def main():

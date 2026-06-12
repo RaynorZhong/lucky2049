@@ -16,7 +16,7 @@ lucky2049 是一个**可验证的公共随机信标**:它只发布**开奖**(号
 | [`latest.json`](https://lucky2049.com/latest.json) | 最新一期 + 历史链头。**轮询它**看「有没有新开奖」。 |
 | [`feed.json`](https://lucky2049.com/feed.json) | 最近约 30 期的 [JSON Feed 1.1](https://jsonfeed.org)。**订阅它。** |
 | [`status.json`](https://lucky2049.com/status.json) | 最近一次刷新的健康度:逐源探测结果(Core 节点 / 浏览器)。 |
-| [`index.json`](https://lucky2049.com/index.json) | 全量历史:每一期 + 链头(约 2 MB,gzip 后约 350 KB)。 |
+| [`index.json`](https://lucky2049.com/index.json) | 全量历史:每一期 + 链头(约 2 MB,gzip 后约 0.5 MB,每天增长)。 |
 | [`head.json`](https://lucky2049.com/head.json) | 单独的承诺链头(承诺整段历史的 32 字节哈希)。 |
 | `anchors/<id>.head.json.ots` | 把链头外锚到比特币链的 OpenTimestamps 证明。 |
 
@@ -72,7 +72,7 @@ lucky2049 是一个**可验证的公共随机信标**:它只发布**开奖**(号
   "schema": "lucky2049/status/v1",
   "checked_at": "2026-06-11 07:20:12 UTC",
   "checked_at_unix": 1781075212,
-  "tip_source": "core",                    // 本次链尖由谁提供
+  "tip_source": "core",                    // 第一个应答的源(按优先级);不一定是法定确认所用的链尖
   "sources": [                             // 按优先序;"core" 仅在配置后出现
     { "name": "core", "ok": true, "tip": 953202, "ms": 312 },
     { "name": "mempool", "ok": true, "tip": 953202, "ms": 145 },

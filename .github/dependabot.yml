@@ -1,0 +1,9 @@
+# Keep the SHA-pinned GitHub Actions current: Dependabot bumps each pinned commit
+# (and its `# vX.Y.Z` comment) when the action publishes a new release, so pinning
+# for supply-chain safety doesn't mean silently running stale actions.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
