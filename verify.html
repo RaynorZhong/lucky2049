@@ -104,15 +104,23 @@
         }
         function eq(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 
-        async function loadIndex() {
-            if (INDEX) return INDEX;
-            INDEX = await (await fetch("./index.json")).json();
-            var h = INDEX.head || {};
-            var chain = V.verifyChain(INDEX);  // full-chain linkage scan (in-memory)
-            $("vHead").textContent = (h.head || "(none)") + "  ·  " + (INDEX.count || 0) + " draws"
-                + "  ·  chain " + (chain.ok ? "✓ intact" : "✗ BROKEN at " + chain.brokenAt);
-            $("vHead").style.color = chain.ok ? "" : "#b91c1c";
-            return INDEX;
+        var INDEX_P = null;  // in-flight/resolved load promise -- dedups concurrent callers
+        function loadIndex() {
+            // Promise-memoized: the eager call on page load and verify()'s own call
+            // race otherwise, each fetching index.json AND running the O(n) chain scan.
+            if (INDEX_P) return INDEX_P;
+            INDEX_P = (async function () {
+                var idx = await (await fetch("./index.json")).json();
+                var h = idx.head || {};
+                var chain = V.verifyChain(idx);  // full-chain linkage scan -- runs once
+                $("vHead").textContent = (h.head || "(none)") + "  ·  " + (idx.count || 0) + " draws"
+                    + "  ·  chain " + (chain.ok ? "✓ intact" : "✗ BROKEN at " + chain.brokenAt);
+                $("vHead").style.color = chain.ok ? "" : "#b91c1c";
+                INDEX = idx;
+                return idx;
+            })();
+            INDEX_P.catch(function () { INDEX_P = null; });  // let a failed load be retried
+            return INDEX_P;
         }
 
         // Fetch the 144 block hashes for a height range from a public explorer,

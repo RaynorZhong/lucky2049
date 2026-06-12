@@ -100,7 +100,14 @@
     <script>
         var $ = function (id) { return document.getElementById(id); };
         function balls(nums, extra) {
-            return (nums || []).map(function (n) { return '<div class="white-balls' + (extra ? ' ' + extra : '') + '">' + n + '</div>'; }).join("");
+            return (nums || []).map(function (n) { return '<div class="white-balls' + (extra ? ' ' + extra : '') + '">' + (n | 0) + '</div>'; }).join("");
+        }
+        // Escape any string before it goes into innerHTML (defense-in-depth: the
+        // homepage builds the table from same-origin JSON, but never trust strings).
+        function esc(s) {
+            return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+                return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+            });
         }
 
         // ---- next-draw ETA: 144 blocks/draw, ~10 min/block, 6 confirmations ----
@@ -214,32 +221,53 @@
             el.style.display = "flex";
         }
 
-        (async function () {
-            var idx;
-            try { idx = await (await fetch("./index.json")).json(); }
-            catch (e) { $("summary").textContent = "Could not load draw data."; return; }
-            var head = (idx.head || {}).head || "";
-            $("summary").textContent =
-                idx.count + " draws · algorithm " + idx.algo_version + " · history head " + head.slice(0, 16) + "…";
+        // Parse a draw's numbers from a feed item -- prefer the structured
+        // _lucky2049 extension; fall back to the display strings so an older
+        // feed.json (deploy skew) still renders, never showing "undefined".
+        function feedDraw(it) {
+            if (it._lucky2049) return it._lucky2049;
+            var m = /Front ([\d ]+) \| Back ([\d ]+)\s+\(heights (\d+)-(\d+)\)/.exec(it.content_text || "");
+            return m
+                ? { front: m[1].trim().split(/\s+/).map(Number), back: m[2].trim().split(/\s+/).map(Number), start_height: +m[3], end_height: +m[4] }
+                : { front: [], back: [] };
+        }
 
-            var draws = idx.draws || [];
-            var latest = draws.slice(-20).reverse();
-            $("rows").innerHTML = latest.map(function (d) {
-                return "<tr><td><a class='btn btn-sm' href='./verify.html?draw=" + d.id + "'>No. " + d.id + "</a></td>"
-                    + "<td data-label='Front'><div class='d-flex'>" + balls(d.front) + "</div></td>"
-                    + "<td data-label='Back'><div class='d-flex'>" + balls(d.back, "powerball") + "</div></td>"
-                    + "<td data-label='Heights' class='text-secondary'>" + d.start_height + " - " + d.end_height + "</td>"
-                    + "<td data-label='Time' class='text-secondary'>" + (d.timestamp || "") + "</td></tr>";
-            }).join("");
+        (async function () {
+            // The homepage only needs the head summary (latest.json, ~0.5 KB) and the
+            // recent-draws table (feed.json, ~9 KB) -- NOT the full multi-MB index.json,
+            // which grows ~1 draw/day forever. verify.html still loads it on demand.
+            var lat;
+            try { lat = await (await fetch("./latest.json")).json(); }
+            catch (e) { $("summary").textContent = "Could not load draw data."; return; }
+            var head = lat.head || {};
+            $("summary").textContent =
+                head.count + " draws · algorithm " + head.algo_version
+                + " · history head " + (head.head || "").slice(0, 16) + "…";
+
+            (async function () {
+                try {
+                    var feed = await (await fetch("./feed.json")).json();
+                    $("rows").innerHTML = (feed.items || []).slice(0, 20).map(function (it) {
+                        var x = feedDraw(it), id = Number(it.id);
+                        var when = it.date_published ? it.date_published.replace("T", " ").replace("Z", " UTC") : "";
+                        return "<tr><td><a class='btn btn-sm' href='./verify.html?draw=" + id + "'>No. " + id + "</a></td>"
+                            + "<td data-label='Front'><div class='d-flex'>" + balls(x.front) + "</div></td>"
+                            + "<td data-label='Back'><div class='d-flex'>" + balls(x.back, "powerball") + "</div></td>"
+                            + "<td data-label='Heights' class='text-secondary'>" + (x.start_height | 0) + " - " + (x.end_height | 0) + "</td>"
+                            + "<td data-label='Time' class='text-secondary'>" + esc(when) + "</td></tr>";
+                    }).join("");
+                } catch (e) { /* table is non-critical; the summary/ETA already rendered */ }
+            })();
 
             econBound();
             setInterval(econBound, 120000);
             sourceHealth();
             setInterval(sourceHealth, 120000);
-            if (draws.length) {
-                nextDraw(draws[draws.length - 1].id);
+            var latestId = (lat.latest && lat.latest.id != null) ? lat.latest.id : head.draw_id;
+            if (latestId != null && latestId >= 0) {
+                nextDraw(latestId);
                 setInterval(tick, 1000);
-                setInterval(function () { nextDraw(draws[draws.length - 1].id); }, 120000);
+                setInterval(function () { nextDraw(latestId); }, 120000);
             }
         })();
     </script>

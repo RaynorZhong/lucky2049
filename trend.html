@@ -154,9 +154,10 @@
             return '<table class="ttab">' + cg + '<thead>' + h + '</thead><tbody>' + body + '</tbody><tfoot>' + foot + '</tfoot></table>';
         }
 
+        var TREND_CACHE = {};  // memoize by window: DRAWS is fixed, so toggling 30/50/100 needn't rescan
         function render() {
             if (!DRAWS) return;
-            var t = window.Lucky2049Trend.computeTrend(DRAWS, { window: WINDOW });
+            var t = TREND_CACHE[WINDOW] || (TREND_CACHE[WINDOW] = window.Lucky2049Trend.computeTrend(DRAWS, { window: WINDOW }));
             document.getElementById('grid').innerHTML = buildTable(t);
             var rows = t.front.rows;
             if (rows.length) document.getElementById('range').textContent =
