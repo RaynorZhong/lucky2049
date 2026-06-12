@@ -57,6 +57,10 @@ to the in-browser verifier.
 ```jsonc
 { "schema": "lucky2049/latest/v1", "head": <head>, "latest": <draw record + verify_url> }
 ```
+Empty history (a fresh deployment with no draws yet): `latest` is `null` and `head` is the genesis
+sentinel `{ "head": "0"×64, "draw_id": -1, "count": 0, "algo_version": "v1" }` — the same sentinel
+`head.json` / `index.json.head` carry. The public site always has draws, so consumers only meet this
+when bootstrapping their own instance.
 
 ### `feed.json`
 Standard [JSON Feed 1.1](https://jsonfeed.org/version/1.1): `version`, `title`, `home_page_url`,

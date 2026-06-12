@@ -54,6 +54,9 @@ lucky2049 是一个**可验证的公共随机信标**:它只发布**开奖**(号
 ```jsonc
 { "schema": "lucky2049/latest/v1", "head": <head>, "latest": <单期记录 + verify_url> }
 ```
+空历史(全新部署、尚无任何一期):`latest` 为 `null`,`head` 为创世占位
+`{ "head": "0"×64, "draw_id": -1, "count": 0, "algo_version": "v1" }`——与 `head.json` /
+`index.json.head` 所带的占位相同。公开站点始终有数据,消费方只有在自建实例引导启动时才会遇到这种形态。
 
 ### `feed.json`
 标准 [JSON Feed 1.1](https://jsonfeed.org/version/1.1):`version`、`title`、`home_page_url`、
