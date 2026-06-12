@@ -108,7 +108,10 @@
             if (INDEX) return INDEX;
             INDEX = await (await fetch("./index.json")).json();
             var h = INDEX.head || {};
-            $("vHead").textContent = (h.head || "(none)") + "  ·  " + (INDEX.count || 0) + " draws";
+            var chain = V.verifyChain(INDEX);  // full-chain linkage scan (in-memory)
+            $("vHead").textContent = (h.head || "(none)") + "  ·  " + (INDEX.count || 0) + " draws"
+                + "  ·  chain " + (chain.ok ? "✓ intact" : "✗ BROKEN at " + chain.brokenAt);
+            $("vHead").style.color = chain.ok ? "" : "#b91c1c";
             return INDEX;
         }
 
@@ -175,9 +178,17 @@
             var r = V.generate(hashes);
             $("vSeed").textContent = r.seedHex;
             setBadge($("bResult"), eq(r.front, rec.front) && eq(r.back, rec.back));
-            if (rec.commitment && rec.prev_commitment) {
-                var c = V.commitmentFor(rec.prev_commitment, id, rec.algo_version, r.seedHex, r.front, r.back, start, end);
-                setBadge($("bChain"), c === rec.commitment);
+            if (rec.commitment) {
+                // Recompute from the REAL previous record's commitment (genesis for
+                // draw 0), not the record's self-declared prev -- so a rewritten
+                // neighbour is caught here instead of being silently trusted.
+                var prevRec = id === 0 ? null : (index.draws || []).find(function (d) { return d.id === id - 1; });
+                var linkedPrev = id === 0 ? V.GENESIS_PREV : (prevRec ? prevRec.commitment : null);
+                if (linkedPrev === null) { $("bChain").className = "badge wait"; $("bChain").textContent = "N/A"; }
+                else {
+                    var c = V.commitmentFor(linkedPrev, id, rec.algo_version, r.seedHex, r.front, r.back, start, end);
+                    setBadge($("bChain"), c === rec.commitment);
+                }
             } else { $("bChain").className = "badge wait"; $("bChain").textContent = "N/A"; }
             $("status").textContent = "Done — verified locally against the chain, no server trust.";
         }
