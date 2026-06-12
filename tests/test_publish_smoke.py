@@ -217,6 +217,40 @@ class TestPublishSmoke(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertEqual(_read_json(idx)["count"], 0)
 
+    def test_chain_continuation_from_existing_draw(self):
+        # The cron's real daily job: extend from the LAST published draw (N>0),
+        # threading prev_commitment from its commitment. The empty-start tests never
+        # exercise next_id/prev re-threading -- a regression there corrupts the chain.
+        DRAW0 = "def4cd38f63acc6f39a9c4dbe0df021c00e219907cbfeb58752be198092b0739"  # golden
+        with tempfile.TemporaryDirectory() as tmp:
+            draw0 = {"id": 0, "start_height": 0, "end_height": 143,
+                     "front": [11, 14, 19, 30, 35], "back": [2, 11], "algo_version": "v1",
+                     "commitment": DRAW0, "prev_commitment": verify.GENESIS_PREV, "timestamp": "t"}
+            idx = _write_index(tmp, [draw0])
+            fake_hashes = lambda s, e: ["%064x" % h for h in range(s, e + 1)]
+            # tip 500 -> confirmed 494: windows 144..287 (draw 1) and 288..431 (draw 2) mature.
+            rc = _run(idx, _agreeing(tip=500, hashes=fake_hashes))
+            self.assertEqual(rc, 0)
+            draws = _read_json(idx)["draws"]
+            self.assertEqual(len(draws), 3)
+            prev = DRAW0
+            for n in (1, 2):
+                d = draws[n]
+                self.assertEqual((d["id"], d["start_height"], d["end_height"]), (n, n * 144, n * 144 + 143))
+                self.assertEqual(d["prev_commitment"], prev, f"draw {n} must chain from draw {n-1}")
+                f, b, s = verify.generate(fake_hashes(n * 144, n * 144 + 143))
+                self.assertEqual(d["commitment"],
+                                 verify.commitment_for(prev, n, "v1", s, f, b, n * 144, n * 144 + 143))
+                prev = d["commitment"]
+            head = _read_json(os.path.join(tmp, "head.json"))
+            self.assertEqual((head["draw_id"], head["head"], head["count"]), (2, prev, 3))
+
+    def test_rpc_credentials_are_redacted_from_errors(self):
+        # A BITCOIN_RPC_URL password must never reach the PUBLIC status.json / logs.
+        msg = extend_pages._redact("urlopen error for https://bitcoinrpc:s3cret@btc-rpc.example/ : 403")
+        self.assertNotIn("s3cret", msg)
+        self.assertIn("https://***@btc-rpc.example/", msg)
+
     def test_publish_inputs_present(self):
         # The workflow copies exactly these into the published site; a rename that
         # silently drops one would 404 in production -- guard the list here.

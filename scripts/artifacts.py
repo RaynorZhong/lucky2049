@@ -15,6 +15,7 @@ changes are additive only, and the algorithm version is declared per draw.
 import datetime
 import json
 import os
+import tempfile
 
 SITE_URL = "https://lucky2049.com"
 FEED_ITEMS = 30  # most-recent draws carried in feed.json
@@ -32,9 +33,25 @@ def _rfc3339(ts):
     return ts.replace(" UTC", "Z").replace(" ", "T", 1) if ts else None
 
 
+def atomic_write_json(path, obj, **dumpargs):
+    """Write JSON atomically (temp file in the same dir + os.replace), so a crash
+    mid-write can never leave a truncated file that the next run fails to load."""
+    d = os.path.dirname(path) or "."
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-", suffix="-" + os.path.basename(path))
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(obj, f, **dumpargs)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def _write(out_dir, name, obj):
-    with open(os.path.join(out_dir, name), "w") as f:
-        json.dump(obj, f, separators=(",", ":"))
+    atomic_write_json(os.path.join(out_dir, name), obj, separators=(",", ":"))
 
 
 def write_latest(out_dir, draws, head):

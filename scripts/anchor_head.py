@@ -21,6 +21,7 @@ Usage:  python scripts/anchor_head.py [site-base-url-or-local-dir]
 import json
 import os
 import sys
+import tempfile
 import urllib.request
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -40,19 +41,20 @@ def load_head(base):
     return data.get("head") or {}
 
 
-def main():
-    head = load_head(BASE)
+def main(base=None, anchors_dir=None):
+    base = BASE if base is None else base
+    anchors_dir = os.path.join(REPO, "anchors") if anchors_dir is None else anchors_dir
+    head = load_head(base)
     draw_id = head.get("draw_id")
     head_hex = head.get("head")
     if draw_id is None or draw_id < 0 or not head_hex:
         print(f"no head to anchor (head = {head})")
         return 0
 
-    anchors = os.path.join(REPO, "anchors")
-    os.makedirs(anchors, exist_ok=True)
-    path = os.path.join(anchors, f"{draw_id:06d}.head.json")
+    os.makedirs(anchors_dir, exist_ok=True)
+    path = os.path.join(anchors_dir, f"{draw_id:06d}.head.json")
     if os.path.exists(path):
-        print(f"draw {draw_id} already anchored: {os.path.relpath(path, REPO)}")
+        print(f"draw {draw_id} already anchored: {os.path.basename(path)}")
         return 0
 
     record = {
@@ -61,10 +63,15 @@ def main():
         "count": head.get("count"),
         "algo_version": head.get("algo_version", "v1"),
     }
-    with open(path, "w") as f:
+    # Atomic write (temp + replace): a crash can't leave a truncated anchor file.
+    # Keep the exact format (indent=2, sorted, trailing newline) the existing OTS
+    # proofs were stamped against.
+    fd, tmp = tempfile.mkstemp(dir=anchors_dir, prefix=".tmp-", suffix=".head.json")
+    with os.fdopen(fd, "w") as f:
         json.dump(record, f, indent=2, sort_keys=True)
         f.write("\n")
-    print(f"wrote {os.path.relpath(path, REPO)} (head {head_hex[:16]}...)")
+    os.replace(tmp, path)
+    print(f"wrote {os.path.basename(path)} (head {head_hex[:16]}...)")
     return 0
 
 

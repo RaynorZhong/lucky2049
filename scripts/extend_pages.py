@@ -29,6 +29,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 
@@ -121,6 +122,15 @@ def _providers():
     return provs
 
 
+_CRED_RE = re.compile(r"(\w+://)[^/@\s]+@")
+
+
+def _redact(e):
+    """Strip URL userinfo (user:pass@) from an error before it reaches the PUBLIC
+    status.json / workflow logs -- a BITCOIN_RPC_URL password must never leak."""
+    return _CRED_RE.sub(r"\1***@", str(e))
+
+
 def _call(providers, op, *args):
     """Run `op` on each provider in turn; return (result, provider_name) for the
     first success. If every source fails, raise with all of their errors so the
@@ -130,7 +140,7 @@ def _call(providers, op, *args):
         try:
             return p[op](*args), p["name"]
         except Exception as e:  # network / HTTP / parse / RPC -- try the next source
-            errors.append(f"{p['name']}: {e}")
+            errors.append(f"{p['name']}: {_redact(e)}")
     raise RuntimeError(f"all sources failed for '{op}' -> " + " | ".join(errors))
 
 
@@ -149,7 +159,7 @@ def _probe_sources(providers):
             entry["ok"] = True
         except Exception as e:  # unreachable / auth / IBD -- recorded, not fatal
             entry["ok"] = False
-            entry["error"] = str(e)[:200]
+            entry["error"] = _redact(e)[:200]
         entry["ms"] = int((time.monotonic() - t0) * 1000)
         out.append(entry)
     return out
@@ -173,7 +183,7 @@ def _agreed_hashes(providers, start, end):
         try:
             results[p["name"]] = p["hashes"](start, end)
         except Exception as e:  # an unreachable source simply doesn't get a vote
-            errors.append(f"{p['name']}: {e}")
+            errors.append(f"{p['name']}: {_redact(e)}")
     groups = []  # [(hash_list, [source names])], most-agreed first
     for name, hl in results.items():
         for g in groups:
@@ -262,14 +272,12 @@ def main():
     if added:
         data["count"] = len(draws)
         data["head"] = head
-        with open(path, "w") as f:
-            json.dump(data, f, separators=(",", ":"))
+        artifacts.atomic_write_json(path, data, separators=(",", ":"))
 
     # Always (re)write head.json next to index.json, even on a no-op refresh: the
     # publish workflow only carries index.json forward, so without this head.json
     # would 404 after any refresh that adds 0 draws (the common case).
-    with open(os.path.join(os.path.dirname(path), "head.json"), "w") as f:
-        json.dump(head, f)
+    artifacts.atomic_write_json(os.path.join(os.path.dirname(path), "head.json"), head)
 
     # Downstream beacon artifacts (latest.json + feed.json), refreshed every run
     # like head.json so consumers always see the current head even on a no-op.

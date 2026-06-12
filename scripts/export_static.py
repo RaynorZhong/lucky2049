@@ -86,11 +86,11 @@ def main():
     records, head = read_draws(args.db)
 
     os.makedirs(args.out, exist_ok=True)
-    with open(os.path.join(args.out, "index.json"), "w") as f:
-        json.dump({"count": len(records), "head": head, "algo_version": ALGO_VERSION, "draws": records},
-                  f, separators=(",", ":"))
-    with open(os.path.join(args.out, "head.json"), "w") as f:
-        json.dump(head, f)
+    artifacts.atomic_write_json(
+        os.path.join(args.out, "index.json"),
+        {"count": len(records), "head": head, "algo_version": ALGO_VERSION, "draws": records},
+        separators=(",", ":"))
+    artifacts.atomic_write_json(os.path.join(args.out, "head.json"), head)
     artifacts.write_beacon(args.out, records, head)  # latest.json + feed.json
     # Offline rebuild: no sources probed; the next cron run writes real health.
     artifacts.write_status(args.out, [], time.time(), head,
