@@ -97,7 +97,7 @@ def main():
                            note="rebuilt offline from the local cache; sources not probed")
 
     web = os.path.join(REPO, "web")
-    for name in ("index.html", "verify.html", "stats.html", "trend.html"):
+    for name in ("index.html", "verify.html", "stats.html", "trend.html", "og.png"):
         shutil.copy(os.path.join(web, name), os.path.join(args.out, name))
     cname_src = os.path.join(web, "CNAME")
     if os.path.exists(cname_src):

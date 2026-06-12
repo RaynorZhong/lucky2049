@@ -13,7 +13,10 @@
     <meta property="og:title" content="Verify a Draw — lucky2049">
     <meta property="og:description" content="Recompute any draw in your browser from the chain and check it against the published result and commitment chain. No server trust.">
     <meta property="og:url" content="https://lucky2049.com/verify.html">
-    <meta name="twitter:card" content="summary">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta property="og:image" content="https://lucky2049.com/og.png">
+    <meta name="twitter:image" content="https://lucky2049.com/og.png">
+    <link rel="canonical" href="https://lucky2049.com/verify.html">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
@@ -46,12 +49,12 @@
         </header>
 
         <section>
-            <div class="row" style="align-items:center; gap:0.5rem; margin-bottom:1rem;">
+            <form id="verifyForm" class="row" style="align-items:center; gap:0.5rem; margin-bottom:1rem;">
                 <label for="drawId" class="k">Draw No.</label>
                 <input id="drawId" type="number" min="0" value="0">
-                <button class="btn" id="goBtn">Verify</button>
-                <span id="status" class="note"></span>
-            </div>
+                <button class="btn" id="goBtn" type="submit">Verify</button>
+                <span id="status" class="note" role="status" aria-live="polite"></span>
+            </form>
 
             <div class="glass-panel" id="panel" style="display:none;">
                 <div class="row"><span class="k">Draw</span><span id="vId" class="mono"></span></div>
@@ -60,8 +63,8 @@
 
                 <h2 style="margin-top:1rem;">Published result</h2>
                 <div class="row">
-                    <div class="d-flex" id="vFront"></div>
-                    <div class="d-flex" id="vBack"></div>
+                    <div class="d-flex" id="vFront" role="group" aria-label="Front numbers"></div>
+                    <div class="d-flex" id="vBack" role="group" aria-label="Back numbers"></div>
                 </div>
 
                 <div class="verify-grid" style="margin-top:1rem;">
@@ -205,7 +208,7 @@
         }
 
         function currentId() { var v = parseInt($("drawId").value, 10); return isNaN(v) ? 0 : v; }
-        $("goBtn").addEventListener("click", function () { history.replaceState(null, "", "?draw=" + currentId()); verify(currentId()); });
+        $("verifyForm").addEventListener("submit", function (e) { e.preventDefault(); history.replaceState(null, "", "?draw=" + currentId()); verify(currentId()); });
         var q = new URLSearchParams(location.search).get("draw");
         if (q !== null) $("drawId").value = q;
         loadIndex();

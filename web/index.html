@@ -13,7 +13,10 @@
     <meta property="og:title" content="lucky2049 — Verifiable Bitcoin-Hash Draws">
     <meta property="og:description" content="Super Lotto numbers derived deterministically from 144 Bitcoin block hashes. A transparent, independently verifiable draw — recompute it yourself.">
     <meta property="og:url" content="https://lucky2049.com/">
-    <meta name="twitter:card" content="summary">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta property="og:image" content="https://lucky2049.com/og.png">
+    <meta name="twitter:image" content="https://lucky2049.com/og.png">
+    <link rel="canonical" href="https://lucky2049.com/">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
@@ -46,7 +49,7 @@
             <div class="brand"><img src="./favicon.svg" alt=""><h1>lucky2049</h1></div>
             <p>Super Lotto numbers (5 of 1–35 + 2 of 1–12) derived deterministically from 144 Bitcoin
                 block hashes — a transparent, independently verifiable snapshot of the draw history.</p>
-            <p class="text-muted" id="summary" style="margin-top:0.4rem; font-size:0.9rem;"></p>
+            <p class="text-muted" id="summary" style="margin-top:0.4rem; font-size:0.9rem;" aria-live="polite"></p>
         </header>
 
         <section>
@@ -205,10 +208,14 @@
                 var sp = document.createElement("span");
                 var dot = document.createElement("span");
                 dot.className = "dot";
-                dot.style.background = !s.ok ? "#dc2626" : (s.tip >= best - 2 ? "#16a34a" : "#d97706");
+                dot.setAttribute("aria-hidden", "true");   // colour is decorative; state is in the text + aria-label
+                var lagging = s.ok && s.tip < best - 2;
+                var state = !s.ok ? "down" : (lagging ? "lagging" : "ok");
+                dot.style.background = !s.ok ? "#dc2626" : (lagging ? "#d97706" : "#16a34a");
                 sp.appendChild(dot);
-                sp.appendChild(document.createTextNode(s.name + (s.ok ? " · " + s.tip : " · down")));
-                sp.title = s.ok ? ("tip " + s.tip + " in " + s.ms + " ms") : (s.error || "unreachable");
+                sp.appendChild(document.createTextNode(s.name + (s.ok ? " · " + s.tip + (lagging ? " · lagging" : "") : " · down")));
+                sp.title = s.ok ? ("tip " + s.tip + " in " + s.ms + " ms" + (lagging ? " (lagging)" : "")) : (s.error || "unreachable");
+                sp.setAttribute("aria-label", s.name + " source " + state + (s.ok ? ", tip " + s.tip : ""));
                 el.appendChild(sp);
             });
             var age = Math.round((Date.now() / 1000 - st.checked_at_unix) / 60);
@@ -251,8 +258,8 @@
                         var x = feedDraw(it), id = Number(it.id);
                         var when = it.date_published ? it.date_published.replace("T", " ").replace("Z", " UTC") : "";
                         return "<tr><td><a class='btn btn-sm' href='./verify.html?draw=" + id + "'>No. " + id + "</a></td>"
-                            + "<td data-label='Front'><div class='d-flex'>" + balls(x.front) + "</div></td>"
-                            + "<td data-label='Back'><div class='d-flex'>" + balls(x.back, "powerball") + "</div></td>"
+                            + "<td data-label='Front'><div class='d-flex' role='group' aria-label='Front numbers'>" + balls(x.front) + "</div></td>"
+                            + "<td data-label='Back'><div class='d-flex' role='group' aria-label='Back numbers'>" + balls(x.back, "powerball") + "</div></td>"
                             + "<td data-label='Heights' class='text-secondary'>" + (x.start_height | 0) + " - " + (x.end_height | 0) + "</td>"
                             + "<td data-label='Time' class='text-secondary'>" + esc(when) + "</td></tr>";
                     }).join("");

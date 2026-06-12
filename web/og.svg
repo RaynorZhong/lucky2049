@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" font-family="Inter, Outfit, system-ui, sans-serif">
+  <rect width="1200" height="630" fill="#f4f5f7"/>
+  <rect x="0" y="0" width="1200" height="10" fill="#2563eb"/>
+  <rect x="0" y="620" width="1200" height="10" fill="#f97316"/>
+  <text x="90" y="180" font-size="92" font-weight="700" fill="#0f172a">lucky2049</text>
+  <text x="92" y="248" font-size="40" font-weight="600" fill="#334155">Verifiable Bitcoin-Hash Draws</text>
+  <text x="92" y="306" font-size="27" fill="#64748b">Super Lotto 5/35 + 2/12, derived deterministically from 144 Bitcoin block hashes.</text>
+  <text x="92" y="344" font-size="27" fill="#64748b">No server, no trust required — recompute every draw yourself.</text>
+  <!-- sample draw: front (blue) + back (orange) -->
+  <g transform="translate(92,420)">
+    <g fill="#2563eb">
+      <circle cx="46" cy="46" r="46"/><circle cx="158" cy="46" r="46"/><circle cx="270" cy="46" r="46"/><circle cx="382" cy="46" r="46"/><circle cx="494" cy="46" r="46"/>
+    </g>
+    <g fill="#f97316">
+      <circle cx="638" cy="46" r="46"/><circle cx="750" cy="46" r="46"/>
+    </g>
+    <g fill="#ffffff" font-size="40" font-weight="700" text-anchor="middle">
+      <text x="46" y="60">04</text><text x="158" y="60">06</text><text x="270" y="60">14</text><text x="382" y="60">19</text><text x="494" y="60">27</text>
+      <text x="638" y="60">03</text><text x="750" y="60">11</text>
+    </g>
+  </g>
+  <text x="92" y="572" font-size="26" font-weight="600" fill="#2563eb">lucky2049.com</text>
+</svg>
