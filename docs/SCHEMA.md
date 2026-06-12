@@ -82,8 +82,9 @@ Written by every publisher run (hourly): did each hash source answer, and what d
   "held": 6619                             // present only when a draw was held (source disagreement)
 }
 ```
-The homepage renders this as the "Sources (last refresh)" strip. An hourly cadence means
-`checked_at` older than ~2.5 h indicates the cron itself isn't running.
+The homepage renders this as the "Sources (last refresh)" strip. The cron is hourly, but
+GitHub Actions schedules drift, so `checked_at` older than ~4 h (not ~1 h) is what indicates
+the cron itself isn't running.
 
 Two special shapes: an **offline rebuild** (`export_static.py`, disaster recovery) writes a stub
 with `sources: []`, `tip_source: null` and a `note` field explaining that nothing was probed — the

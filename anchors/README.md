@@ -11,7 +11,7 @@ later rewrite past draws and recompute a consistent head: the old, anchored head
 is provably older than any such rewrite. This is the external, trustless anchor
 that completes the tamper-evidence story (the code provides the chain).
 
-Produced weekly by [`.github/workflows/anchor-head.yml`](../.github/workflows/anchor-head.yml)
+Produced daily by [`.github/workflows/anchor-head.yml`](../.github/workflows/anchor-head.yml)
 and also served at `https://lucky2049.com/anchors/`.
 
 ## Verify an anchor

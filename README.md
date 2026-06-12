@@ -126,7 +126,7 @@ commitment = SHA256( prev_commitment | draw_id | algo_version | seed | front | b
 ```
 
 So the entire history compresses to a single 32-byte **head** (`head.json`). Changing any draw
-changes the head. **The head is anchored weekly to the Bitcoin blockchain via
+changes the head. **The head is anchored daily to the Bitcoin blockchain via
 [OpenTimestamps](https://opentimestamps.org)**
 ([`.github/workflows/anchor-head.yml`](.github/workflows/anchor-head.yml); proofs are published
 under [`anchors/`](anchors/) and also served at `https://lucky2049.com/anchors/`), so an old head

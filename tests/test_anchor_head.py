@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Tests the weekly tamper-evidence anchor writer (scripts/anchor_head.py). Its
+Tests the daily tamper-evidence anchor writer (scripts/anchor_head.py). Its
 failure mode is uniquely silent: a schema drift that makes load_head() return an
 odd shape just prints "no head to anchor" and exits 0, so OpenTimestamps anchoring
 quietly stops forever while the workflow stays green. These pin the contract.

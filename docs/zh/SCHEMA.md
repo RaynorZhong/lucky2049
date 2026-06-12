@@ -79,8 +79,8 @@ lucky2049 是一个**可验证的公共随机信标**:它只发布**开奖**(号
   "held": 6619                             // 仅当有期被暂缓(源不一致)时出现
 }
 ```
-首页把它渲染成「Sources (last refresh)」状态条。cron 为每小时,所以 `checked_at`
-超过约 2.5 小时即说明 cron 本身没在跑。
+首页把它渲染成「Sources (last refresh)」状态条。cron 为每小时,但 GitHub Actions 定时会有抖动,
+所以 `checked_at` 超过约 4 小时(而非约 1 小时)才说明 cron 本身没在跑。
 
 两个特殊形态:**离线重建**(`export_static.py`,灾备)写入的是占位——`sources: []`、
 `tip_source: null` 外加一个 `note` 字段说明本次未探测,下一次小时级运行会用真实探测覆盖;

@@ -2,11 +2,13 @@ name: anchor-head
 
 # Externally anchor the commitment head with OpenTimestamps: timestamp the
 # current published head onto the Bitcoin blockchain (via OTS calendars) so the
-# operator can't silently rewrite history. Weekly + manual. Commits proofs to
-# main; the refresh-pages workflow then serves them at /anchors/.
+# operator can't silently rewrite history. Daily + manual -- a new head appears
+# ~daily as a window matures, so daily anchoring keeps the most-recent draws'
+# unanchored window to ~1 day (vs ~1 week before). Commits proofs to main; the
+# refresh-pages workflow then serves them at /anchors/.
 on:
   schedule:
-    - cron: "40 2 * * 0"   # weekly, Sunday ~02:40 UTC
+    - cron: "40 2 * * *"   # daily ~02:40 UTC
   workflow_dispatch: {}
 
 permissions:

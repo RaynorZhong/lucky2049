@@ -23,7 +23,7 @@ run on GitHub — no standing backend, no database on the critical path.
 - **Site** — `index.json` / `head.json` + `web/` (pages) + `static/` (JS/CSS) on `gh-pages`. Hosted
   on GitHub Pages' free CDN; `verify.html` recomputes SHA-256/HMAC in the browser, trusting no server.
 - **Head anchoring** — [`.github/workflows/anchor-head.yml`](../.github/workflows/anchor-head.yml)
-  weekly timestamps the current head (`head.json`) onto the Bitcoin chain via OpenTimestamps; proofs
+  daily timestamps the current head (`head.json`) onto the Bitcoin chain via OpenTimestamps; proofs
   are committed under `anchors/` and served at `/anchors/`.
 
 > A window takes ~144 blocks (≈24h) to mature; the `refresh-pages.yml` cron runs **hourly**, so a
@@ -91,7 +91,7 @@ the last refresh. Schema in `docs/SCHEMA.md`.
 ## Rebuild / disaster recovery
 
 `index.json` is the system's authoritative snapshot; back it up periodically (it lives in `gh-pages`
-git history, and you can also cut a Release). The head is anchored weekly to the Bitcoin chain via
+git history, and you can also cut a Release). The head is anchored daily to the Bitcoin chain via
 OpenTimestamps by `anchor-head.yml` (see `anchors/`), making the tamper-evidence sturdier. If
 `gh-pages` is ever lost, two rebuild paths:
 
