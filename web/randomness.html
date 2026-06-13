@@ -32,13 +32,31 @@
         .num { width: 4.5rem; }
         .scope { background: #f1f5f9; border: 1px solid #e2e8f0; color: #475569; padding: 0.6rem 0.9rem;
             border-radius: var(--radius-sm); font-size: 0.9rem; line-height: 1.5; }
-        .coins { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem; }
-        .coin { display: inline-flex; align-items: center; justify-content: center; width: 2.1rem; height: 2.1rem;
-            border-radius: 999px; font-weight: 700; font-size: 0.9rem; }
-        .coin.H { background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; }
-        .coin.T { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
-        .dice { display: flex; flex-wrap: wrap; gap: 0.1rem 0.4rem; margin-top: 0.5rem; }
-        .die { font-size: 2.7rem; line-height: 1.1; color: #0f172a; }
+        /* Bitcoin-style coin: a 3-D flip between a gold ₿ obverse (Heads) and a plain reverse (Tails). */
+        .coins { display: flex; flex-wrap: wrap; gap: 0.55rem; margin-top: 0.6rem; perspective: 700px; }
+        .bcoin { width: 3rem; height: 3rem; position: relative; transform-style: preserve-3d; transform: rotateY(0deg); }
+        .bcoin .cface { position: absolute; inset: 0; border-radius: 50%; backface-visibility: hidden;
+            display: flex; align-items: center; justify-content: center; color: #fff; font-style: italic; font-weight: 800;
+            font-size: 1.55rem; font-family: ui-sans-serif, "Segoe UI Symbol", "Noto Sans Symbols2", system-ui, sans-serif;
+            box-shadow: inset 0 0 0 2px rgba(255,255,255,.4), inset 0 -3px 7px rgba(0,0,0,.22), 0 2px 5px rgba(0,0,0,.28); }
+        .bcoin .front { background: radial-gradient(circle at 36% 30%, #ffd887, #f7931a 56%, #b86f12); }
+        .bcoin .front::before { content: "\20BF"; text-shadow: 0 1px 1px rgba(0,0,0,.3); }   /* ₿ */
+        .bcoin .back { transform: rotateY(180deg); background: radial-gradient(circle at 36% 30%, #fbe7c4, #d98e2b 56%, #9a5d12); }
+        .bcoin .back::before { content: ""; width: 58%; height: 58%; border-radius: 50%;
+            border: 2px solid rgba(255,255,255,.6); box-shadow: inset 0 0 0 4px rgba(154,93,18,.3); }
+        /* Bitcoin-orange die with white pips. */
+        .dice { display: flex; flex-wrap: wrap; gap: 0.55rem; margin-top: 0.6rem; }
+        .bdie { width: 3rem; height: 3rem; border-radius: 0.6rem; padding: 0.34rem; display: grid;
+            grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+            background: linear-gradient(145deg, #ffb24d, #f7931a 55%, #e07c0a);
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,.35), inset 0 -3px 7px rgba(0,0,0,.2), 0 2px 5px rgba(0,0,0,.28); }
+        .bdie .pip { align-self: center; justify-self: center; width: 0.5rem; height: 0.5rem; border-radius: 50%;
+            background: #fff; box-shadow: 0 1px 1px rgba(0,0,0,.28); opacity: 0; transition: opacity .12s; }
+        .bdie .pip.on { opacity: 1; }
+        .bdie.rolling { animation: tumble .55s ease-in-out both; }
+        @keyframes tumble { 0% { transform: rotate(0) scale(1); } 25% { transform: rotate(-13deg) scale(1.07); }
+            50% { transform: rotate(11deg) scale(.95); } 75% { transform: rotate(-6deg) scale(1.03); } 100% { transform: rotate(0) scale(1); } }
+        @media (prefers-reduced-motion: reduce) { .bcoin { transition: none !important; } .bdie.rolling { animation: none; } }
         .tally { color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem; }
         .seed-row { margin-top: 0.5rem; }
         details.how { margin-top: 1rem; }
@@ -117,7 +135,67 @@
     <script>
         var V = window.Lucky2049Verify, Rnd = window.Lucky2049Random;
         var $ = function (id) { return document.getElementById(id); };
-        var DICE = ["", "⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];  // ⚀⚁⚂⚃⚄⚅
+        // ---- reveal animation (purely visual: the results are already deterministic) ----
+        var PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+        var REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        var animTimers = [];
+        function resetAnim() { animTimers.forEach(clearInterval); animTimers = []; }
+
+        function makeCoin(face) {
+            var c = document.createElement("div");
+            c.className = "bcoin"; c.setAttribute("role", "img");
+            c.setAttribute("aria-label", face === "H" ? "Heads" : "Tails");
+            c.innerHTML = '<div class="cface front"></div><div class="cface back"></div>';
+            return c;
+        }
+        function setPips(die, v) {
+            for (var k = 0; k < 9; k++) die.children[k].className = "pip" + (PIPS[v].indexOf(k) >= 0 ? " on" : "");
+        }
+        function makeDie(v) {
+            var d = document.createElement("div");
+            d.className = "bdie"; d.setAttribute("role", "img"); d.setAttribute("aria-label", "Die showing " + v);
+            for (var k = 0; k < 9; k++) d.appendChild(document.createElement("div")).className = "pip";
+            return d;
+        }
+        // Coins flip in a wave, each landing on its computed face (back = Tails).
+        function flipCoins(faces) {
+            var box = $("coins"); box.innerHTML = "";
+            var made = faces.map(function (face) { var c = makeCoin(face); box.appendChild(c); return c; });
+            if (REDUCED) { made.forEach(function (c, i) { c.style.transform = "rotateY(" + (faces[i] === "T" ? 180 : 0) + "deg)"; }); return; }
+            void box.offsetWidth;  // one reflow, so every coin transitions from 0deg
+            made.forEach(function (c, i) {
+                c.style.transition = "transform .9s cubic-bezier(.2,.7,.3,1)";
+                c.style.transitionDelay = (i * 0.035) + "s";
+                c.style.transform = "rotateY(" + (4 * 360 + (faces[i] === "T" ? 180 : 0)) + "deg)";
+            });
+        }
+        // Dice tumble (one shared timer cycles faces, then settles on the computed value).
+        function tumbleDice(values) {
+            var box = $("dice"); box.innerHTML = "";
+            var els = values.map(function (v) { var d = makeDie(v); d.dataset.v = v; box.appendChild(d); return d; });
+            if (REDUCED) { els.forEach(function (d) { setPips(d, +d.dataset.v); }); return; }
+            els.forEach(function (d, i) { d.classList.add("rolling"); d.style.animationDelay = (i * 0.025) + "s"; });
+            var n = 0, iv = setInterval(function () {
+                var settle = ++n >= 7;
+                els.forEach(function (d) { setPips(d, settle ? +d.dataset.v : 1 + (Math.random() * 6 | 0)); });
+                if (settle) clearInterval(iv);
+            }, 70);
+            animTimers.push(iv);
+        }
+        // Seed reveal: hex resolves left-to-right out of scramble ("the hash is hashed into this seed").
+        function revealSeed(el, finalHex, done) {
+            if (REDUCED) { el.textContent = finalHex; done(); return; }
+            var chars = "0123456789abcdef", start = null;
+            var iv = setInterval(function () {
+                start = start || performance.now();
+                var t = (performance.now() - start) / 480;
+                if (t >= 1) { clearInterval(iv); el.textContent = finalHex; done(); return; }
+                var keep = (finalHex.length * t) | 0, s = finalHex.slice(0, keep);
+                for (var k = keep; k < finalHex.length; k++) s += chars[Math.random() * 16 | 0];
+                el.textContent = s;
+            }, 40);
+            animTimers.push(iv);
+        }
 
         // Block-hash lookups reuse the same public explorers as the verifier.
         var EXPLORERS = ["https://mempool.space/api", "https://blockstream.info/api"];
@@ -164,19 +242,26 @@
 
             $("hashInput").value = hash;
             $("vHash").textContent = hash;
-            $("vSeed").textContent = V.hex(Rnd.seedFor(hash));
-
-            var coins = Rnd.coinFlips(hash, n);
-            $("coins").innerHTML = coins.map(function (c) { return '<span class="coin ' + c + '">' + c + '</span>'; }).join("");
+            var seedHex = V.hex(Rnd.seedFor(hash));
+            var coins = Rnd.coinFlips(hash, n), dice = Rnd.diceRolls(hash, m);
             var heads = coins.filter(function (c) { return c === "H"; }).length;
-            $("coinTally").textContent = n ? (heads + " Heads · " + (n - heads) + " Tails") : "—";
 
-            var dice = Rnd.diceRolls(hash, m);
-            $("dice").innerHTML = dice.map(function (d) { return '<span class="die" title="' + d + '">' + DICE[d] + '</span>'; }).join("");
-            $("diceTally").textContent = m ? ("rolls: " + dice.join(" ")) : "—";
-
+            resetAnim();
             $("panel").style.display = "block";
-            $("status").textContent = "Done — recomputed locally, no server trust.";
+            $("status").textContent = "Hashing…";
+            // Reveal in derivation order: the seed resolves out of scramble, then coins flip, then dice tumble.
+            revealSeed($("vSeed"), seedHex, function () {
+                if (myRun !== RUN) return;
+                $("status").textContent = "Flipping…";
+                flipCoins(coins);
+                $("coinTally").textContent = n ? (heads + " Heads · " + (n - heads) + " Tails") : "—";
+                setTimeout(function () {
+                    if (myRun !== RUN) return;
+                    tumbleDice(dice);
+                    $("diceTally").textContent = m ? ("rolls: " + dice.join(" ")) : "—";
+                    setTimeout(function () { if (myRun === RUN) $("status").textContent = "Done — recomputed locally, no server trust."; }, 750);
+                }, n ? 480 : 0);
+            });
         }
 
         $("form").addEventListener("submit", function (e) { e.preventDefault(); run(); });
