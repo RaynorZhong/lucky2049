@@ -41,21 +41,20 @@
             box-shadow: inset 0 0 0 2px rgba(255,255,255,.4), inset 0 -3px 7px rgba(0,0,0,.22), 0 2px 5px rgba(0,0,0,.28); }
         .bcoin .front { background: radial-gradient(circle at 36% 30%, #ffd887, #f7931a 56%, #b86f12); }
         .bcoin .front::before { content: "\20BF"; text-shadow: 0 1px 1px rgba(0,0,0,.3); }   /* ₿ */
-        /* Tails: a metallic circuit-board back -- copper traces, solder pads and a central
-           chip on gunmetal, to play up the digital/electronic nature of the randomness. */
-        .bcoin .back { transform: rotateY(180deg); background-color: #2b3039;
+        /* Tails: the same orange coin as the obverse, overlaid with a WHITE circuit board
+           (traces, solder pads, a central chip) -- electronic feel, harmonious with the ₿ front. */
+        .bcoin .back { transform: rotateY(180deg);
             background-image:
-                radial-gradient(circle at 50% 40%, rgba(255,255,255,.16), transparent 55%),
-                radial-gradient(circle at 25% 27%, #e0962e 0 1.7px, transparent 2.1px),
-                radial-gradient(circle at 75% 29%, #e0962e 0 1.7px, transparent 2.1px),
-                radial-gradient(circle at 28% 75%, #e0962e 0 1.7px, transparent 2.1px),
-                radial-gradient(circle at 73% 73%, #e0962e 0 1.7px, transparent 2.1px),
-                repeating-linear-gradient(90deg, transparent 0 8px, rgba(224,150,46,.5) 8px 9px),
-                repeating-linear-gradient(0deg, transparent 0 8px, rgba(224,150,46,.3) 8px 9px),
-                linear-gradient(135deg, #3b424d, #21262e); }
+                radial-gradient(circle at 25% 27%, #fff 0 1.7px, transparent 2.1px),
+                radial-gradient(circle at 75% 29%, #fff 0 1.7px, transparent 2.1px),
+                radial-gradient(circle at 28% 75%, #fff 0 1.7px, transparent 2.1px),
+                radial-gradient(circle at 73% 73%, #fff 0 1.7px, transparent 2.1px),
+                repeating-linear-gradient(90deg, transparent 0 8px, rgba(255,255,255,.55) 8px 9px),
+                repeating-linear-gradient(0deg, transparent 0 8px, rgba(255,255,255,.38) 8px 9px),
+                radial-gradient(circle at 36% 30%, #ffd887, #f7931a 56%, #b86f12); }
         .bcoin .back::before { content: ""; width: 34%; height: 34%; border-radius: 3px;
-            background: linear-gradient(145deg, #4b535f, #2a2f38);
-            box-shadow: inset 0 0 0 1.5px rgba(224,150,46,.8), 0 1px 2px rgba(0,0,0,.45); }
+            background: rgba(255,255,255,.12);
+            box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.85), 0 1px 1px rgba(0,0,0,.2); }
         /* Bitcoin-orange die with white pips. */
         .dice { display: flex; flex-wrap: wrap; gap: 0.55rem; margin-top: 0.6rem; }
         .bdie { width: 3rem; height: 3rem; border-radius: 0.6rem; padding: 0.34rem; display: grid;
