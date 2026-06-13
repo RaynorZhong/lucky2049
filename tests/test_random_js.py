@@ -64,6 +64,22 @@ class TestRandomnessGolden(unittest.TestCase):
             with self.assertRaises(ValueError):
                 R.dice_rolls(GENESIS, 5, sides=s)
 
+    def test_beacon_series_per_block_coin_and_per_window_dice(self):
+        synth = ["%064x" % h for h in range(6)]
+        self.assertEqual(R.coin_for_block(GENESIS), "T")
+        self.assertEqual(R.coin_for_block(GENESIS), R.coin_flips(GENESIS, 1)[0])  # same as a 1-flip
+        self.assertEqual(R.window_seed(synth).hex(),
+                         "ece0c279ff4cdc979d4b24aa942f4fe2ecaf36922596354302199dd873956617")
+        self.assertEqual(R.dice_for_window(synth), 1)
+        self.assertIn(R.dice_for_window(synth), range(1, 7))
+        # the die depends on EVERY block in the window (change one -> different seed)
+        other = synth[:1] + ["%064x" % 999] + synth[2:]
+        self.assertNotEqual(R.window_seed(synth), R.window_seed(other))
+        with self.assertRaises(ValueError):
+            R.window_seed([])
+        with self.assertRaises(ValueError):
+            R.dice_for_window([synth[0], "not-hex"])
+
 
 NODE_SCRIPT = r"""
 const V = require('./static/verify.js');
@@ -99,6 +115,18 @@ class TestRandomnessJs(unittest.TestCase):
         )
         out = subprocess.check_output([NODE, "-e", script], cwd=REPO_ROOT, text=True)
         self.assertEqual(json.loads(out), [True, True, True, True])  # JS throws on each, mirroring Python
+
+    def test_js_beacon_series_matches_python(self):
+        script = (
+            "const V=require('./static/verify.js');const R=require('./static/randomness.js');"
+            "const w=[];for(let h=0;h<6;h++)w.push(h.toString(16).padStart(64,'0'));"
+            "console.log(JSON.stringify({coin:R.coinForBlock('%s'),"
+            "wseed:V.hex(R.windowSeed(w)),wdie:R.diceForWindow(w)}));" % GENESIS
+        )
+        got = json.loads(subprocess.check_output([NODE, "-e", script], cwd=REPO_ROOT, text=True))
+        synth = ["%064x" % h for h in range(6)]
+        self.assertEqual(got, {"coin": R.coin_for_block(GENESIS),
+                               "wseed": R.window_seed(synth).hex(), "wdie": R.dice_for_window(synth)})
 
 
 if __name__ == "__main__":

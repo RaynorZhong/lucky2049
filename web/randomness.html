@@ -6,13 +6,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://mempool.space https://blockstream.info; base-uri 'self'; form-action 'self'">
     <title>Verifiable Randomness — lucky2049</title>
-    <meta name="description" content="A demonstration: turn one immutable Bitcoin block hash into reproducible, unbiased coin flips and dice rolls — recomputed in your browser, verifiable by anyone. Not a game.">
+    <meta name="description" content="Live from the Bitcoin chain: every block flips a coin, every 6 blocks rolls a die — derived from the block hashes the network mines, not chosen by anyone, recomputed in your browser. Not a game.">
     <meta name="theme-color" content="#f4f5f7">
     <link rel="icon" href="./favicon.svg" type="image/svg+xml">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="lucky2049">
     <meta property="og:title" content="Verifiable Randomness — lucky2049">
-    <meta property="og:description" content="Turn one Bitcoin block hash into reproducible, unbiased coin flips and dice rolls in your browser — the same verifiable-randomness machinery behind the draw. Not a game.">
+    <meta property="og:description" content="Live from the Bitcoin chain: every block flips a coin, every 6 blocks rolls a die — unbiased, reproducible, recomputed in your browser. The same machinery behind the draw. Not a game.">
     <meta property="og:url" content="https://lucky2049.com/randomness.html">
     <meta name="twitter:card" content="summary_large_image">
     <meta property="og:image" content="https://lucky2049.com/og.png">
@@ -23,16 +23,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./style.css">
     <style>
-        .row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
-        .k { color: var(--text-secondary); }
         .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; word-break: break-all; }
-        .field { background: var(--surface); border: 1px solid var(--border-strong); color: var(--text);
-            padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); font-size: 1rem; }
-        #hashInput { flex: 1 1 22rem; min-width: 14rem; }
-        .num { width: 4.5rem; }
         .scope { background: #f1f5f9; border: 1px solid #e2e8f0; color: #475569; padding: 0.6rem 0.9rem;
             border-radius: var(--radius-sm); font-size: 0.9rem; line-height: 1.5; }
-        /* Bitcoin-style coin: a 3-D flip between a gold ₿ obverse (Heads) and a plain reverse (Tails). */
+        .live { display: flex; align-items: center; gap: 0.45rem; color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem; }
+        .livedot { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: #16a34a; flex: none;
+            box-shadow: 0 0 0 0 rgba(22,163,74,.5); animation: pulse 2.2s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(22,163,74,.5); } 70% { box-shadow: 0 0 0 6px rgba(22,163,74,0); } 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0); } }
+        h2 .sub { font-weight: 400; font-size: 0.95rem; color: var(--text-secondary); }
+        /* Bitcoin-style coin: a 3-D flip between a gold ₿ obverse (Heads) and a white-circuit reverse (Tails). */
         .coins { display: flex; flex-wrap: wrap; gap: 0.55rem; margin-top: 0.6rem; perspective: 700px; }
         .bcoin { width: 3rem; height: 3rem; position: relative; transform-style: preserve-3d; transform: rotateY(0deg); }
         .bcoin .cface { position: absolute; inset: 0; border-radius: 50%; backface-visibility: hidden;
@@ -42,8 +41,6 @@
             box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.6), inset 0 0 0 4px rgba(176,104,16,.5), 0 1px 2px rgba(0,0,0,.3); }
         .bcoin .front { background: radial-gradient(circle at 50% 42%, #ffce74, #f6a32c 80%); }
         .bcoin .front::before { content: "\20BF"; text-shadow: 0 1px 1px rgba(0,0,0,.3); }   /* ₿ */
-        /* Tails: the same orange coin as the obverse, overlaid with a WHITE circuit board
-           (traces, solder pads, a central chip) -- electronic feel, harmonious with the ₿ front. */
         .bcoin .back { transform: rotateY(180deg);
             background-image:
                 radial-gradient(circle at 25% 27%, #fff 0 1.7px, transparent 2.1px),
@@ -70,8 +67,7 @@
             50% { transform: rotate(11deg) scale(.95); } 75% { transform: rotate(-6deg) scale(1.03); } 100% { transform: rotate(0) scale(1); } }
         @media (prefers-reduced-motion: reduce) { .bcoin { transition: none !important; } .bdie.rolling { animation: none; } }
         .tally { color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem; }
-        .seed-row { margin-top: 0.5rem; }
-        details.how { margin-top: 1rem; }
+        details.how { margin-top: 1.25rem; }
         details.how summary { cursor: pointer; font-weight: 600; }
         details.how code { background: var(--surface-2); padding: 0.05rem 0.3rem; border-radius: 4px; }
     </style>
@@ -82,9 +78,10 @@
         <header>
             <div class="brand"><img src="./favicon.svg" alt=""><h1>Verifiable Randomness</h1></div>
             <p class="note">
-                One public, immutable Bitcoin block hash → reproducible, <strong>unbiased</strong> coin flips and
-                dice rolls, computed <strong>in your browser</strong> (its own SHA-256/HMAC, no server). The same
-                machinery that picks the lottery numbers — anyone with the hash gets the exact same outcomes.
+                Live from the Bitcoin chain: <strong>every block flips a coin</strong>, <strong>every 6 blocks rolls a die</strong> —
+                derived from the block hashes the network mines, <strong>not chosen by anyone</strong>. Computed
+                <strong>in your browser</strong> (its own SHA-256/HMAC, no server); anyone recomputes the same.
+                It's the same verifiable-randomness machinery that picks the lottery numbers.
             </p>
             <p class="scope" style="margin-top:0.75rem;">
                 <strong>This is a demonstration, not a game.</strong> No betting, no money, no stakes — just a
@@ -93,45 +90,30 @@
         </header>
 
         <section>
-            <form id="form" class="row" style="margin-bottom:1rem;">
-                <input id="hashInput" class="field" type="text" inputmode="text"
-                    placeholder="block height (e.g. 800000) or a 64-hex block hash" aria-label="Block height or 64-hex block hash">
-                <button class="btn" id="latestBtn" type="button">Use latest block</button>
-            </form>
-            <div class="row" style="margin-bottom:1rem;">
-                <label class="k" for="nCoins">Coin flips</label>
-                <input id="nCoins" class="field num" type="number" min="0" max="256" value="20">
-                <label class="k" for="nDice" style="margin-left:0.75rem;">Dice rolls</label>
-                <input id="nDice" class="field num" type="number" min="0" max="200" value="12">
-                <button class="btn" id="goBtn" type="submit" form="form">Generate</button>
-                <span id="status" class="note" role="status" aria-live="polite"></span>
-            </div>
+            <div class="live" id="live"></div>
 
-            <div class="glass-panel" id="panel" style="display:none;">
-                <div class="row" style="justify-content:space-between;"><span class="k">Block hash (seed input)</span><span id="vHash" class="mono"></span></div>
-                <div class="row seed-row" style="justify-content:space-between;"><span class="k">seed = SHA-256(hash)</span><span id="vSeed" class="mono"></span></div>
+            <h2 style="margin-top:0.5rem;">Coin flips <span class="sub">— one per block</span></h2>
+            <div class="coins" id="coins" role="group" aria-label="Recent coin flips, one per Bitcoin block"></div>
+            <div class="tally" id="coinInfo"></div>
 
-                <h2 style="margin-top:1.25rem;">Coin flips</h2>
-                <div class="coins" id="coins" role="group" aria-label="Coin flips"></div>
-                <div class="tally" id="coinTally"></div>
+            <h2 style="margin-top:1.5rem;">Dice rolls <span class="sub">— one per 6 blocks</span></h2>
+            <div class="dice" id="dice" role="group" aria-label="Recent dice rolls, one per six-block window"></div>
+            <div class="tally" id="diceInfo"></div>
 
-                <h2 style="margin-top:1.25rem;">Dice rolls</h2>
-                <div class="dice" id="dice" role="group" aria-label="Dice rolls"></div>
-                <div class="tally" id="diceTally"></div>
-
-                <details class="how">
-                    <summary>How each result is derived (recompute it yourself)</summary>
-                    <p class="note" style="margin-top:0.5rem;">
-                        <code>seed = SHA-256(hash)</code>. A byte stream is
-                        <code>HMAC-SHA-256(seed, "coin:i")</code> / <code>"dice:i"</code> for i = 0, 1, 2, …
-                        <strong>Coin</strong> flip j = bit j of the coin stream (MSB-first), 1 → Heads, 0 → Tails — a fair bit.
-                        <strong>Die</strong> = the next byte b of the dice stream with b &lt; 252, value <code>b mod 6 + 1</code>
-                        (bytes 252–255 are rejected so all six faces stay equally likely — no modulo bias).
-                        Full spec: <a href="https://github.com/RaynorZhong/lucky2049/blob/main/docs/RANDOMNESS.md" target="_blank" rel="noopener">docs/RANDOMNESS.md ↗</a>.
-                        Prefer a terminal? <span class="mono">python randomness.py</span> does the same.
-                    </p>
-                </details>
-            </div>
+            <details class="how">
+                <summary>How each result is derived (recompute it yourself)</summary>
+                <p class="note" style="margin-top:0.5rem;">
+                    <strong>Coin</strong> (one per block): <code>seed = SHA-256(block hash)</code>, then the first bit
+                    (MSB-first) of <code>HMAC-SHA-256(seed, "coin:0")</code> — <code>1 → Heads, 0 → Tails</code>, a fair bit.
+                    <strong>Die</strong> (one per 6-block window): <code>seed = SHA-256(the 6 block hashes joined)</code>
+                    (like the draw concatenating its 144), then the first byte <code>b &lt; 252</code> of
+                    <code>HMAC-SHA-256(seed, "dice:0")</code> gives <code>b mod 6 + 1</code> (bytes 252–255 rejected, so
+                    no modulo bias). There's no input: the chain's blocks drive it, and you can recompute any block or
+                    window yourself. Full spec:
+                    <a href="https://github.com/RaynorZhong/lucky2049/blob/main/docs/RANDOMNESS.md" target="_blank" rel="noopener">docs/RANDOMNESS.md ↗</a>.
+                    Prefer a terminal? <span class="mono">python randomness.py</span> does the same.
+                </p>
+            </details>
         </section>
 
         <nav class="nav-links" style="margin-top:1.5rem;">
@@ -147,145 +129,201 @@
     <script>
         var V = window.Lucky2049Verify, Rnd = window.Lucky2049Random;
         var $ = function (id) { return document.getElementById(id); };
-        // ---- reveal animation (purely visual: the results are already deterministic) ----
-        var PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
         var REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        var animTimers = [];
-        function resetAnim() { animTimers.forEach(clearInterval); animTimers = []; }
 
-        function makeCoin(face) {
+        // ---- config ----
+        var COIN_N = 18, DICE_M = 6, WINDOW = 6, POLL_MS = 60000;
+        var NEEDED = Math.max(COIN_N, DICE_M * WINDOW) + WINDOW + 2;   // recent blocks to keep
+        var EXPLORERS = ["https://mempool.space/api", "https://blockstream.info/api"];
+
+        // ---- state ----
+        var blocks = {};            // height -> hash, for the recent window
+        var tip = null;             // current chain tip height
+        var shownCoins = [];        // heights currently rendered, newest first
+        var shownWindows = [];      // window indices currently rendered, newest first
+        var lastUpdate = 0, animTimers = [], polling = false;
+
+        // ---- coin / die elements (visual only; values are deterministic) ----
+        var PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+        function makeCoin(face, h) {
             var c = document.createElement("div");
             c.className = "bcoin"; c.setAttribute("role", "img");
-            c.setAttribute("aria-label", face === "H" ? "Heads" : "Tails");
+            c.setAttribute("aria-label", (face === "H" ? "Heads" : "Tails") + ", block " + h);
+            c.title = "block #" + h + " → " + (face === "H" ? "Heads" : "Tails");
             c.innerHTML = '<div class="cface front"></div><div class="cface back"></div>';
             return c;
         }
         function setPips(die, v) {
             for (var k = 0; k < 9; k++) die.children[k].className = "pip" + (PIPS[v].indexOf(k) >= 0 ? " on" : "");
         }
-        function makeDie(v) {
+        function makeDie(v, lo, hi) {
             var d = document.createElement("div");
-            d.className = "bdie"; d.setAttribute("role", "img"); d.setAttribute("aria-label", "Die showing " + v);
+            d.className = "bdie"; d.setAttribute("role", "img");
+            d.setAttribute("aria-label", "Die showing " + v + ", blocks " + lo + " to " + hi);
+            d.title = "blocks #" + lo + "–#" + hi + " → " + v;
             for (var k = 0; k < 9; k++) d.appendChild(document.createElement("div")).className = "pip";
             return d;
         }
-        // Coins flip in a wave, each landing on its computed face (back = Tails).
-        function flipCoins(faces) {
-            var box = $("coins"); box.innerHTML = "";
-            var made = faces.map(function (face) { var c = makeCoin(face); box.appendChild(c); return c; });
-            if (REDUCED) { made.forEach(function (c, i) { c.style.transform = "rotateY(" + (faces[i] === "T" ? 180 : 0) + "deg)"; }); return; }
-            void box.offsetWidth;  // one reflow, so every coin transitions from 0deg
-            made.forEach(function (c, i) {
-                c.style.transition = "transform 1.3s cubic-bezier(.2,.7,.3,1)";
-                c.style.transitionDelay = (i * 0.06) + "s";
-                c.style.transform = "rotateY(" + (4 * 360 + (faces[i] === "T" ? 180 : 0)) + "deg)";
-            });
+        function flipIn(c, face, delay) {
+            var finalDeg = (face === "T" ? 180 : 0);
+            if (REDUCED) { c.style.transform = "rotateY(" + finalDeg + "deg)"; return; }
+            void c.offsetWidth;  // reflow so the transition runs from 0deg
+            c.style.transition = "transform 1.3s cubic-bezier(.2,.7,.3,1)";
+            if (delay) c.style.transitionDelay = delay + "s";
+            c.style.transform = "rotateY(" + (4 * 360 + finalDeg) + "deg)";
         }
-        // Dice tumble (one shared timer cycles faces, then settles on the computed value).
-        function tumbleDice(values) {
-            var box = $("dice"); box.innerHTML = "";
-            var els = values.map(function (v) { var d = makeDie(v); d.dataset.v = v; box.appendChild(d); return d; });
-            if (REDUCED) { els.forEach(function (d) { setPips(d, +d.dataset.v); }); return; }
-            els.forEach(function (d, i) { d.classList.add("rolling"); d.style.animationDelay = (i * 0.045) + "s"; });
+        function tumbleIn(d, value, delay) {
+            if (REDUCED) { setPips(d, value); return; }
+            d.classList.add("rolling");
+            if (delay) d.style.animationDelay = delay + "s";
             var n = 0, iv = setInterval(function () {
                 var settle = ++n >= 9;
-                els.forEach(function (d) { setPips(d, settle ? +d.dataset.v : 1 + (Math.random() * 6 | 0)); });
+                setPips(d, settle ? value : 1 + (Math.random() * 6 | 0));
                 if (settle) clearInterval(iv);
             }, 95);
             animTimers.push(iv);
         }
-        // Seed reveal: hex resolves left-to-right out of scramble ("the hash is hashed into this seed").
-        function revealSeed(el, finalHex, done) {
-            if (REDUCED) { el.textContent = finalHex; done(); return; }
-            var chars = "0123456789abcdef", start = null;
-            var iv = setInterval(function () {
-                start = start || performance.now();
-                var t = (performance.now() - start) / 820;
-                if (t >= 1) { clearInterval(iv); el.textContent = finalHex; done(); return; }
-                var keep = (finalHex.length * t) | 0, s = finalHex.slice(0, keep);
-                for (var k = keep; k < finalHex.length; k++) s += chars[Math.random() * 16 | 0];
-                el.textContent = s;
-            }, 40);
-            animTimers.push(iv);
+
+        // ---- derivations (reuse the shared, tested algorithm) ----
+        function coinFace(h) { return Rnd.coinForBlock(blocks[h]); }
+        function windowHashes(k) { var a = []; for (var b = WINDOW * k; b <= WINDOW * k + WINDOW - 1; b++) a.push(blocks[b]); return a; }
+        function windowComplete(k) { for (var b = WINDOW * k; b <= WINDOW * k + WINDOW - 1; b++) if (!blocks[b]) return false; return true; }
+
+        // ---- incremental render (only the genuinely-new entries animate in) ----
+        function syncCoins() {
+            var target = [];
+            for (var h = tip; h > tip - COIN_N && h >= 0; h--) if (blocks[h]) target.push(h);  // newest first
+            var fresh = target.filter(function (h) { return shownCoins.indexOf(h) < 0; }).sort(function (a, b) { return a - b; });
+            fresh.forEach(function (h, idx) {
+                var face = coinFace(h), c = makeCoin(face, h);
+                $("coins").insertBefore(c, $("coins").firstChild);   // prepend -> newest leftmost
+                shownCoins.unshift(h);
+                flipIn(c, face, idx * 0.05);
+            });
+            while (shownCoins.length > COIN_N) { shownCoins.pop(); $("coins").removeChild($("coins").lastChild); }
+        }
+        function syncDice() {
+            var kLast = Math.floor((tip - (WINDOW - 1)) / WINDOW);   // most recent complete window
+            var target = [];
+            for (var k = kLast; k > kLast - DICE_M && k >= 0; k--) if (windowComplete(k)) target.push(k);
+            var fresh = target.filter(function (k) { return shownWindows.indexOf(k) < 0; }).sort(function (a, b) { return a - b; });
+            fresh.forEach(function (k, idx) {
+                var lo = WINDOW * k, hi = lo + WINDOW - 1, v = Rnd.diceForWindow(windowHashes(k));
+                var d = makeDie(v, lo, hi);
+                $("dice").insertBefore(d, $("dice").firstChild);
+                shownWindows.unshift(k);
+                tumbleIn(d, v, idx * 0.05);
+            });
+            while (shownWindows.length > DICE_M) { shownWindows.pop(); $("dice").removeChild($("dice").lastChild); }
+        }
+        function syncInfo() {
+            if (shownCoins.length) {
+                var heads = shownCoins.reduce(function (n, h) { return n + (coinFace(h) === "H" ? 1 : 0); }, 0);
+                $("coinInfo").textContent = "newest: block #" + shownCoins[0] + " · last " + shownCoins.length
+                    + ": " + heads + " H · " + (shownCoins.length - heads) + " T";
+            }
+            if (shownWindows.length) {
+                var k0 = shownWindows[0], have = (tip % WINDOW) + 1;
+                var forming = have < WINDOW ? "  ·  next die forming: " + have + "/" + WINDOW + " blocks" : "";
+                $("diceInfo").textContent = "newest window: blocks #" + (WINDOW * k0) + "–#" + (WINDOW * k0 + WINDOW - 1) + forming;
+            }
+        }
+        function setLive(text, live) {
+            var el = $("live"); el.textContent = "";
+            if (live) el.appendChild(Object.assign(document.createElement("span"), { className: "livedot" }));
+            el.appendChild(document.createTextNode(text));
+        }
+        function syncLive() {
+            var age = lastUpdate ? Math.round((Date.now() - lastUpdate) / 1000) : 0;
+            setLive("Live · tip block #" + tip + " · updated " + (age < 2 ? "just now" : age + "s ago"), true);
         }
 
-        // Block-hash lookups reuse the same public explorers as the verifier.
-        var EXPLORERS = ["https://mempool.space/api", "https://blockstream.info/api"];
-        async function explorerText(path) {
+        // ---- chain access (same explorers + CSP as the verifier) ----
+        async function explorerNum(path) {
             var errs = [];
             for (var i = 0; i < EXPLORERS.length; i++) {
                 try {
                     var resp = await fetch(EXPLORERS[i] + path);
                     if (!resp.ok) throw new Error("HTTP " + resp.status);
-                    var t = (await resp.text()).trim().toLowerCase();
-                    if (!/^[0-9a-f]{64}$/.test(t)) throw new Error("unexpected response");
-                    return t;
+                    var t = (await resp.text()).trim();
+                    if (!/^\d+$/.test(t)) throw new Error("unexpected response");
+                    return parseInt(t, 10);
                 } catch (e) { errs.push(e.message); }
             }
             throw new Error("explorers failed (" + errs.join(", ") + ")");
         }
-        function hashForHeight(h) { return explorerText("/block-height/" + h); }
-        function latestHash() { return explorerText("/blocks/tip/hash"); }
+        // GET /api/blocks/{h} returns up to 10 blocks descending from h, each {height, id}.
+        async function fetchBlocks(top, count) {
+            var out = [], h = top;
+            while (out.length < count && h >= 0) {
+                var arr = null, errs = [];
+                for (var i = 0; i < EXPLORERS.length; i++) {
+                    try {
+                        var resp = await fetch(EXPLORERS[i] + "/blocks/" + h);
+                        if (!resp.ok) throw new Error("HTTP " + resp.status);
+                        var a = await resp.json();
+                        if (!Array.isArray(a) || !a.length) throw new Error("bad shape");
+                        arr = a; break;
+                    } catch (e) { errs.push(e.message); }
+                }
+                if (!arr) throw new Error("explorers failed at " + h + " (" + errs.join(", ") + ")");
+                for (var j = 0; j < arr.length && out.length < count; j++) {
+                    var b = arr[j];
+                    if (typeof b.height === "number" && /^[0-9a-f]{64}$/.test(b.id || "")) out.push({ height: b.height, id: b.id.toLowerCase() });
+                }
+                var nxt = arr[arr.length - 1].height - 1;
+                if (nxt >= h) break;   // a non-descending page can never loop us
+                h = nxt;
+            }
+            return out;
+        }
+        function trimBlocks() { var low = tip - NEEDED; for (var hk in blocks) if (+hk < low) delete blocks[hk]; }
 
-        // Resolve the input to a 64-hex block hash: a hash is used as-is; a plain
-        // integer is looked up as a block height.
-        async function resolveHash(raw) {
-            var s = (raw || "").trim().toLowerCase();
-            if (/^[0-9a-f]{64}$/.test(s)) return s;
-            if (/^\d+$/.test(s)) { $("status").textContent = "Fetching block " + s + "…"; return await hashForHeight(s); }
-            throw new Error("enter a block height (digits) or a 64-hex block hash");
+        // (Re)load the whole recent window and render from scratch (used on init + reorg).
+        async function load() {
+            tip = await explorerNum("/blocks/tip/height");
+            var got = await fetchBlocks(tip, NEEDED);
+            blocks = {}; got.forEach(function (b) { blocks[b.height] = b.id; });
+            shownCoins = []; shownWindows = []; $("coins").innerHTML = ""; $("dice").innerHTML = "";
+            animTimers.forEach(clearInterval); animTimers = [];
+            syncCoins(); syncDice(); syncInfo();
+            lastUpdate = Date.now(); syncLive();
+        }
+        async function poll() {
+            if (polling) return;   // setInterval + visibilitychange can both fire; one at a time
+            polling = true;
+            try {
+                var newTip = await explorerNum("/blocks/tip/height");
+                if (newTip <= tip) { lastUpdate = Date.now(); syncLive(); return; }
+                // Fetch the new blocks plus an overlap of at least a full window, so a shallow
+                // tip reorg (re-mined within ~WINDOW blocks) is detected, not just the newest 1-2.
+                var got = await fetchBlocks(newTip, Math.max(newTip - tip + 2, WINDOW + 2));
+                var reorg = got.some(function (b) { return blocks[b.height] && blocks[b.height] !== b.id; });
+                if (reorg) { setLive("reorg — reloading…", false); await load(); return; }
+                got.forEach(function (b) { blocks[b.height] = b.id; });
+                tip = newTip; trimBlocks();
+                syncCoins(); syncDice(); syncInfo();
+                lastUpdate = Date.now(); syncLive();
+            } catch (e) {
+                /* transient fetch failure -- keep the last good view, try again next tick */
+            } finally {
+                polling = false;
+            }
         }
 
-        function intIn(id, lo, hi, dflt) {
-            var v = parseInt($(id).value, 10);
-            if (isNaN(v)) v = dflt;
-            return Math.max(lo, Math.min(hi, v));
-        }
-
-        var RUN = 0;
-        async function run() {
-            var myRun = ++RUN;
-            $("status").textContent = "Working…";
-            var n = intIn("nCoins", 0, 256, 20), m = intIn("nDice", 0, 200, 12);
-            var hash;
-            try { hash = await resolveHash($("hashInput").value); }
-            catch (e) { if (myRun === RUN) $("status").textContent = String(e.message || e); return; }
-            if (myRun !== RUN) return;  // a newer run superseded this one
-
-            $("hashInput").value = hash;
-            $("vHash").textContent = hash;
-            var seedHex = V.hex(Rnd.seedFor(hash));
-            var coins = Rnd.coinFlips(hash, n), dice = Rnd.diceRolls(hash, m);
-            var heads = coins.filter(function (c) { return c === "H"; }).length;
-
-            resetAnim();
-            $("panel").style.display = "block";
-            $("status").textContent = "Hashing…";
-            // Reveal in derivation order: the seed resolves out of scramble, then coins flip, then dice tumble.
-            revealSeed($("vSeed"), seedHex, function () {
-                if (myRun !== RUN) return;
-                $("status").textContent = "Flipping…";
-                flipCoins(coins);
-                $("coinTally").textContent = n ? (heads + " Heads · " + (n - heads) + " Tails") : "—";
-                setTimeout(function () {
-                    if (myRun !== RUN) return;
-                    tumbleDice(dice);
-                    $("diceTally").textContent = m ? ("rolls: " + dice.join(" ")) : "—";
-                    setTimeout(function () { if (myRun === RUN) $("status").textContent = "Done — recomputed locally, no server trust."; }, 900);
-                }, n ? 900 : 0);
-            });
-        }
-
-        $("form").addEventListener("submit", function (e) { e.preventDefault(); run(); });
-        $("latestBtn").addEventListener("click", async function () {
-            $("status").textContent = "Fetching the latest block…";
-            try { $("hashInput").value = await latestHash(); run(); }
-            catch (e) { $("status").textContent = "Could not fetch the latest block (" + (e.message || e) + ")"; }
-        });
-
-        // Default seed so the page shows something immediately: the Bitcoin genesis block.
-        $("hashInput").value = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f";
-        run();
+        (async function start() {
+            setLive("Connecting to the Bitcoin chain…", false);
+            for (var ok = false, tries = 0; !ok; tries++) {
+                try { await load(); ok = true; }
+                catch (e) {
+                    setLive("Could not reach the chain — retrying…", false);
+                    await new Promise(function (r) { setTimeout(r, Math.min(8000, 2000 + tries * 2000)); });
+                }
+            }
+            setInterval(poll, POLL_MS);
+            setInterval(function () { if (lastUpdate) syncLive(); }, 1000);   // age ticker
+            document.addEventListener("visibilitychange", function () { if (!document.hidden) poll(); });
+        })();
     </script>
 </body>
 

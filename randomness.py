@@ -52,14 +52,13 @@ def coin_flips(block_hash, n):
     return ["H" if (buf[j // 8] >> (7 - (j % 8))) & 1 else "T" for j in range(n)]
 
 
-def dice_rolls(block_hash, m, sides=6):
-    """`m` unbiased die rolls in 1..sides. Reads bytes from the 'dice' stream and
-    rejection-samples (drops b >= 256 - 256 % sides) to remove modulo bias."""
+def _dice_from_seed(seed, m, sides=6):
+    """`m` unbiased die rolls in 1..sides from a 32-byte seed. Reads bytes from the
+    'dice' stream and rejection-samples (drops b >= 256 - 256 % sides) for no modulo bias."""
     if m < 0:
         raise ValueError("m must be >= 0")
     if not 2 <= sides <= 256:
         raise ValueError("sides must be in 2..256")
-    seed = seed_for(block_hash)
     limit = 256 - (256 % sides)   # 252 for d6
     out, i = [], 0
     while len(out) < m:
@@ -70,6 +69,30 @@ def dice_rolls(block_hash, m, sides=6):
                     break
         i += 1
     return out
+
+
+def dice_rolls(block_hash, m, sides=6):
+    """`m` unbiased die rolls seeded by a single block hash."""
+    return _dice_from_seed(seed_for(block_hash), m, sides)
+
+
+# ---- beacon series: one coin per block, one die per 6-block window (mirrors the draw) ----
+def window_seed(hashes):
+    """Seed for a multi-block window: SHA-256 of the concatenated hashes (like the
+    draw, which concatenates its 144). `hashes` is an ordered list of 64-hex strings."""
+    if not hashes:
+        raise ValueError("a window needs at least one block hash")
+    return hashlib.sha256("".join(_normalize(h) for h in hashes).encode("ascii")).digest()
+
+
+def coin_for_block(block_hash):
+    """One fair coin flip from a single block's hash (the per-block series)."""
+    return coin_flips(block_hash, 1)[0]
+
+
+def dice_for_window(hashes, sides=6):
+    """One die from a window of block hashes (the per-6-blocks series)."""
+    return _dice_from_seed(window_seed(hashes), 1, sides)[0]
 
 
 if __name__ == "__main__":
