@@ -65,7 +65,13 @@
         .bdie.rolling { animation: tumble .85s ease-in-out both; }
         @keyframes tumble { 0% { transform: rotate(0) scale(1); } 25% { transform: rotate(-13deg) scale(1.07); }
             50% { transform: rotate(11deg) scale(.95); } 75% { transform: rotate(-6deg) scale(1.03); } 100% { transform: rotate(0) scale(1); } }
-        @media (prefers-reduced-motion: reduce) { .bcoin { transition: none !important; } .bdie.rolling { animation: none; } }
+        /* "pending" spinners: a perpetually flipping coin / tumbling die meaning "next result incoming". */
+        .bcoin.pending { animation: coinspin 1.4s linear infinite; opacity: .9; }
+        @keyframes coinspin { from { transform: rotateY(0); } to { transform: rotateY(360deg); } }
+        .bdie.pending { animation: dietumble 1.1s ease-in-out infinite; opacity: .9; }
+        @keyframes dietumble { 0% { transform: rotate(0) scale(1); } 25% { transform: rotate(-11deg) scale(1.05); }
+            50% { transform: rotate(9deg) scale(.97); } 75% { transform: rotate(-5deg) scale(1.02); } 100% { transform: rotate(0) scale(1); } }
+        @media (prefers-reduced-motion: reduce) { .bcoin { transition: none !important; } .bdie.rolling, .bcoin.pending, .bdie.pending { animation: none; } }
         .tally { color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem; }
         details.how { margin-top: 1.25rem; }
         details.how summary { cursor: pointer; font-weight: 600; }
@@ -164,6 +170,23 @@
             for (var k = 0; k < 9; k++) d.appendChild(document.createElement("div")).className = "pip";
             return d;
         }
+        // Spinning placeholders: a coin that keeps flipping and a die that keeps tumbling, meaning
+        // "the next result is on its way" — shown while loading and always at the front of each row.
+        function pendingCoin() {
+            var c = document.createElement("div");
+            c.className = "bcoin pending"; c.setAttribute("role", "img"); c.setAttribute("aria-label", "waiting for the next block");
+            c.title = "waiting for the next block…";
+            c.innerHTML = '<div class="cface front"></div><div class="cface back"></div>';
+            return c;
+        }
+        function pendingDie() {
+            var d = document.createElement("div");
+            d.className = "bdie pending"; d.setAttribute("role", "img"); d.setAttribute("aria-label", "waiting for the next 6-block window");
+            d.title = "waiting for the next window…";
+            for (var k = 0; k < 9; k++) d.appendChild(document.createElement("div")).className = "pip";
+            setPips(d, 1 + (Math.random() * 6 | 0));
+            return d;
+        }
         function flipIn(c, face, delay) {
             var finalDeg = (face === "T" ? 180 : 0);
             if (REDUCED) { c.style.transform = "rotateY(" + finalDeg + "deg)"; return; }
@@ -194,9 +217,10 @@
             var target = [];
             for (var h = tip; h > tip - COIN_N && h >= 0; h--) if (blocks[h]) target.push(h);  // newest first
             var fresh = target.filter(function (h) { return shownCoins.indexOf(h) < 0; }).sort(function (a, b) { return a - b; });
+            var pend = $("coins").querySelector(".bcoin.pending");
             fresh.forEach(function (h, idx) {
                 var face = coinFace(h), c = makeCoin(face, h);
-                $("coins").insertBefore(c, $("coins").firstChild);   // prepend -> newest leftmost
+                $("coins").insertBefore(c, pend ? pend.nextSibling : $("coins").firstChild);   // after the pending spinner; newest real first
                 shownCoins.unshift(h);
                 flipIn(c, face, idx * 0.05);
             });
@@ -207,10 +231,11 @@
             var target = [];
             for (var k = kLast; k > kLast - DICE_M && k >= 0; k--) if (windowComplete(k)) target.push(k);
             var fresh = target.filter(function (k) { return shownWindows.indexOf(k) < 0; }).sort(function (a, b) { return a - b; });
+            var pend = $("dice").querySelector(".bdie.pending");
             fresh.forEach(function (k, idx) {
                 var lo = WINDOW * k, hi = lo + WINDOW - 1, v = Rnd.diceForWindow(windowHashes(k));
                 var d = makeDie(v, lo, hi);
-                $("dice").insertBefore(d, $("dice").firstChild);
+                $("dice").insertBefore(d, pend ? pend.nextSibling : $("dice").firstChild);   // after the pending spinner; newest first
                 shownWindows.unshift(k);
                 tumbleIn(d, v, idx * 0.05);
             });
@@ -285,6 +310,7 @@
             var got = await fetchBlocks(tip, NEEDED);
             blocks = {}; got.forEach(function (b) { blocks[b.height] = b.id; });
             shownCoins = []; shownWindows = []; $("coins").innerHTML = ""; $("dice").innerHTML = "";
+            $("coins").appendChild(pendingCoin()); $("dice").appendChild(pendingDie());  // "next result incoming" at the front
             animTimers.forEach(clearInterval); animTimers = [];
             syncCoins(); syncDice(); syncInfo();
             lastUpdate = Date.now(); syncLive();
@@ -312,7 +338,14 @@
         }
 
         (async function start() {
-            setLive("Connecting to the Bitcoin chain…", false);
+            // First paint isn't blank: a row of spinning coins + dice while we read the latest blocks.
+            for (var s = 0; s < 6; s++) $("coins").appendChild(pendingCoin());
+            for (var t = 0; t < 3; t++) $("dice").appendChild(pendingDie());
+            setLive("Reading the latest blocks…", false);
+            if (!REDUCED) setInterval(function () {   // keep every pending die shuffling its face
+                var pend = document.querySelectorAll(".bdie.pending");
+                for (var i = 0; i < pend.length; i++) setPips(pend[i], 1 + (Math.random() * 6 | 0));
+            }, 170);
             for (var ok = false, tries = 0; !ok; tries++) {
                 try { await load(); ok = true; }
                 catch (e) {
