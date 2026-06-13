@@ -66,9 +66,11 @@
         @keyframes tumble { 0% { transform: rotate(0) scale(1); } 25% { transform: rotate(-13deg) scale(1.07); }
             50% { transform: rotate(11deg) scale(.95); } 75% { transform: rotate(-6deg) scale(1.03); } 100% { transform: rotate(0) scale(1); } }
         /* "pending" spinners: a perpetually flipping coin / tumbling die meaning "next result incoming". */
-        .bcoin.pending { animation: coinspin 1.4s linear infinite; opacity: .9; }
+        /* No opacity here: opacity < 1 flattens transform-style: preserve-3d, which would hide the
+           coin's circuit back during the spin (only the ₿ front would show). The spin itself is the cue. */
+        .bcoin.pending { animation: coinspin 1.4s linear infinite; }
         @keyframes coinspin { from { transform: rotateY(0); } to { transform: rotateY(360deg); } }
-        .bdie.pending { animation: dietumble 1.1s ease-in-out infinite; opacity: .9; }
+        .bdie.pending { animation: dietumble 1.1s ease-in-out infinite; }
         @keyframes dietumble { 0% { transform: rotate(0) scale(1); } 25% { transform: rotate(-11deg) scale(1.05); }
             50% { transform: rotate(9deg) scale(.97); } 75% { transform: rotate(-5deg) scale(1.02); } 100% { transform: rotate(0) scale(1); } }
         @media (prefers-reduced-motion: reduce) { .bcoin { transition: none !important; } .bdie.rolling, .bcoin.pending, .bdie.pending { animation: none; } }
