@@ -65,11 +65,10 @@
         .bdie.rolling { animation: tumble .85s ease-in-out both; }
         @keyframes tumble { 0% { transform: rotate(0) scale(1); } 25% { transform: rotate(-13deg) scale(1.07); }
             50% { transform: rotate(11deg) scale(.95); } 75% { transform: rotate(-6deg) scale(1.03); } 100% { transform: rotate(0) scale(1); } }
-        /* "pending" spinners: a perpetually flipping coin / tumbling die meaning "next result incoming". */
-        /* No opacity here: opacity < 1 flattens transform-style: preserve-3d, which would hide the
-           coin's circuit back during the spin (only the ₿ front would show). The spin itself is the cue. */
-        .bcoin.pending { animation: coinspin 1.4s linear infinite; }
-        @keyframes coinspin { from { transform: rotateY(0); } to { transform: rotateY(360deg); } }
+        /* "pending" spinners mean "next result incoming". The coin's flip is JS-driven at a constant
+           speed (see tick()) so the waiting-spin and the settling-spin match — no opacity on it, since
+           opacity < 1 flattens preserve-3d and would hide the circuit back mid-spin. The die's wobble is
+           CSS; its pips shuffle from tick(). */
         .bdie.pending { animation: dietumble 1.1s ease-in-out infinite; }
         @keyframes dietumble { 0% { transform: rotate(0) scale(1); } 25% { transform: rotate(-11deg) scale(1.05); }
             50% { transform: rotate(9deg) scale(.97); } 75% { transform: rotate(-5deg) scale(1.02); } 100% { transform: rotate(0) scale(1); } }
@@ -143,40 +142,28 @@
         var COIN_N = 10, DICE_M = 4, WINDOW = 6, POLL_MS = 60000;
         var NEEDED = Math.max(COIN_N, DICE_M * WINDOW) + WINDOW + 2;   // recent blocks to keep
         var EXPLORERS = ["https://mempool.space/api", "https://blockstream.info/api"];
-        // Results are revealed ONE AT A TIME: the leading coin/die spins >= 3s, then a result locks
-        // in. Repeat visits in the same session skip the slow intro (fill in quickly).
+        // Results reveal ONE AT A TIME and IN PLACE: the single leading spinner spins, then locks onto
+        // its OWN result; only then does the next spinner appear and spin. The waiting-spin and the
+        // settling-spin share ONE constant speed (SPIN_SPEED) — the coin just stops when the right face
+        // comes up, so there's no speed change at the lock. Repeat visits use a quicker spin.
         var firstVisit = true;
         try { if (sessionStorage.getItem("l2049_rnd_seen")) firstVisit = false; else sessionStorage.setItem("l2049_rnd_seen", "1"); } catch (e) { }
-        var REVEAL_MS = firstVisit ? 3000 : 220;
+        var SPIN_SPEED = firstVisit ? 360 / 1400 : 360 / 300;   // deg per ms, constant within a reveal
+        var SPIN_MIN_MS = firstVisit ? 2500 : 0;                // a coin/die spins at least this long before it can lock
 
         // ---- state ----
         var blocks = {};            // height -> hash, for the recent window
         var tip = null;             // current chain tip height
-        var shownCoins = [];        // heights currently rendered, newest first
-        var shownWindows = [];      // window indices currently rendered, newest first
-        var coinQ = [], dieQ = [], coinPump = null, diePump = null;   // queued reveals + their pacers
-        var lastUpdate = 0, animTimers = [], polling = false;
+        var shownCoins = [];        // heights locked in, left -> right = oldest -> newest
+        var shownWindows = [];      // window indices locked in, oldest -> newest
+        var coinQ = [], dieQ = [];  // results waiting to be locked in (oldest first)
+        var coinSp = null, dieSp = null, rafId = null;   // the single live spinner per row + the rAF loop
+        var lastUpdate = 0, polling = false;
 
         // ---- coin / die elements (visual only; values are deterministic) ----
         var PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
-        function makeCoin(face, h) {
-            var c = document.createElement("div");
-            c.className = "bcoin"; c.setAttribute("role", "img");
-            c.setAttribute("aria-label", (face === "H" ? "Heads" : "Tails") + ", block " + h);
-            c.title = "block #" + h + " → " + (face === "H" ? "Heads" : "Tails");
-            c.innerHTML = '<div class="cface front"></div><div class="cface back"></div>';
-            return c;
-        }
         function setPips(die, v) {
             for (var k = 0; k < 9; k++) die.children[k].className = "pip" + (PIPS[v].indexOf(k) >= 0 ? " on" : "");
-        }
-        function makeDie(v, lo, hi) {
-            var d = document.createElement("div");
-            d.className = "bdie"; d.setAttribute("role", "img");
-            d.setAttribute("aria-label", "Die showing " + v + ", blocks " + lo + " to " + hi);
-            d.title = "blocks #" + lo + "–#" + hi + " → " + v;
-            for (var k = 0; k < 9; k++) d.appendChild(document.createElement("div")).className = "pip";
-            return d;
         }
         // Spinning placeholders: a coin that keeps flipping and a die that keeps tumbling, meaning
         // "the next result is on its way" — shown while loading and always at the front of each row.
@@ -195,26 +182,6 @@
             setPips(d, 1 + (Math.random() * 6 | 0));
             return d;
         }
-        function flipIn(c, face, delay) {
-            var finalDeg = (face === "T" ? 180 : 0);
-            if (REDUCED) { c.style.transform = "rotateY(" + finalDeg + "deg)"; return; }
-            void c.offsetWidth;  // reflow so the transition runs from 0deg
-            c.style.transition = "transform 1.3s cubic-bezier(.2,.7,.3,1)";
-            if (delay) c.style.transitionDelay = delay + "s";
-            c.style.transform = "rotateY(" + (4 * 360 + finalDeg) + "deg)";
-        }
-        function tumbleIn(d, value, delay) {
-            if (REDUCED) { setPips(d, value); return; }
-            d.classList.add("rolling");
-            if (delay) d.style.animationDelay = delay + "s";
-            var n = 0, iv = setInterval(function () {
-                var settle = ++n >= 9;
-                setPips(d, settle ? value : 1 + (Math.random() * 6 | 0));
-                if (settle) clearInterval(iv);
-            }, 95);
-            animTimers.push(iv);
-        }
-
         // ---- derivations (reuse the shared, tested algorithm) ----
         function coinFace(h) { return Rnd.coinForBlock(blocks[h]); }
         function windowHashes(k) { var a = []; for (var b = WINDOW * k; b <= WINDOW * k + WINDOW - 1; b++) a.push(blocks[b]); return a; }
@@ -227,40 +194,62 @@
             for (var k = kLast; k > kLast - DICE_M && k >= 0; k--) if (windowComplete(k)) a.push(k);
             return a;
         }
-        // Queue any newly-eligible result not already shown/queued (OLDEST first), then start the pacers.
+        // Queue any newly-eligible result not already shown/queued/locking (OLDEST first). The rAF loop
+        // (tick) drains the queues one at a time; nothing is paced by a timer.
         function enqueue() {
             targetCoins().reverse().forEach(function (h) { if (shownCoins.indexOf(h) < 0 && coinQ.indexOf(h) < 0) coinQ.push(h); });   // oldest -> newest
             targetDice().reverse().forEach(function (k) { if (shownWindows.indexOf(k) < 0 && dieQ.indexOf(k) < 0) dieQ.push(k); });
-            pump();
         }
-        // Timeline (left -> right = old -> new); the spinner sits at the FAR RIGHT (the future block).
-        // Each reveal lands just LEFT of the spinner, so results fill in oldest-first, newest by the spinner.
-        function revealCoin(h) {
-            var face = coinFace(h), c = makeCoin(face, h), sp = $("coins").querySelector(".bcoin.pending");
-            $("coins").insertBefore(c, sp);
-            shownCoins.push(h);                  // DOM order: oldest .. newest
-            flipIn(c, face, 0);
-            while (shownCoins.length > COIN_N) { shownCoins.shift(); $("coins").removeChild($("coins").firstChild); }   // drop the oldest (leftmost)
+
+        // Timeline (left -> right = old -> new); the live spinner is the FAR-RIGHT element (the future
+        // block). It IS the next result: it spins, locks onto its face IN PLACE, then a fresh spinner is
+        // appended to its right. So results fill in oldest-first, newest beside the spinner.
+        function spawnCoinSpinner() { coinSp = { el: $("coins").appendChild(pendingCoin()), start: null, lockAngle: null }; }
+        function spawnDieSpinner() { dieSp = { el: $("dice").appendChild(pendingDie()), start: null, lockAt: null, shuffled: 0 }; }
+        // Smallest angle >= minAngle that lands on faceDeg (0 = Heads / ₿, 180 = Tails / circuit).
+        function faceAngleAtLeast(minAngle, faceDeg) { return Math.ceil((minAngle - faceDeg) / 360) * 360 + faceDeg; }
+
+        function lockCoin(h) {                          // turn the live spinner into block h's settled coin
+            var face = coinFace(h), el = coinSp.el;
+            el.className = "bcoin";
+            el.setAttribute("aria-label", (face === "H" ? "Heads" : "Tails") + ", block " + h);
+            el.title = "block #" + h + " → " + (face === "H" ? "Heads" : "Tails");
+            el.style.transform = "rotateY(" + (face === "T" ? 180 : 0) + "deg)";   // exact face (it stopped here)
+            shownCoins.push(h);
+            while (shownCoins.length > COIN_N) { shownCoins.shift(); $("coins").removeChild($("coins").firstChild); }
             syncInfo();
         }
-        function revealDie(k) {
-            var lo = WINDOW * k, hi = lo + WINDOW - 1, v = Rnd.diceForWindow(windowHashes(k)), d = makeDie(v, lo, hi), sd = $("dice").querySelector(".bdie.pending");
-            $("dice").insertBefore(d, sd);
+        function lockDie(k) {                            // turn the live spinner into window k's settled die
+            var lo = WINDOW * k, hi = lo + WINDOW - 1, v = Rnd.diceForWindow(windowHashes(k)), el = dieSp.el;
+            el.className = "bdie rolling";              // a final settle roll, then it rests on v
+            el.setAttribute("aria-label", "Die showing " + v + ", blocks " + lo + " to " + hi);
+            el.title = "blocks #" + lo + "–#" + hi + " → " + v;
+            setPips(el, v);
             shownWindows.push(k);
-            tumbleIn(d, v, 0);
             while (shownWindows.length > DICE_M) { shownWindows.shift(); $("dice").removeChild($("dice").firstChild); }
             syncInfo();
         }
-        // Pace the reveals: the first fires after REVEAL_MS, so the leading spinner spins >= 3s first.
-        function pump() {
-            if (!coinPump && coinQ.length) coinPump = setInterval(function () {
-                if (!coinQ.length) { clearInterval(coinPump); coinPump = null; return; }
-                revealCoin(coinQ.shift());
-            }, REVEAL_MS);
-            if (!diePump && dieQ.length) diePump = setInterval(function () {
-                if (!dieQ.length) { clearInterval(diePump); diePump = null; return; }
-                revealDie(dieQ.shift());
-            }, REVEAL_MS);
+
+        // One rAF loop drives both rows: spin the live spinner, and when it has spun >= SPIN_MIN_MS AND
+        // (coin) reached its face, lock it and spawn the next. Same SPIN_SPEED throughout = no speed jump.
+        function tick(ts) {
+            if (coinSp) {
+                if (coinSp.start === null) coinSp.start = ts;
+                var a = (ts - coinSp.start) * SPIN_SPEED;
+                if (coinSp.lockAngle === null && coinQ.length) {        // commit to the head of the queue
+                    var faceDeg = coinFace(coinQ[0]) === "T" ? 180 : 0;
+                    coinSp.lockAngle = REDUCED ? a : faceAngleAtLeast(Math.max(a, SPIN_MIN_MS * SPIN_SPEED) + 1, faceDeg);
+                }
+                if (coinSp.lockAngle !== null && a >= coinSp.lockAngle) { lockCoin(coinQ.shift()); spawnCoinSpinner(); }
+                else if (!REDUCED) coinSp.el.style.transform = "rotateY(" + (a % 360) + "deg)";
+            }
+            if (dieSp) {
+                if (dieSp.start === null) dieSp.start = ts;
+                if (dieSp.lockAt === null && dieQ.length) dieSp.lockAt = REDUCED ? ts : Math.max(ts, dieSp.start + SPIN_MIN_MS);
+                if (!REDUCED && ts - dieSp.shuffled > 90) { setPips(dieSp.el, 1 + (Math.random() * 6 | 0)); dieSp.shuffled = ts; }
+                if (dieSp.lockAt !== null && ts >= dieSp.lockAt) { lockDie(dieQ.shift()); spawnDieSpinner(); }
+            }
+            rafId = requestAnimationFrame(tick);
         }
         function syncInfo() {
             if (shownCoins.length) {
@@ -331,12 +320,10 @@
             var got = await fetchBlocks(tip, NEEDED);
             blocks = {}; got.forEach(function (b) { blocks[b.height] = b.id; });
             shownCoins = []; shownWindows = []; coinQ = []; dieQ = [];
-            if (coinPump) { clearInterval(coinPump); coinPump = null; }
-            if (diePump) { clearInterval(diePump); diePump = null; }
-            animTimers.forEach(clearInterval); animTimers = [];
+            coinSp = null; dieSp = null;                 // drop refs before clearing the DOM
             $("coins").innerHTML = ""; $("dice").innerHTML = "";
-            $("coins").appendChild(pendingCoin()); $("dice").appendChild(pendingDie());   // a spinner leads each row
-            enqueue();   // queue the recent history; the pacer reveals it one at a time, >= 3s each
+            spawnCoinSpinner(); spawnDieSpinner();       // one fresh spinner leads each row
+            enqueue();   // queue the recent history; tick() locks it in one at a time, >= ~3s each
             syncInfo(); lastUpdate = Date.now(); syncLive();
         }
         async function poll() {
@@ -362,13 +349,11 @@
         }
 
         (async function start() {
-            // First paint isn't blank: one spinning coin + die while we read the latest blocks.
-            $("coins").appendChild(pendingCoin()); $("dice").appendChild(pendingDie());
+            // First paint isn't blank: one spinning coin + die (the rAF loop animates them) while we
+            // read the latest blocks. They keep spinning until load() queues the first results.
+            spawnCoinSpinner(); spawnDieSpinner();
+            rafId = requestAnimationFrame(tick);
             setLive("Reading the latest blocks…", false);
-            if (!REDUCED) setInterval(function () {   // keep every pending die shuffling its face
-                var pend = document.querySelectorAll(".bdie.pending");
-                for (var i = 0; i < pend.length; i++) setPips(pend[i], 1 + (Math.random() * 6 | 0));
-            }, 170);
             for (var ok = false, tries = 0; !ok; tries++) {
                 try { await load(); ok = true; }
                 catch (e) {
