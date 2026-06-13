@@ -227,28 +227,28 @@
             for (var k = kLast; k > kLast - DICE_M && k >= 0; k--) if (windowComplete(k)) a.push(k);
             return a;
         }
-        // Queue any newly-eligible result not already shown/queued, then (re)start the pacers.
+        // Queue any newly-eligible result not already shown/queued (OLDEST first), then start the pacers.
         function enqueue() {
-            targetCoins().forEach(function (h) { if (shownCoins.indexOf(h) < 0 && coinQ.indexOf(h) < 0) coinQ.push(h); });   // newest first
-            targetDice().forEach(function (k) { if (shownWindows.indexOf(k) < 0 && dieQ.indexOf(k) < 0) dieQ.push(k); });
+            targetCoins().reverse().forEach(function (h) { if (shownCoins.indexOf(h) < 0 && coinQ.indexOf(h) < 0) coinQ.push(h); });   // oldest -> newest
+            targetDice().reverse().forEach(function (k) { if (shownWindows.indexOf(k) < 0 && dieQ.indexOf(k) < 0) dieQ.push(k); });
             pump();
         }
-        // Reveal one queued result: it lands at the FRONT if it's newer than everything shown
-        // (a new block / the first reveal), else it fills the older history to the RIGHT.
+        // Timeline (left -> right = old -> new); the spinner sits at the FAR RIGHT (the future block).
+        // Each reveal lands just LEFT of the spinner, so results fill in oldest-first, newest by the spinner.
         function revealCoin(h) {
             var face = coinFace(h), c = makeCoin(face, h), sp = $("coins").querySelector(".bcoin.pending");
-            if (!shownCoins.length || h > shownCoins[0]) { $("coins").insertBefore(c, sp ? sp.nextSibling : $("coins").firstChild); shownCoins.unshift(h); }
-            else { $("coins").appendChild(c); shownCoins.push(h); }
+            $("coins").insertBefore(c, sp);
+            shownCoins.push(h);                  // DOM order: oldest .. newest
             flipIn(c, face, 0);
-            while (shownCoins.length > COIN_N) { shownCoins.pop(); $("coins").removeChild($("coins").lastChild); }
+            while (shownCoins.length > COIN_N) { shownCoins.shift(); $("coins").removeChild($("coins").firstChild); }   // drop the oldest (leftmost)
             syncInfo();
         }
         function revealDie(k) {
             var lo = WINDOW * k, hi = lo + WINDOW - 1, v = Rnd.diceForWindow(windowHashes(k)), d = makeDie(v, lo, hi), sd = $("dice").querySelector(".bdie.pending");
-            if (!shownWindows.length || k > shownWindows[0]) { $("dice").insertBefore(d, sd ? sd.nextSibling : $("dice").firstChild); shownWindows.unshift(k); }
-            else { $("dice").appendChild(d); shownWindows.push(k); }
+            $("dice").insertBefore(d, sd);
+            shownWindows.push(k);
             tumbleIn(d, v, 0);
-            while (shownWindows.length > DICE_M) { shownWindows.pop(); $("dice").removeChild($("dice").lastChild); }
+            while (shownWindows.length > DICE_M) { shownWindows.shift(); $("dice").removeChild($("dice").firstChild); }
             syncInfo();
         }
         // Pace the reveals: the first fires after REVEAL_MS, so the leading spinner spins >= 3s first.
@@ -265,11 +265,11 @@
         function syncInfo() {
             if (shownCoins.length) {
                 var heads = shownCoins.reduce(function (n, h) { return n + (coinFace(h) === "H" ? 1 : 0); }, 0);
-                $("coinInfo").textContent = "newest: block #" + shownCoins[0] + " · last " + shownCoins.length
+                $("coinInfo").textContent = "newest: block #" + shownCoins[shownCoins.length - 1] + " · last " + shownCoins.length
                     + ": " + heads + " H · " + (shownCoins.length - heads) + " T";
             }
             if (shownWindows.length) {
-                var k0 = shownWindows[0], have = (tip % WINDOW) + 1;
+                var k0 = shownWindows[shownWindows.length - 1], have = (tip % WINDOW) + 1;   // newest = rightmost
                 var forming = have < WINDOW ? "  ·  next die forming: " + have + "/" + WINDOW + " blocks" : "";
                 $("diceInfo").textContent = "newest window: blocks #" + (WINDOW * k0) + "–#" + (WINDOW * k0 + WINDOW - 1) + forming;
             }
