@@ -47,9 +47,10 @@ The live page maps the chain to a series, mirroring the draw:
   `dice_for_window(...) = ` the first `b < 252` byte of `HMAC-SHA-256(window_seed, "dice:0")` → `b mod 6 + 1`.
 
 The browser page ([`/randomness.html`](https://lucky2049.com/randomness.html)) renders a **live
-near-window** — roughly the last 18 coins and 6 dice — and stays current by polling the chain tip in
-the visitor's browser (~60 s); a new block flips in a new coin, a completed 6-block window rolls a new
-die. It is an **effect demonstration**, so it reads the **latest** blocks directly (no confirmation
+near-window** — roughly the last 10 coins and 4 dice — revealing them **one at a time** (the leading
+coin/die spins for a few seconds, then a result locks in), and stays current by polling the chain tip
+in the visitor's browser (~60 s); a new block flips in a new coin, a completed 6-block window rolls a
+new die. It is an **effect demonstration**, so it reads the **latest** blocks directly (no confirmation
 wait); the most recent tip blocks can reorg, which the view reconciles on the next poll. Nothing is
 published or stored — every result is recomputed on the fly and verifiable by anyone.
 

@@ -138,15 +138,21 @@
         var REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
         // ---- config ----
-        var COIN_N = 18, DICE_M = 6, WINDOW = 6, POLL_MS = 60000;
+        var COIN_N = 10, DICE_M = 4, WINDOW = 6, POLL_MS = 60000;
         var NEEDED = Math.max(COIN_N, DICE_M * WINDOW) + WINDOW + 2;   // recent blocks to keep
         var EXPLORERS = ["https://mempool.space/api", "https://blockstream.info/api"];
+        // Results are revealed ONE AT A TIME: the leading coin/die spins >= 3s, then a result locks
+        // in. Repeat visits in the same session skip the slow intro (fill in quickly).
+        var firstVisit = true;
+        try { if (sessionStorage.getItem("l2049_rnd_seen")) firstVisit = false; else sessionStorage.setItem("l2049_rnd_seen", "1"); } catch (e) { }
+        var REVEAL_MS = firstVisit ? 3000 : 220;
 
         // ---- state ----
         var blocks = {};            // height -> hash, for the recent window
         var tip = null;             // current chain tip height
         var shownCoins = [];        // heights currently rendered, newest first
         var shownWindows = [];      // window indices currently rendered, newest first
+        var coinQ = [], dieQ = [], coinPump = null, diePump = null;   // queued reveals + their pacers
         var lastUpdate = 0, animTimers = [], polling = false;
 
         // ---- coin / die elements (visual only; values are deterministic) ----
@@ -212,34 +218,47 @@
         function windowHashes(k) { var a = []; for (var b = WINDOW * k; b <= WINDOW * k + WINDOW - 1; b++) a.push(blocks[b]); return a; }
         function windowComplete(k) { for (var b = WINDOW * k; b <= WINDOW * k + WINDOW - 1; b++) if (!blocks[b]) return false; return true; }
 
-        // ---- incremental render (only the genuinely-new entries animate in) ----
-        function syncCoins() {
-            var target = [];
-            for (var h = tip; h > tip - COIN_N && h >= 0; h--) if (blocks[h]) target.push(h);  // newest first
-            var fresh = target.filter(function (h) { return shownCoins.indexOf(h) < 0; }).sort(function (a, b) { return a - b; });
-            var pend = $("coins").querySelector(".bcoin.pending");
-            fresh.forEach(function (h, idx) {
-                var face = coinFace(h), c = makeCoin(face, h);
-                $("coins").insertBefore(c, pend ? pend.nextSibling : $("coins").firstChild);   // after the pending spinner; newest real first
-                shownCoins.unshift(h);
-                flipIn(c, face, idx * 0.05);
-            });
-            while (shownCoins.length > COIN_N) { shownCoins.pop(); $("coins").removeChild($("coins").lastChild); }
+        // ---- one-at-a-time reveal: queue eligible results, then lock them in, newest first ----
+        function targetCoins() { var a = []; for (var h = tip; h > tip - COIN_N && h >= 0; h--) if (blocks[h]) a.push(h); return a; }
+        function targetDice() {
+            var kLast = Math.floor((tip - (WINDOW - 1)) / WINDOW), a = [];
+            for (var k = kLast; k > kLast - DICE_M && k >= 0; k--) if (windowComplete(k)) a.push(k);
+            return a;
         }
-        function syncDice() {
-            var kLast = Math.floor((tip - (WINDOW - 1)) / WINDOW);   // most recent complete window
-            var target = [];
-            for (var k = kLast; k > kLast - DICE_M && k >= 0; k--) if (windowComplete(k)) target.push(k);
-            var fresh = target.filter(function (k) { return shownWindows.indexOf(k) < 0; }).sort(function (a, b) { return a - b; });
-            var pend = $("dice").querySelector(".bdie.pending");
-            fresh.forEach(function (k, idx) {
-                var lo = WINDOW * k, hi = lo + WINDOW - 1, v = Rnd.diceForWindow(windowHashes(k));
-                var d = makeDie(v, lo, hi);
-                $("dice").insertBefore(d, pend ? pend.nextSibling : $("dice").firstChild);   // after the pending spinner; newest first
-                shownWindows.unshift(k);
-                tumbleIn(d, v, idx * 0.05);
-            });
+        // Queue any newly-eligible result not already shown/queued, then (re)start the pacers.
+        function enqueue() {
+            targetCoins().forEach(function (h) { if (shownCoins.indexOf(h) < 0 && coinQ.indexOf(h) < 0) coinQ.push(h); });   // newest first
+            targetDice().forEach(function (k) { if (shownWindows.indexOf(k) < 0 && dieQ.indexOf(k) < 0) dieQ.push(k); });
+            pump();
+        }
+        // Reveal one queued result: it lands at the FRONT if it's newer than everything shown
+        // (a new block / the first reveal), else it fills the older history to the RIGHT.
+        function revealCoin(h) {
+            var face = coinFace(h), c = makeCoin(face, h), sp = $("coins").querySelector(".bcoin.pending");
+            if (!shownCoins.length || h > shownCoins[0]) { $("coins").insertBefore(c, sp ? sp.nextSibling : $("coins").firstChild); shownCoins.unshift(h); }
+            else { $("coins").appendChild(c); shownCoins.push(h); }
+            flipIn(c, face, 0);
+            while (shownCoins.length > COIN_N) { shownCoins.pop(); $("coins").removeChild($("coins").lastChild); }
+            syncInfo();
+        }
+        function revealDie(k) {
+            var lo = WINDOW * k, hi = lo + WINDOW - 1, v = Rnd.diceForWindow(windowHashes(k)), d = makeDie(v, lo, hi), sd = $("dice").querySelector(".bdie.pending");
+            if (!shownWindows.length || k > shownWindows[0]) { $("dice").insertBefore(d, sd ? sd.nextSibling : $("dice").firstChild); shownWindows.unshift(k); }
+            else { $("dice").appendChild(d); shownWindows.push(k); }
+            tumbleIn(d, v, 0);
             while (shownWindows.length > DICE_M) { shownWindows.pop(); $("dice").removeChild($("dice").lastChild); }
+            syncInfo();
+        }
+        // Pace the reveals: the first fires after REVEAL_MS, so the leading spinner spins >= 3s first.
+        function pump() {
+            if (!coinPump && coinQ.length) coinPump = setInterval(function () {
+                if (!coinQ.length) { clearInterval(coinPump); coinPump = null; return; }
+                revealCoin(coinQ.shift());
+            }, REVEAL_MS);
+            if (!diePump && dieQ.length) diePump = setInterval(function () {
+                if (!dieQ.length) { clearInterval(diePump); diePump = null; return; }
+                revealDie(dieQ.shift());
+            }, REVEAL_MS);
         }
         function syncInfo() {
             if (shownCoins.length) {
@@ -309,11 +328,14 @@
             tip = await explorerNum("/blocks/tip/height");
             var got = await fetchBlocks(tip, NEEDED);
             blocks = {}; got.forEach(function (b) { blocks[b.height] = b.id; });
-            shownCoins = []; shownWindows = []; $("coins").innerHTML = ""; $("dice").innerHTML = "";
-            $("coins").appendChild(pendingCoin()); $("dice").appendChild(pendingDie());  // "next result incoming" at the front
+            shownCoins = []; shownWindows = []; coinQ = []; dieQ = [];
+            if (coinPump) { clearInterval(coinPump); coinPump = null; }
+            if (diePump) { clearInterval(diePump); diePump = null; }
             animTimers.forEach(clearInterval); animTimers = [];
-            syncCoins(); syncDice(); syncInfo();
-            lastUpdate = Date.now(); syncLive();
+            $("coins").innerHTML = ""; $("dice").innerHTML = "";
+            $("coins").appendChild(pendingCoin()); $("dice").appendChild(pendingDie());   // a spinner leads each row
+            enqueue();   // queue the recent history; the pacer reveals it one at a time, >= 3s each
+            syncInfo(); lastUpdate = Date.now(); syncLive();
         }
         async function poll() {
             if (polling) return;   // setInterval + visibilitychange can both fire; one at a time
@@ -328,8 +350,8 @@
                 if (reorg) { setLive("reorg — reloading…", false); await load(); return; }
                 got.forEach(function (b) { blocks[b.height] = b.id; });
                 tip = newTip; trimBlocks();
-                syncCoins(); syncDice(); syncInfo();
-                lastUpdate = Date.now(); syncLive();
+                enqueue();   // a new block / completed window joins the reveal queue
+                syncInfo(); lastUpdate = Date.now(); syncLive();
             } catch (e) {
                 /* transient fetch failure -- keep the last good view, try again next tick */
             } finally {
@@ -338,9 +360,8 @@
         }
 
         (async function start() {
-            // First paint isn't blank: a row of spinning coins + dice while we read the latest blocks.
-            for (var s = 0; s < 6; s++) $("coins").appendChild(pendingCoin());
-            for (var t = 0; t < 3; t++) $("dice").appendChild(pendingDie());
+            // First paint isn't blank: one spinning coin + die while we read the latest blocks.
+            $("coins").appendChild(pendingCoin()); $("dice").appendChild(pendingDie());
             setLive("Reading the latest blocks…", false);
             if (!REDUCED) setInterval(function () {   // keep every pending die shuffling its face
                 var pend = document.querySelectorAll(".bdie.pending");
