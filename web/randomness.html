@@ -145,11 +145,12 @@
         // Results reveal ONE AT A TIME and IN PLACE: the single leading spinner spins, then locks onto
         // its OWN result; only then does the next spinner appear and spin. The waiting-spin and the
         // settling-spin share ONE constant speed (SPIN_SPEED) — the coin just stops when the right face
-        // comes up, so there's no speed change at the lock. Repeat visits use a quicker spin.
-        var firstVisit = true;
-        try { if (sessionStorage.getItem("l2049_rnd_seen")) firstVisit = false; else sessionStorage.setItem("l2049_rnd_seen", "1"); } catch (e) { }
-        var SPIN_SPEED = firstVisit ? 360 / 1400 : 360 / 300;   // deg per ms, constant within a reveal
-        var SPIN_MIN_MS = firstVisit ? 2500 : 0;                // a coin/die spins at least this long before it can lock
+        // comes up, so there's no speed change at the lock. Every result (coin AND die) takes ~REVEAL_MS:
+        // the die locks exactly on it; the coin lands on the NEAREST face to it (so ~2.8s Heads / ~3.5s
+        // Tails — a half-turn of jitter is the price of stopping on a real face at one constant speed).
+        var SPIN_SPEED = 360 / 1400;          // deg per ms, constant — ~1.4s per full turn
+        var REVEAL_MS = 3000;                 // each coin/die spins ~this long before it locks
+        var REVEAL_DEG = REVEAL_MS * SPIN_SPEED;
 
         // ---- state ----
         var blocks = {};            // height -> hash, for the recent window
@@ -206,8 +207,13 @@
         // appended to its right. So results fill in oldest-first, newest beside the spinner.
         function spawnCoinSpinner() { coinSp = { el: $("coins").appendChild(pendingCoin()), start: null, lockAngle: null }; }
         function spawnDieSpinner() { dieSp = { el: $("dice").appendChild(pendingDie()), start: null, lockAt: null, shuffled: 0 }; }
-        // Smallest angle >= minAngle that lands on faceDeg (0 = Heads / ₿, 180 = Tails / circuit).
-        function faceAngleAtLeast(minAngle, faceDeg) { return Math.ceil((minAngle - faceDeg) / 360) * 360 + faceDeg; }
+        // The face angle (0 = Heads / ₿, 180 = Tails / circuit) NEAREST to pref, but always kept ahead
+        // of the current angle `a` so the coin only ever turns forward into its result.
+        function faceAngleNear(pref, a, faceDeg) {
+            var t = Math.round((pref - faceDeg) / 360) * 360 + faceDeg;
+            while (t < a + 90) t += 360;             // never lock backwards; always a little more travel
+            return t;
+        }
 
         function lockCoin(h) {                          // turn the live spinner into block h's settled coin
             var face = coinFace(h), el = coinSp.el;
@@ -230,22 +236,22 @@
             syncInfo();
         }
 
-        // One rAF loop drives both rows: spin the live spinner, and when it has spun >= SPIN_MIN_MS AND
-        // (coin) reached its face, lock it and spawn the next. Same SPIN_SPEED throughout = no speed jump.
+        // One rAF loop drives both rows: spin the live spinner for ~REVEAL_MS, then lock it (coin: when
+        // it reaches the nearest face; die: on the timer) and spawn the next. One SPIN_SPEED = no jump.
         function tick(ts) {
             if (coinSp) {
                 if (coinSp.start === null) coinSp.start = ts;
                 var a = (ts - coinSp.start) * SPIN_SPEED;
                 if (coinSp.lockAngle === null && coinQ.length) {        // commit to the head of the queue
                     var faceDeg = coinFace(coinQ[0]) === "T" ? 180 : 0;
-                    coinSp.lockAngle = REDUCED ? a : faceAngleAtLeast(Math.max(a, SPIN_MIN_MS * SPIN_SPEED) + 1, faceDeg);
+                    coinSp.lockAngle = REDUCED ? a : faceAngleNear(Math.max(a, REVEAL_DEG), a, faceDeg);
                 }
                 if (coinSp.lockAngle !== null && a >= coinSp.lockAngle) { lockCoin(coinQ.shift()); spawnCoinSpinner(); }
                 else if (!REDUCED) coinSp.el.style.transform = "rotateY(" + (a % 360) + "deg)";
             }
             if (dieSp) {
                 if (dieSp.start === null) dieSp.start = ts;
-                if (dieSp.lockAt === null && dieQ.length) dieSp.lockAt = REDUCED ? ts : Math.max(ts, dieSp.start + SPIN_MIN_MS);
+                if (dieSp.lockAt === null && dieQ.length) dieSp.lockAt = REDUCED ? ts : Math.max(ts, dieSp.start + REVEAL_MS);
                 if (!REDUCED && ts - dieSp.shuffled > 90) { setPips(dieSp.el, 1 + (Math.random() * 6 | 0)); dieSp.shuffled = ts; }
                 if (dieSp.lockAt !== null && ts >= dieSp.lockAt) { lockDie(dieQ.shift()); spawnDieSpinner(); }
             }
