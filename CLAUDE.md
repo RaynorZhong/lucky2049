@@ -75,10 +75,13 @@ verifier (`test_verify_site`), and the in-browser JS run under Node
   `status.json` source-health) from the draws list; both publishers write them.
   Consumer contract: `docs/SCHEMA.md`.
 - `web/` — `index.html` (+ next-draw ETA) / `verify.html` / `stats.html` /
-  `trend.html` (Sina-style 走势图) + `CNAME`. `static/` — `verify.js`, `stats.js`,
-  `trend.js`, `style.css`, `favicon.svg`. Light/minimal theme; front balls =
-  blue, back = orange (don't surface "Litecoin"/"Bitcoin" as ball labels in the UI).
-- `SPEC.md` (frozen spec) · `docs/SCHEMA.md` (data contract) · `docs/DEPLOY.md` · `docs/TDD.md`. Docs are
+  `trend.html` (Sina-style 走势图) / `randomness.html` + `CNAME`. `static/` — `verify.js`,
+  `stats.js`, `trend.js`, `randomness.js`, `style.css`, `favicon.svg`. Light/minimal theme;
+  front balls = blue, back = orange (don't surface "Litecoin"/"Bitcoin" as ball labels in the UI).
+- `randomness.py` + `static/randomness.js` — an **informative, non-frozen** demo of verifiable
+  randomness (coin/dice from one block hash via the same HMAC-stream + rejection-sampling machinery);
+  NOT a game, separate from `SPEC.md`. Kept in Python↔JS lockstep like the verifier; spec in `docs/RANDOMNESS.md`.
+- `SPEC.md` (frozen spec) · `docs/SCHEMA.md` (data contract) · `docs/RANDOMNESS.md` (coin/dice demo) · `docs/DEPLOY.md` · `docs/TDD.md`. Docs are
   **English-canonical**; Chinese mirrors live in `docs/zh/` (same filenames) — edit
   both together (incl. the EN ↔ 中文 cross-link header). UI/code are English-only.
 

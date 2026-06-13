@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://mempool.space https://blockstream.info; base-uri 'self'; form-action 'self'">
+    <title>Verifiable Randomness — lucky2049</title>
+    <meta name="description" content="A demonstration: turn one immutable Bitcoin block hash into reproducible, unbiased coin flips and dice rolls — recomputed in your browser, verifiable by anyone. Not a game.">
+    <meta name="theme-color" content="#f4f5f7">
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="lucky2049">
+    <meta property="og:title" content="Verifiable Randomness — lucky2049">
+    <meta property="og:description" content="Turn one Bitcoin block hash into reproducible, unbiased coin flips and dice rolls in your browser — the same verifiable-randomness machinery behind the draw. Not a game.">
+    <meta property="og:url" content="https://lucky2049.com/randomness.html">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta property="og:image" content="https://lucky2049.com/og.png">
+    <meta name="twitter:image" content="https://lucky2049.com/og.png">
+    <link rel="canonical" href="https://lucky2049.com/randomness.html">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./style.css">
+    <style>
+        .row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+        .k { color: var(--text-secondary); }
+        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; word-break: break-all; }
+        .field { background: var(--surface); border: 1px solid var(--border-strong); color: var(--text);
+            padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); font-size: 1rem; }
+        #hashInput { flex: 1 1 22rem; min-width: 14rem; }
+        .num { width: 4.5rem; }
+        .scope { background: #f1f5f9; border: 1px solid #e2e8f0; color: #475569; padding: 0.6rem 0.9rem;
+            border-radius: var(--radius-sm); font-size: 0.9rem; line-height: 1.5; }
+        .coins { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem; }
+        .coin { display: inline-flex; align-items: center; justify-content: center; width: 2.1rem; height: 2.1rem;
+            border-radius: 999px; font-weight: 700; font-size: 0.9rem; }
+        .coin.H { background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; }
+        .coin.T { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
+        .dice { display: flex; flex-wrap: wrap; gap: 0.1rem 0.4rem; margin-top: 0.5rem; }
+        .die { font-size: 2.7rem; line-height: 1.1; color: #0f172a; }
+        .tally { color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem; }
+        .seed-row { margin-top: 0.5rem; }
+        details.how { margin-top: 1rem; }
+        details.how summary { cursor: pointer; font-weight: 600; }
+        details.how code { background: var(--surface-2); padding: 0.05rem 0.3rem; border-radius: 4px; }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <div class="brand"><img src="./favicon.svg" alt=""><h1>Verifiable Randomness</h1></div>
+            <p class="note">
+                One public, immutable Bitcoin block hash → reproducible, <strong>unbiased</strong> coin flips and
+                dice rolls, computed <strong>in your browser</strong> (its own SHA-256/HMAC, no server). The same
+                machinery that picks the lottery numbers — anyone with the hash gets the exact same outcomes.
+            </p>
+            <p class="scope" style="margin-top:0.75rem;">
+                <strong>This is a demonstration, not a game.</strong> No betting, no money, no stakes — just a
+                transparent example of public, verifiable randomness from the Bitcoin chain.
+            </p>
+        </header>
+
+        <section>
+            <form id="form" class="row" style="margin-bottom:1rem;">
+                <input id="hashInput" class="field" type="text" inputmode="text"
+                    placeholder="block height (e.g. 800000) or a 64-hex block hash" aria-label="Block height or 64-hex block hash">
+                <button class="btn" id="latestBtn" type="button">Use latest block</button>
+            </form>
+            <div class="row" style="margin-bottom:1rem;">
+                <label class="k" for="nCoins">Coin flips</label>
+                <input id="nCoins" class="field num" type="number" min="0" max="256" value="20">
+                <label class="k" for="nDice" style="margin-left:0.75rem;">Dice rolls</label>
+                <input id="nDice" class="field num" type="number" min="0" max="200" value="12">
+                <button class="btn" id="goBtn" type="submit" form="form">Generate</button>
+                <span id="status" class="note" role="status" aria-live="polite"></span>
+            </div>
+
+            <div class="glass-panel" id="panel" style="display:none;">
+                <div class="row" style="justify-content:space-between;"><span class="k">Block hash (seed input)</span><span id="vHash" class="mono"></span></div>
+                <div class="row seed-row" style="justify-content:space-between;"><span class="k">seed = SHA-256(hash)</span><span id="vSeed" class="mono"></span></div>
+
+                <h2 style="margin-top:1.25rem;">Coin flips</h2>
+                <div class="coins" id="coins" role="group" aria-label="Coin flips"></div>
+                <div class="tally" id="coinTally"></div>
+
+                <h2 style="margin-top:1.25rem;">Dice rolls</h2>
+                <div class="dice" id="dice" role="group" aria-label="Dice rolls"></div>
+                <div class="tally" id="diceTally"></div>
+
+                <details class="how">
+                    <summary>How each result is derived (recompute it yourself)</summary>
+                    <p class="note" style="margin-top:0.5rem;">
+                        <code>seed = SHA-256(hash)</code>. A byte stream is
+                        <code>HMAC-SHA-256(seed, "coin:i")</code> / <code>"dice:i"</code> for i = 0, 1, 2, …
+                        <strong>Coin</strong> flip j = bit j of the coin stream (MSB-first), 1 → Heads, 0 → Tails — a fair bit.
+                        <strong>Die</strong> = the next byte b of the dice stream with b &lt; 252, value <code>b mod 6 + 1</code>
+                        (bytes 252–255 are rejected so all six faces stay equally likely — no modulo bias).
+                        Full spec: <a href="https://github.com/RaynorZhong/lucky2049/blob/main/docs/RANDOMNESS.md" target="_blank" rel="noopener">docs/RANDOMNESS.md ↗</a>.
+                        Prefer a terminal? <span class="mono">python randomness.py</span> does the same.
+                    </p>
+                </details>
+            </div>
+        </section>
+
+        <nav class="nav-links" style="margin-top:1.5rem;">
+            <a href="./index.html" class="btn">← Home</a>
+            <a href="./verify.html" class="btn">Verify a Draw</a>
+            <a href="./stats.html" class="btn">Statistics</a>
+            <a href="./trend.html" class="btn">Trend</a>
+        </nav>
+    </div>
+
+    <script src="./verify.js"></script>
+    <script src="./randomness.js"></script>
+    <script>
+        var V = window.Lucky2049Verify, Rnd = window.Lucky2049Random;
+        var $ = function (id) { return document.getElementById(id); };
+        var DICE = ["", "⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];  // ⚀⚁⚂⚃⚄⚅
+
+        // Block-hash lookups reuse the same public explorers as the verifier.
+        var EXPLORERS = ["https://mempool.space/api", "https://blockstream.info/api"];
+        async function explorerText(path) {
+            var errs = [];
+            for (var i = 0; i < EXPLORERS.length; i++) {
+                try {
+                    var resp = await fetch(EXPLORERS[i] + path);
+                    if (!resp.ok) throw new Error("HTTP " + resp.status);
+                    var t = (await resp.text()).trim().toLowerCase();
+                    if (!/^[0-9a-f]{64}$/.test(t)) throw new Error("unexpected response");
+                    return t;
+                } catch (e) { errs.push(e.message); }
+            }
+            throw new Error("explorers failed (" + errs.join(", ") + ")");
+        }
+        function hashForHeight(h) { return explorerText("/block-height/" + h); }
+        function latestHash() { return explorerText("/blocks/tip/hash"); }
+
+        // Resolve the input to a 64-hex block hash: a hash is used as-is; a plain
+        // integer is looked up as a block height.
+        async function resolveHash(raw) {
+            var s = (raw || "").trim().toLowerCase();
+            if (/^[0-9a-f]{64}$/.test(s)) return s;
+            if (/^\d+$/.test(s)) { $("status").textContent = "Fetching block " + s + "…"; return await hashForHeight(s); }
+            throw new Error("enter a block height (digits) or a 64-hex block hash");
+        }
+
+        function intIn(id, lo, hi, dflt) {
+            var v = parseInt($(id).value, 10);
+            if (isNaN(v)) v = dflt;
+            return Math.max(lo, Math.min(hi, v));
+        }
+
+        var RUN = 0;
+        async function run() {
+            var myRun = ++RUN;
+            $("status").textContent = "Working…";
+            var n = intIn("nCoins", 0, 256, 20), m = intIn("nDice", 0, 200, 12);
+            var hash;
+            try { hash = await resolveHash($("hashInput").value); }
+            catch (e) { if (myRun === RUN) $("status").textContent = String(e.message || e); return; }
+            if (myRun !== RUN) return;  // a newer run superseded this one
+
+            $("hashInput").value = hash;
+            $("vHash").textContent = hash;
+            $("vSeed").textContent = V.hex(Rnd.seedFor(hash));
+
+            var coins = Rnd.coinFlips(hash, n);
+            $("coins").innerHTML = coins.map(function (c) { return '<span class="coin ' + c + '">' + c + '</span>'; }).join("");
+            var heads = coins.filter(function (c) { return c === "H"; }).length;
+            $("coinTally").textContent = n ? (heads + " Heads · " + (n - heads) + " Tails") : "—";
+
+            var dice = Rnd.diceRolls(hash, m);
+            $("dice").innerHTML = dice.map(function (d) { return '<span class="die" title="' + d + '">' + DICE[d] + '</span>'; }).join("");
+            $("diceTally").textContent = m ? ("rolls: " + dice.join(" ")) : "—";
+
+            $("panel").style.display = "block";
+            $("status").textContent = "Done — recomputed locally, no server trust.";
+        }
+
+        $("form").addEventListener("submit", function (e) { e.preventDefault(); run(); });
+        $("latestBtn").addEventListener("click", async function () {
+            $("status").textContent = "Fetching the latest block…";
+            try { $("hashInput").value = await latestHash(); run(); }
+            catch (e) { $("status").textContent = "Could not fetch the latest block (" + (e.message || e) + ")"; }
+        });
+
+        // Default seed so the page shows something immediately: the Bitcoin genesis block.
+        $("hashInput").value = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f";
+        run();
+    </script>
+</body>
+
+</html>

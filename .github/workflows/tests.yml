@@ -27,6 +27,6 @@ jobs:
           pip install pytest==9.0.3 pyflakes==3.4.0
           node --version   # parity tests @skipUnless(node) -- fail loudly here if it's ever missing
       - name: Lint (pyflakes -- unused imports / undefined names; no style noise)
-        run: pyflakes verify.py scripts/ tests/
+        run: pyflakes verify.py randomness.py scripts/ tests/
       - name: Run the test suite
         run: pytest -ra

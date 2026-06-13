@@ -43,9 +43,9 @@ jobs:
           mkdir -p site
           cp _published/index.json site/index.json
           python scripts/extend_pages.py site/index.json
-          cp web/index.html web/verify.html web/stats.html web/trend.html web/og.png site/
+          cp web/index.html web/verify.html web/stats.html web/trend.html web/randomness.html web/og.png site/
           cp web/CNAME site/                 # custom domain -- keep across republishes
-          cp static/verify.js static/stats.js static/trend.js static/style.css static/favicon.svg site/
+          cp static/verify.js static/stats.js static/trend.js static/randomness.js static/style.css static/favicon.svg site/
           cp -r anchors site/anchors 2>/dev/null || true   # serve OpenTimestamps proofs at /anchors/
           touch site/.nojekyll
 
