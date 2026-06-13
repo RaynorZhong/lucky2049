@@ -37,9 +37,10 @@
         .bcoin { width: 3rem; height: 3rem; position: relative; transform-style: preserve-3d; transform: rotateY(0deg); }
         .bcoin .cface { position: absolute; inset: 0; border-radius: 50%; backface-visibility: hidden;
             display: flex; align-items: center; justify-content: center; color: #fff; font-style: italic; font-weight: 800;
-            font-size: 1.55rem; font-family: ui-sans-serif, "Segoe UI Symbol", "Noto Sans Symbols2", system-ui, sans-serif;
-            box-shadow: inset 0 0 0 2px rgba(255,255,255,.4), inset 0 -3px 7px rgba(0,0,0,.22), 0 2px 5px rgba(0,0,0,.28); }
-        .bcoin .front { background: radial-gradient(circle at 36% 30%, #ffd887, #f7931a 56%, #b86f12); }
+            font-size: 1.5rem; font-family: ui-sans-serif, "Segoe UI Symbol", "Noto Sans Symbols2", system-ui, sans-serif;
+            /* flat coin face: a bright milled rim + a darker inner ring, no domed sphere shading. */
+            box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.6), inset 0 0 0 4px rgba(176,104,16,.5), 0 1px 2px rgba(0,0,0,.3); }
+        .bcoin .front { background: radial-gradient(circle at 50% 42%, #ffce74, #f6a32c 80%); }
         .bcoin .front::before { content: "\20BF"; text-shadow: 0 1px 1px rgba(0,0,0,.3); }   /* ₿ */
         /* Tails: the same orange coin as the obverse, overlaid with a WHITE circuit board
            (traces, solder pads, a central chip) -- electronic feel, harmonious with the ₿ front. */
@@ -51,7 +52,7 @@
                 radial-gradient(circle at 73% 73%, #fff 0 1.7px, transparent 2.1px),
                 repeating-linear-gradient(90deg, transparent 0 8px, rgba(255,255,255,.55) 8px 9px),
                 repeating-linear-gradient(0deg, transparent 0 8px, rgba(255,255,255,.38) 8px 9px),
-                radial-gradient(circle at 36% 30%, #ffd887, #f7931a 56%, #b86f12); }
+                radial-gradient(circle at 50% 42%, #ffce74, #f6a32c 80%); }
         .bcoin .back::before { content: ""; width: 34%; height: 34%; border-radius: 3px;
             background: rgba(255,255,255,.12);
             box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.85), 0 1px 1px rgba(0,0,0,.2); }
