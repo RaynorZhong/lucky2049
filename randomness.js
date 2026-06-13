@@ -52,12 +52,12 @@
     return out;
   }
 
-  // m unbiased die rolls in 1..sides: byte b of the 'dice' stream, reject b >= 256-256%sides.
-  function diceRolls(blockHash, m, sides) {
+  // m unbiased die rolls in 1..sides from a 32-byte seed: byte b of the 'dice' stream, reject b >= 256-256%sides.
+  function diceFromSeed(seed, m, sides) {
     if (sides === undefined) sides = 6;   // an explicit bad `sides` (e.g. 0) must still be rejected, like randomness.py
     if (m < 0) throw new Error("m must be >= 0");
     if (sides < 2 || sides > 256) throw new Error("sides must be in 2..256");
-    var seed = seedFor(blockHash), limit = 256 - (256 % sides), out = [], i = 0;
+    var limit = 256 - (256 % sides), out = [], i = 0;
     while (out.length < m) {
       var blk = V.hmacSha256(seed, utf8("dice:" + i));
       for (var k = 0; k < blk.length && out.length < m; k++) {
@@ -67,8 +67,22 @@
     }
     return out;
   }
+  function diceRolls(blockHash, m, sides) { return diceFromSeed(seedFor(blockHash), m, sides); }
 
-  var api = { seedFor: seedFor, coinFlips: coinFlips, diceRolls: diceRolls, utf8: utf8, normalize: normalize };
+  // ---- beacon series: one coin per block, one die per 6-block window (mirrors the draw) ----
+  // Window seed = SHA256(concatenated hashes), like the draw concatenating its 144.
+  function windowSeed(hashes) {
+    if (!hashes || !hashes.length) throw new Error("a window needs at least one block hash");
+    var joined = "";
+    for (var i = 0; i < hashes.length; i++) joined += normalize(hashes[i]);
+    return V.sha256(utf8(joined));
+  }
+  function coinForBlock(blockHash) { return coinFlips(blockHash, 1)[0]; }
+  function diceForWindow(hashes, sides) { return diceFromSeed(windowSeed(hashes), 1, sides)[0]; }
+
+  var api = { seedFor: seedFor, coinFlips: coinFlips, diceRolls: diceRolls,
+    windowSeed: windowSeed, coinForBlock: coinForBlock, diceForWindow: diceForWindow,
+    utf8: utf8, normalize: normalize };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.Lucky2049Random = api;
 })(typeof self !== "undefined" ? self : this);
