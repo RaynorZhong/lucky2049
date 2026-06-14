@@ -33,7 +33,7 @@ python -m unittest discover -s tests                      # 不依赖 pytest 的
 
 ## 这套测试长什么样
 
-一切都**只用标准库 + Node** —— 无数据库、无 fixture、无重依赖。
+一切都**只用标准库 + Node** —— 无数据库、无重依赖;唯一的 fixture 是 SPEC 第 0 期窗口(`tests/fixtures/draw0_hashes.json`),黄金向量锁与 JS 对拍锁都会读它。
 站点是静态的,所以测试钉住两件最关键的事:
 
 - **冻结的算法 + 承诺** —— `tests/test_spec_v1.py` 和 `tests/test_commitment.py` 里的黄金向量

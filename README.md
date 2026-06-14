@@ -148,7 +148,7 @@ scripts/
   publish-pages.sh manual publish (export_static + push gh-pages); use the cron normally, pick one
 web/            index.html (home + next-draw ETA) / verify.html / stats.html / trend.html (trend chart) / randomness.html (coin/dice demo) + og.png + CNAME
 static/         verify.js (verifier), stats.js (frequency + chi-square), trend.js (trend chart), randomness.js (coin/dice demo), style.css, favicon.svg — own algorithm, no external scripts
-.github/workflows/  refresh-pages.yml (cron publish), tests.yml (algorithm / commitment / JS locks)
+.github/workflows/  refresh-pages.yml (cron publish), tests.yml (algorithm / commitment / JS locks), anchor-head.yml (OpenTimestamps head anchor), keepalive.yml (keep the cron from auto-disabling)
 SPEC.md         frozen algorithm spec v1        docs/DEPLOY.md deployment   docs/TDD.md TDD workflow
 data/           database.db — optional local cache, gitignored, not shipped with the repo; read only by export_static on rebuild
 ```
@@ -167,7 +167,7 @@ make cov           # with a coverage report
 python -m unittest discover -s tests   # works without pytest too (same suite)
 ```
 
-Tests are **stdlib + Node** (no DB, no fixtures): golden-vector locks for the algorithm /
+Tests are **stdlib + Node** (no DB; one small fixture — the SPEC draw-0 window): golden-vector locks for the algorithm /
 commitment (`test_spec_v1`, `test_commitment`), the standalone verifier (`test_verify_site`),
 and the browser JS cross-checked under Node (`test_verify_js`, `test_stats_js`). TDD workflow in
 [`docs/TDD.md`](docs/TDD.md). CI (GitHub Actions) runs these locks on every push / PR.

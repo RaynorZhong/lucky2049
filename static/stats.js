@@ -1,16 +1,16 @@
 /*
  * stats.js -- dependency-free distribution stats for the static lucky2049 site.
  *
- * Recomputes, in the browser, exactly what the server's /stats page shows:
- * per-number frequencies + a chi-square uniformity test. The server uses
- * scipy chi2_contingency([observed, expected], correction=False), which for
- * this 2xk table reduces to the closed form
+ * Recomputes, in the browser, per-number frequencies + a chi-square uniformity
+ * test. For the 2xk observed/expected table the chi-square reduces to the closed
+ * form
  *     chi2 = sum_j (O_j - E)^2 / (O_j + E),   dof = k - 1,
  *     p    = P(X > chi2),  X ~ chi-square(dof)
- * (verified bit-for-bit against scipy in tests/test_stats_js.py).
+ * pinned to frozen golden (chi2, p) values (computed once with scipy) plus an
+ * independent pure-Python reference in tests/test_stats_js.py -- so it stays
+ * authoritative without any scipy dependency in the repo.
  *
- * Pure computation only (no DOM) so it runs in the browser and under Node,
- * and tests can pin it against the Python/scipy implementation.
+ * Pure computation only (no DOM), so it runs in the browser and under Node.
  */
 (function (root) {
   "use strict";

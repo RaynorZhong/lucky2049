@@ -35,7 +35,7 @@ both run under pytest, so use whichever fits.
 
 ## What the suite looks like
 
-Everything is **stdlib + Node only** — no database, no fixtures, no heavy deps.
+Everything is **stdlib + Node only** — no database, no heavy deps; the one fixture is the SPEC draw-0 window (`tests/fixtures/draw0_hashes.json`), which the golden-vector and JS-parity locks read.
 The site is static, so the tests pin the two things that matter:
 
 - **The frozen algorithm + commitment** — golden vectors in `tests/test_spec_v1.py`

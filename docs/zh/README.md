@@ -120,7 +120,7 @@ scripts/
   publish-pages.sh 手动发布(调 export_static + 推 gh-pages);常态用 cron,二选一
 web/            index.html(首页+下一期预计)/ verify.html / stats.html / trend.html(走势图)/ randomness.html(抛硬币/掷骰子演示)+ og.png + CNAME
 static/         verify.js(验证器)、stats.js(频率+卡方)、trend.js(走势图)、randomness.js(抛硬币/掷骰子演示)、style.css、favicon.svg —— 自带算法、无外部脚本
-.github/workflows/  refresh-pages.yml(cron 发布)、tests.yml(算法/承诺/JS 锁)
+.github/workflows/  refresh-pages.yml(cron 发布)、tests.yml(算法/承诺/JS 锁)、anchor-head.yml(OpenTimestamps 头部锚定)、keepalive.yml(防止 cron 自动停用)
 SPEC.md         冻结算法规范 v1        docs/DEPLOY.md 部署   docs/TDD.md TDD 工作流
 data/           database.db —— 可选本地缓存,gitignored、不随仓库分发,仅 export_static 重建时读
 ```
@@ -138,7 +138,7 @@ make cov           # 带覆盖率报告
 python -m unittest discover -s tests   # 不装 pytest 也行(同一套)
 ```
 
-测试是**标准库 + Node**(无 DB、无 fixture):算法/承诺的黄金向量锁(`test_spec_v1`、`test_commitment`)、
+测试是**标准库 + Node**(无 DB;仅一个 fixture —— SPEC 第 0 期窗口):算法/承诺的黄金向量锁(`test_spec_v1`、`test_commitment`)、
 独立验证器(`test_verify_site`)、以及在 Node 里跑浏览器 JS 对拍(`test_verify_js`、`test_stats_js`)。
 TDD 工作流见 [`TDD.md`](TDD.md)。CI(GitHub Actions)对每次 push/PR 跑这套锁。
 
