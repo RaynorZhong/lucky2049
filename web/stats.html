@@ -20,7 +20,7 @@
     <link rel="canonical" href="https://lucky2049.com/stats.html">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:wght@500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./style.css">
     <style>
         .stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
@@ -47,6 +47,8 @@
         .caption { color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.75rem; }
         .placeholder { text-align: center; color: var(--text-secondary); padding: 3rem 1.25rem; background: var(--surface-2);
             border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.95rem; }
+        .placeholder::before { content: ""; display: block; width: 2.5rem; height: 2.5rem; margin: 0 auto 0.7rem;
+            background: url(./favicon.svg) center/contain no-repeat; opacity: 0.4; }
     </style>
 </head>
 
@@ -94,7 +96,7 @@
                 ? "Looks fair — random draws would scatter at least this unevenly about " + pct + " of the time."
                 : "Unusual — random draws would scatter this unevenly only " + pct + " of the time (under the 5% bar).";
             var pColor = p > 0.05 ? 'var(--accent)' : '#dc2626';
-            return '<section class="glass-panel">'
+            return '<section class="panel">'
                 + '<h2>' + title + '</h2>'
                 + '<p class="plain-read">' + plain + '</p>'
                 + '<div class="stat-cards">'

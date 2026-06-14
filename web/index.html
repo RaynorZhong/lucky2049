@@ -20,7 +20,7 @@
     <link rel="canonical" href="https://lucky2049.com/">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:wght@500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./style.css">
     <link rel="alternate" type="application/json" title="lucky2049 draws (JSON Feed)" href="./feed.json">
     <style>
@@ -40,7 +40,7 @@
         .latest-hero { padding: 1.6rem 1.75rem; }
         .lh-top { display: flex; align-items: baseline; gap: 0.7rem; flex-wrap: wrap; }
         .lh-label { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
-        .lh-id { font-family: var(--font-heading); font-size: 2rem; font-weight: 700; color: #0f172a; line-height: 1; }
+        .lh-id { font-family: var(--font-display); font-size: 2.1rem; font-weight: 600; color: #0f172a; line-height: 1; }
         .lh-time { font-size: 0.82rem; margin-left: auto; }
         .lh-balls { margin: 1.1rem 0; }
         .lh-balls .white-balls { width: 3rem; height: 3rem; font-size: 1.3rem; }
@@ -87,7 +87,7 @@
         </header>
 
         <section>
-            <div class="glass-panel latest-hero" id="latestHero">
+            <div class="panel latest-hero" id="latestHero">
                 <div class="lh-top">
                     <span class="lh-label">Latest verified draw</span>
                     <span class="lh-id" id="lhId">No. —</span>
@@ -103,7 +103,7 @@
 
         <section>
             <h2>Recent draws</h2>
-            <div class="glass-panel" style="padding:0.5rem 1rem;">
+            <div class="panel" style="padding:0.5rem 1rem;">
                 <table class="draws-table">
                     <thead>
                         <tr><th>Draw</th><th>Front</th><th>Back</th><th>Heights</th><th>Time</th></tr>
@@ -132,7 +132,7 @@
                 <span class="mono">B / p</span>. lucky2049 runs <strong>no prize pool</strong>; this is just the ceiling
                 any downstream prize would have to stay under for grinding to stay irrational.
             </p>
-            <div class="glass-panel next-card" id="econ">
+            <div class="panel next-card" id="econ">
                 <div class="nd-cell"><div class="nd-k">BTC price</div><div class="nd-v mono" id="ecPrice">—</div><div class="nd-sub" id="ecPriceSub">live · mempool.space</div></div>
                 <div class="nd-cell"><div class="nd-k">Block reward B</div><div class="nd-v mono" id="ecB" style="font-size:1.05rem;">—</div><div class="nd-sub">block subsidy · fees extra (B larger)</div></div>
                 <div class="nd-cell"><div class="nd-k">Jackpot odds p</div><div class="nd-v mono" id="ecP" style="font-size:1.05rem;">—</div><div class="nd-sub">5 of 35 · 2 of 12</div></div>

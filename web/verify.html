@@ -20,7 +20,7 @@
     <link rel="canonical" href="https://lucky2049.com/verify.html">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:wght@500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./style.css">
     <style>
         .row { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
@@ -96,7 +96,7 @@
                 <span id="status" class="note" role="status" aria-live="polite"></span>
             </form>
 
-            <div class="glass-panel" id="panel" style="display:none;">
+            <div class="panel" id="panel" style="display:none;">
                 <div class="verdict wait" id="verdict" role="status" aria-live="polite">
                     <span class="vd-icon" id="vdIcon" aria-hidden="true">…</span>
                     <div>
@@ -127,7 +127,7 @@
                 </div>
             </div>
 
-            <div class="glass-panel" style="margin-top:1rem;">
+            <div class="panel" style="margin-top:1rem;">
                 <div class="kv"><span class="k">History head (commits to all draws)</span><span class="v"><span id="vHead" class="mono">…</span></span></div>
                 <p class="note" style="margin-top:0.5rem;">
                     Prefer a terminal? <span class="mono">python verify.py &lt;id&gt; --source mempool</span> does the same check.
