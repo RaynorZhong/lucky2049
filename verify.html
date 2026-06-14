@@ -309,15 +309,16 @@
 
         var q = new URLSearchParams(location.search).get("draw");
         if (q !== null) $("drawId").value = q;
+        // Resolve which draw to show ONLY after the index is loaded, so a blank or
+        // garbled ?draw= falls back to the latest (not draw 0 before count is known).
         loadIndex().then(function (idx) {
             var count = (idx && idx.count) || 0;
             if (count > 0) $("drawId").max = count - 1;
-            if (q === null) {                              // no ?draw= -> default to the latest published draw
-                if (count > 0) { $("drawId").value = count - 1; verify(count - 1); }
-                else $("status").textContent = "No draws published yet.";
-            }
+            var v = parseInt($("drawId").value, 10);
+            if (!isNaN(v) && v >= 0) verify(v);                              // an explicit, valid draw
+            else if (count > 0) { $("drawId").value = count - 1; verify(count - 1); }   // blank/garbled -> latest
+            else $("status").textContent = "No draws published yet.";
         }, function () { /* loadIndex surfaces its own error in the head panel */ });
-        if (q !== null) verify(currentId());
     </script>
 </body>
 

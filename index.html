@@ -88,7 +88,7 @@
             </p>
             <div class="glass-panel next-card" id="econ">
                 <div class="nd-cell"><div class="nd-k">BTC price</div><div class="nd-v mono" id="ecPrice">—</div><div class="nd-sub" id="ecPriceSub">live · mempool.space</div></div>
-                <div class="nd-cell"><div class="nd-k">Block reward B</div><div class="nd-v mono" id="ecB" style="font-size:1.05rem;">—</div><div class="nd-sub">3.125 BTC subsidy · fees extra (B larger)</div></div>
+                <div class="nd-cell"><div class="nd-k">Block reward B</div><div class="nd-v mono" id="ecB" style="font-size:1.05rem;">—</div><div class="nd-sub">block subsidy · fees extra (B larger)</div></div>
                 <div class="nd-cell"><div class="nd-k">Jackpot odds p</div><div class="nd-v mono" id="ecP" style="font-size:1.05rem;">—</div><div class="nd-sub">5 of 35 · 2 of 12</div></div>
                 <div class="nd-cell"><div class="nd-k">Safe prize ceiling (B / p)</div><div class="nd-v mono" id="ecMax">—</div><div class="nd-sub">grinding stays irrational below this</div></div>
             </div>
@@ -176,7 +176,9 @@
             function C(n, k) { var r = 1; for (var i = 0; i < k; i++) r = r * (n - i) / (i + 1); return Math.round(r); }
             return C(35, 5) * C(12, 2);   // 324632 * 66 = 21,425,712
         })();
-        var BLOCK_SUBSIDY_BTC = 3.125;    // post-2024 halving; ~2028 -> 1.5625
+        // Block subsidy from the halving schedule (50 BTC, halving every 210,000 blocks),
+        // so the bound self-updates across halvings instead of going stale at the ~2028 one.
+        function blockSubsidy(height) { return (height >= 0) ? 50 / Math.pow(2, Math.floor(height / 210000)) : 3.125; }
         function fmtUsd(n) {
             if (n >= 1e12) return "$" + (n / 1e12).toFixed(2) + "T";
             if (n >= 1e9) return "$" + (n / 1e9).toFixed(2) + "B";
@@ -190,8 +192,11 @@
             catch (e) { $("ecPrice").textContent = "—"; $("ecPriceSub").textContent = "price unavailable"; return; }
             if (!usd) { $("ecPrice").textContent = "—"; return; }
             $("ecPrice").textContent = "$" + Math.round(usd).toLocaleString();
-            var bUsd = BLOCK_SUBSIDY_BTC * usd;
-            $("ecB").textContent = BLOCK_SUBSIDY_BTC + " BTC ≈ " + fmtUsd(bUsd);
+            var height = null;
+            try { height = await fetchTipHeight(); } catch (e) { /* fall back to the current-era subsidy */ }
+            var subsidy = blockSubsidy(height == null ? -1 : height);
+            var bUsd = subsidy * usd;
+            $("ecB").textContent = subsidy + " BTC ≈ " + fmtUsd(bUsd);
             $("ecMax").textContent = fmtUsd(bUsd * JACKPOT_COMBOS);   // W_max = B / p
         }
 
@@ -209,6 +214,7 @@
             var best = oks.length ? Math.max.apply(null, oks) : 0;
             st.sources.forEach(function (s) {
                 var sp = document.createElement("span");
+                sp.setAttribute("role", "img");   // make its aria-label authoritative for screen readers
                 var dot = document.createElement("span");
                 dot.className = "dot";
                 dot.setAttribute("aria-hidden", "true");   // colour is decorative; state is in the text + aria-label
