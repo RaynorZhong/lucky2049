@@ -20,7 +20,7 @@
     <link rel="canonical" href="https://lucky2049.com/stats.html">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:wght@500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./style.css">
     <style>
         .stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
@@ -28,19 +28,44 @@
         .stat-cards .k { font-size: 0.8rem; color: var(--text-secondary); }
         .stat-cards .v { font-size: 1.5rem; font-weight: 700; font-family: var(--font-heading); color: #0f172a; }
         .stat-cards .v.small { font-size: 1rem; font-weight: 600; }
-        .chart { position: relative; height: 220px; padding: 0.5rem 0; }
+        .plain-read { font-weight: 600; color: var(--text); margin: 0 0 1rem; font-size: 1.02rem; line-height: 1.4; }
+        .chart-row { display: flex; align-items: stretch; gap: 0.45rem; }
+        .y-axis { width: 3rem; flex: none; position: relative; }
+        .y-axis span { position: absolute; right: 0.3rem; font-size: 0.7rem; color: var(--muted); line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .y-axis .y-max { top: 0; } .y-axis .y-zero { bottom: 0; } .y-axis .y-exp { color: #64748b; transform: translateY(50%); }
+        .chart { position: relative; flex: 1; height: 220px; }
         .chart .bars { display: flex; align-items: flex-end; gap: 2px; height: 100%; }
         .chart .bar { flex: 1; min-height: 2px; background: linear-gradient(180deg, #5b8fd6, #345d9d); border-radius: 3px 3px 0 0; }
         .chart .bar.back { background: linear-gradient(180deg, #ffb24d, #f7931a); }
         .chart .bar:hover { filter: brightness(1.06); }
-        .chart .expected { position: absolute; left: 0; right: 0; border-top: 2px dashed #ef4444; opacity: 0.8; }
+        /* neutral-gray (not alarm-red) line = the IDEAL/fair target, with an inline label */
+        .chart .expected { position: absolute; left: 0; right: 0; border-top: 2px dashed #94a3b8; }
+        .chart .expected .exp-label { position: absolute; right: 0.2rem; top: -1.05rem; font-size: 0.68rem;
+            color: #64748b; background: var(--surface); padding: 0 0.25rem; border-radius: 3px; }
+        .x-axis { display: flex; margin: 0.4rem 0 0 3.45rem; }
+        .x-axis span { flex: 1; text-align: center; font-size: 0.66rem; color: var(--muted); font-variant-numeric: tabular-nums; }
         .caption { color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.75rem; }
         .placeholder { text-align: center; color: var(--text-secondary); padding: 3rem 1.25rem; background: var(--surface-2);
             border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.95rem; }
+        .placeholder::before { content: ""; display: block; width: 2.5rem; height: 2.5rem; margin: 0 auto 0.7rem;
+            background: url(./favicon.svg) center/contain no-repeat; opacity: 0.4; }
     </style>
 </head>
 
 <body>
+    <div class="topnav-wrap">
+        <nav class="topnav" aria-label="Primary">
+            <a href="./index.html" class="tn-brand"><img src="./favicon.svg" alt=""><span>lucky2049</span></a>
+            <div class="tn-links">
+                <a href="./index.html">Home</a>
+                <a href="./verify.html">Verify</a>
+                <a href="./stats.html" aria-current="page">Statistics</a>
+                <a href="./trend.html">Trend</a>
+                <a href="./randomness.html" class="tn-sep">Randomness</a>
+                <a href="https://github.com/RaynorZhong/lucky2049" target="_blank" rel="noopener">GitHub ↗</a>
+            </div>
+        </nav>
+    </div>
     <div class="container">
         <header>
             <div class="brand"><img src="./favicon.svg" alt=""><h1>Statistics</h1></div>
@@ -50,34 +75,48 @@
 
         <div id="sections"><div class="placeholder">Crunching the distribution…</div></div>
 
-        <nav class="nav-links" style="margin-top:2rem;">
-            <a href="./index.html" class="btn">← Home</a>
-            <a href="./verify.html" class="btn">Verify a Draw</a>
-            <a href="./trend.html" class="btn">Trend</a>
-            <a href="./randomness.html" class="btn">Randomness</a>
-        </nav>
     </div>
 
     <script src="./stats.js"></script>
     <script>
         function chartSection(title, sec, kind) {
+            var maxBall = sec.bars.length;
+            var tallest = Math.max.apply(null, sec.bars.map(function (b) { return b.count; })) || 1;
             var bars = sec.bars.map(function (b) {
                 return '<div class="bar' + (kind === 'back' ? ' back' : '') + '" style="height:' + b.pct + '%;" title="#' + b.n + ': drawn ' + b.count + ' times"></div>';
             }).join("");
-            var pColor = sec.stats.p_value > 0.05 ? 'var(--accent)' : '#dc2626';
-            return '<section class="glass-panel">'
+            // x-axis: a number under the 1st, last, and every step-th ball
+            var step = maxBall > 15 ? 5 : 2;
+            var xlabels = sec.bars.map(function (b, i) {
+                return '<span>' + (i === 0 || i === maxBall - 1 || b.n % step === 0 ? b.n : '') + '</span>';
+            }).join("");
+            // plain-language read of the p-value (frequentist: P of >= this much deviation if fair)
+            var p = sec.stats.p_value, pct = p >= 0.01 ? Math.round(p * 100) + "%" : "under 1%";
+            var plain = p > 0.05
+                ? "Looks fair — random draws would scatter at least this unevenly about " + pct + " of the time."
+                : "Unusual — random draws would scatter this unevenly only " + pct + " of the time (under the 5% bar).";
+            var pColor = p > 0.05 ? 'var(--accent)' : '#dc2626';
+            return '<section class="panel">'
                 + '<h2>' + title + '</h2>'
+                + '<p class="plain-read">' + plain + '</p>'
                 + '<div class="stat-cards">'
                 + '<div class="card"><div class="k">Chi-square statistic</div><div class="v">' + sec.stats.chi2 + '</div></div>'
-                + '<div class="card"><div class="k">p-value</div><div class="v" style="color:' + pColor + ';">' + sec.stats.p_value + '</div></div>'
-                + '<div class="card"><div class="k">Conclusion</div><div class="v small">' + sec.stats.conclusion + '</div></div>'
+                + '<div class="card"><div class="k">p-value</div><div class="v" style="color:' + pColor + ';">' + p + '</div></div>'
                 + '</div>'
-                + '<div class="chart">'
-                + '<div class="expected" style="bottom:' + sec.expected_pct + '%;" title="Expected if perfectly uniform (~' + sec.expected + ')"></div>'
-                + '<div class="bars">' + bars + '</div>'
+                + '<div class="chart-row">'
+                +   '<div class="y-axis">'
+                +     (tallest > sec.expected * 1.08 ? '<span class="y-max">' + tallest + '</span>' : '')
+                +     '<span class="y-exp" style="bottom:' + sec.expected_pct + '%;">' + sec.expected + '</span>'
+                +     '<span class="y-zero">0</span>'
+                +   '</div>'
+                +   '<div class="chart">'
+                +     '<div class="expected" style="bottom:' + sec.expected_pct + '%;"><span class="exp-label">expected ~' + sec.expected + '</span></div>'
+                +     '<div class="bars">' + bars + '</div>'
+                +   '</div>'
                 + '</div>'
-                + '<p class="caption">Each bar = how often a number was drawn; the dashed line is the uniform expectation (~'
-                + sec.expected + '). Hover a bar for its count.</p>'
+                + '<div class="x-axis">' + xlabels + '</div>'
+                + '<p class="caption">Each bar is how often a number came up; the gray dashed line is the <strong>expected</strong> count if every number were equally likely (~'
+                + sec.expected + '). A flat row near that line is what fair, unbiased draws look like.</p>'
                 + '</section>';
         }
         (async function () {

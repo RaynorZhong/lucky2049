@@ -20,7 +20,7 @@
     <link rel="canonical" href="https://lucky2049.com/">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:wght@500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./style.css">
     <link rel="alternate" type="application/json" title="lucky2049 draws (JSON Feed)" href="./feed.json">
     <style>
@@ -36,16 +36,48 @@
         .src-health .dot { display: inline-block; width: 0.6rem; height: 0.6rem;
             border-radius: 50%; margin-right: 0.3rem; vertical-align: -1px; }
         .draws-table .empty-row td { text-align: center; color: var(--text-secondary); padding: 1.5rem 1rem; font-size: 0.92rem; }
+        /* Latest-draw hero: the actual product, up top and large. */
+        .latest-hero { padding: 1.6rem 1.75rem; }
+        .lh-top { display: flex; align-items: baseline; gap: 0.7rem; flex-wrap: wrap; }
+        .lh-label { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+        .lh-id { font-family: var(--font-display); font-size: 2.1rem; font-weight: 600; color: #0f172a; line-height: 1; }
+        .lh-time { font-size: 0.82rem; margin-left: auto; }
+        .lh-balls { margin: 1.1rem 0; }
+        .lh-balls .white-balls { width: 3rem; height: 3rem; font-size: 1.3rem; }
+        .lh-foot { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+            flex-wrap: wrap; border-top: 1px solid var(--border); padding-top: 0.95rem; }
+        .lh-src { font-size: 0.9rem; color: var(--text-secondary); }
+        /* Next-draw demoted to a thin live strip. */
+        .nd-strip { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; color: var(--text-secondary);
+            font-size: 0.92rem; background: var(--surface); border: 1px solid var(--border);
+            border-radius: var(--radius-md); padding: 0.7rem 1rem; }
+        .nd-strip strong { color: var(--text); font-weight: 600; }
+        .nd-strip .mono { font-variant-numeric: tabular-nums; }
+        .nd-dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: #16a34a; flex: none; }
         @media (max-width: 640px) {
             .next-card { flex-wrap: wrap; }
             .nd-cell { flex: 1 1 50%; border-left: none; border-top: 1px solid var(--border); }
             .nd-cell:first-child, .nd-cell:nth-child(2) { border-top: none; }
             .nd-v { font-size: 1.25rem; }
+            .latest-hero { padding: 1.2rem 1.1rem; }
         }
     </style>
 </head>
 
 <body>
+    <div class="topnav-wrap">
+        <nav class="topnav" aria-label="Primary">
+            <a href="./index.html" class="tn-brand"><img src="./favicon.svg" alt=""><span>lucky2049</span></a>
+            <div class="tn-links">
+                <a href="./index.html" aria-current="page">Home</a>
+                <a href="./verify.html">Verify</a>
+                <a href="./stats.html">Statistics</a>
+                <a href="./trend.html">Trend</a>
+                <a href="./randomness.html" class="tn-sep">Randomness</a>
+                <a href="https://github.com/RaynorZhong/lucky2049" target="_blank" rel="noopener">GitHub ↗</a>
+            </div>
+        </nav>
+    </div>
     <div class="container">
         <header>
             <div class="brand"><img src="./favicon.svg" alt=""><h1>lucky2049</h1></div>
@@ -55,19 +87,23 @@
         </header>
 
         <section>
-            <h2>Next draw</h2>
-            <div class="glass-panel next-card" id="nextDraw">
-                <div class="nd-cell"><div class="nd-k">Next draw</div><div class="nd-v" id="ndId">No. —</div></div>
-                <div class="nd-cell"><div class="nd-k">Est. draw time</div><div class="nd-v mono" id="ndEta" style="font-size:1.05rem;">—</div><div class="nd-sub">≈10 min/block · 6 confirmations</div></div>
-                <div class="nd-cell"><div class="nd-k">Countdown</div><div class="nd-v mono" id="ndCd">—</div></div>
-                <div class="nd-cell"><div class="nd-k">Blocks left</div><div class="nd-v mono" id="ndBlocks">—</div></div>
+            <div class="panel latest-hero" id="latestHero">
+                <div class="lh-top">
+                    <span class="lh-label">Latest verified draw</span>
+                    <span class="lh-id" id="lhId">No. —</span>
+                    <span class="lh-time text-muted" id="lhTime"></span>
+                </div>
+                <div class="lh-balls d-flex" id="lhBalls" role="group" aria-label="Latest draw numbers"></div>
+                <div class="lh-foot">
+                    <span class="lh-src" id="lhSrc">derived from 144 Bitcoin block hashes</span>
+                    <a class="btn btn-primary" id="lhVerify" href="./verify.html">Verify this draw →</a>
+                </div>
             </div>
-            <div class="src-health" id="srcHealth" style="display:none;"></div>
         </section>
 
         <section>
-            <h2>Latest draws</h2>
-            <div class="glass-panel" style="padding:0.5rem 1rem;">
+            <h2>Recent draws</h2>
+            <div class="panel" style="padding:0.5rem 1rem;">
                 <table class="draws-table">
                     <thead>
                         <tr><th>Draw</th><th>Front</th><th>Back</th><th>Heights</th><th>Time</th></tr>
@@ -78,29 +114,32 @@
         </section>
 
         <section>
-            <h2>Economic-security bound</h2>
+            <div class="nd-strip" id="ndStrip">
+                <span class="nd-dot" aria-hidden="true"></span>
+                Next draw&nbsp;<strong id="ndId">No. —</strong>
+                <span class="text-muted">· est.</span>&nbsp;<span id="ndEta" class="mono">—</span>
+                <span class="text-muted">·</span>&nbsp;<span id="ndBlocks">—</span>
+                <span class="text-muted">·</span>&nbsp;<span id="ndCd" class="mono">—</span>
+            </div>
+            <div class="src-health" id="srcHealth" style="display:none;"></div>
+        </section>
+
+        <section>
+            <h2>Why it can't be gamed <span style="font-weight:400; font-size:0.95rem; color:var(--text-secondary);">— manipulation resistance</span></h2>
             <p class="text-muted" style="font-size:0.9rem; margin:0.2rem 0 0.7rem;">
-                Why the draw is safe against manipulation, in live numbers. Only the miner of a window's
-                <em>last</em> block can re-roll the result, and each re-roll forfeits a whole block reward
-                <span class="mono">B</span> — so grinding never pays unless a single prize tops
-                <span class="mono">B / p</span>. lucky2049 runs <strong>no prize pool</strong>; this is simply the
-                ceiling any downstream prize must stay under to keep the beacon economically secure.
+                Only the miner of a window's <em>last</em> block can re-roll the result, and each re-roll forfeits a
+                whole block reward <span class="mono">B</span> — so grinding never pays unless a single prize tops
+                <span class="mono">B / p</span>. lucky2049 runs <strong>no prize pool</strong>; this is just the ceiling
+                any downstream prize would have to stay under for grinding to stay irrational.
             </p>
-            <div class="glass-panel next-card" id="econ">
+            <div class="panel next-card" id="econ">
                 <div class="nd-cell"><div class="nd-k">BTC price</div><div class="nd-v mono" id="ecPrice">—</div><div class="nd-sub" id="ecPriceSub">live · mempool.space</div></div>
                 <div class="nd-cell"><div class="nd-k">Block reward B</div><div class="nd-v mono" id="ecB" style="font-size:1.05rem;">—</div><div class="nd-sub">block subsidy · fees extra (B larger)</div></div>
                 <div class="nd-cell"><div class="nd-k">Jackpot odds p</div><div class="nd-v mono" id="ecP" style="font-size:1.05rem;">—</div><div class="nd-sub">5 of 35 · 2 of 12</div></div>
-                <div class="nd-cell"><div class="nd-k">Safe prize ceiling (B / p)</div><div class="nd-v mono" id="ecMax">—</div><div class="nd-sub">grinding stays irrational below this</div></div>
+                <div class="nd-cell"><div class="nd-k">Grind-resistance ceiling (B / p)</div><div class="nd-v mono" id="ecMax">—</div><div class="nd-sub">grinding stays irrational below this</div></div>
             </div>
         </section>
 
-        <nav class="nav-links" style="margin-top:1.5rem;">
-            <a href="./verify.html" class="btn">Verify a Draw</a>
-            <a href="./stats.html" class="btn">Statistics</a>
-            <a href="./trend.html" class="btn">Trend</a>
-            <a href="./randomness.html" class="btn">Randomness</a>
-            <a href="https://github.com/RaynorZhong/lucky2049" class="btn" target="_blank" rel="noopener">GitHub ↗</a>
-        </nav>
     </div>
 
     <script>
@@ -263,6 +302,20 @@
             $("summary").textContent =
                 head.count + " draws · algorithm " + head.algo_version
                 + " · history head " + (head.head || "").slice(0, 16) + "…";
+
+            // Hero: the latest verified draw (the actual product) -- big, with a verify hook.
+            var L = lat.latest;
+            if (L) {
+                $("lhId").textContent = "No. " + L.id;
+                $("lhBalls").innerHTML = balls(L.front) + balls(L.back, "powerball");
+                $("lhSrc").innerHTML = "derived from Bitcoin blocks <strong>" + (L.start_height | 0) + "–" + (L.end_height | 0) + "</strong>";
+                $("lhVerify").href = "./verify.html?draw=" + L.id;
+                if (L.timestamp) $("lhTime").textContent = esc(L.timestamp);
+            } else {
+                $("lhId").textContent = "—";
+                $("lhSrc").textContent = "No draws published yet — the first 144-block window is still being mined.";
+                $("lhVerify").style.display = "none";
+            }
 
             (async function () {
                 try {
