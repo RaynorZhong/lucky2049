@@ -7,7 +7,7 @@
     --border-strong: #d6d9de;
     --text: #111827;
     --text-secondary: #5b6573;
-    --muted: #9aa3af;
+    --muted: #6b7280;   /* WCAG AA on white/surface-2 (~4.8:1); was #9aa3af (~2.6:1, failing) */
     --accent: #2563eb;
     --accent-soft: rgba(37, 99, 235, 0.08);
 

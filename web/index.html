@@ -51,7 +51,7 @@
             <div class="brand"><img src="./favicon.svg" alt=""><h1>lucky2049</h1></div>
             <p>Super Lotto numbers (5 of 1–35 + 2 of 1–12) derived deterministically from 144 Bitcoin
                 block hashes — a transparent, independently verifiable snapshot of the draw history.</p>
-            <p class="text-muted" id="summary" style="margin-top:0.4rem; font-size:0.9rem;" aria-live="polite"></p>
+            <p class="text-muted" id="summary" style="margin-top:0.4rem; font-size:0.9rem;"></p>
         </header>
 
         <section>
@@ -88,7 +88,7 @@
             </p>
             <div class="glass-panel next-card" id="econ">
                 <div class="nd-cell"><div class="nd-k">BTC price</div><div class="nd-v mono" id="ecPrice">—</div><div class="nd-sub" id="ecPriceSub">live · mempool.space</div></div>
-                <div class="nd-cell"><div class="nd-k">Block reward B</div><div class="nd-v mono" id="ecB" style="font-size:1.05rem;">—</div><div class="nd-sub">3.125 BTC subsidy + fees</div></div>
+                <div class="nd-cell"><div class="nd-k">Block reward B</div><div class="nd-v mono" id="ecB" style="font-size:1.05rem;">—</div><div class="nd-sub">3.125 BTC subsidy · fees extra (B larger)</div></div>
                 <div class="nd-cell"><div class="nd-k">Jackpot odds p</div><div class="nd-v mono" id="ecP" style="font-size:1.05rem;">—</div><div class="nd-sub">5 of 35 · 2 of 12</div></div>
                 <div class="nd-cell"><div class="nd-k">Safe prize ceiling (B / p)</div><div class="nd-v mono" id="ecMax">—</div><div class="nd-sub">grinding stays irrational below this</div></div>
             </div>
@@ -281,10 +281,20 @@
             sourceHealth();
             setInterval(sourceHealth, 120000);
             var latestId = (lat.latest && lat.latest.id != null) ? lat.latest.id : head.draw_id;
+            async function refreshNext() {
+                // re-read latest.json so a newly published draw advances the card
+                // (otherwise a long-lived tab stays stuck on a finished window).
+                try {
+                    var l = await (await fetch("./latest.json")).json();
+                    var id = (l.latest && l.latest.id != null) ? l.latest.id : (l.head && l.head.draw_id);
+                    if (id != null && id >= 0) latestId = id;
+                } catch (e) { /* keep the last known id */ }
+                if (latestId != null && latestId >= 0) nextDraw(latestId);
+            }
             if (latestId != null && latestId >= 0) {
                 nextDraw(latestId);
                 setInterval(tick, 1000);
-                setInterval(function () { nextDraw(latestId); }, 120000);
+                setInterval(refreshNext, 120000);
             }
         })();
     </script>

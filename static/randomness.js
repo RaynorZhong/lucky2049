@@ -12,13 +12,21 @@
   var V = (typeof module !== "undefined" && module.exports) ? require("./verify.js") : root.Lucky2049Verify;
 
   // Minimal UTF-8 encoder (inputs here are ASCII: hex hashes + "coin:i"/"dice:i").
+  // Surrogate pairs are combined into one 4-byte sequence to match TextEncoder /
+  // Python utf-8 (defensive: an astral char must never split into two WTF-8 seqs
+  // and diverge from verify.js / randomness.py, even though normalize() gates inputs).
   function utf8(s) {
     var b = [];
     for (var i = 0; i < s.length; i++) {
       var c = s.charCodeAt(i);
+      if (c >= 0xd800 && c <= 0xdbff && i + 1 < s.length) {
+        var lo = s.charCodeAt(i + 1);
+        if (lo >= 0xdc00 && lo <= 0xdfff) { c = 0x10000 + ((c - 0xd800) << 10) + (lo - 0xdc00); i++; }
+      }
       if (c < 0x80) b.push(c);
       else if (c < 0x800) b.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
-      else b.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+      else if (c < 0x10000) b.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+      else b.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 0x3f), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
     }
     return new Uint8Array(b);
   }

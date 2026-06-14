@@ -139,9 +139,16 @@
       var expected = d.id === 0 ? GENESIS_PREV : (byId[d.id - 1] ? byId[d.id - 1].commitment : null);
       if (expected === null || d.prev_commitment !== expected) return { ok: false, brokenAt: d.id };
     }
+    // The head must commit to the FULL published history -- i.e. equal the last
+    // (highest-id) draw's commitment. Derive the expectation from that draw, NOT from
+    // byId[head.draw_id], so a head that is missing, decoupled, or points at a
+    // dropped / non-existent id is caught instead of silently passing.
     var head = (index && index.head) || {};
-    if (head.head && byId[head.draw_id] && head.head !== byId[head.draw_id].commitment) {
-      return { ok: false, brokenAt: "head" };
+    if (draws.length && (head.head || head.draw_id != null)) {
+      var last = draws[draws.length - 1];
+      if (head.head !== last.commitment || (head.draw_id != null && head.draw_id !== last.id)) {
+        return { ok: false, brokenAt: "head" };
+      }
     }
     return { ok: true, brokenAt: null };
   }

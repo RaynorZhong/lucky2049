@@ -43,6 +43,10 @@ const midCommit = clone(ok); midCommit.draws[1].commitment = "X";       // break
 const midPrev   = clone(ok); midPrev.draws[1].prev_commitment = "X";    // breaks draw 1's link
 const badHead   = clone(ok); badHead.head.head = "X";                   // head != last commitment
 const genesis   = clone(ok); genesis.draws[0].prev_commitment = "X";    // draw 0 not genesis
+const bogusId   = clone(ok); bogusId.head.draw_id = 99;                 // head points at a non-existent id
+const missHead  = clone(ok); delete missHead.head.head;                 // head.head absent
+const truncated = clone(ok); truncated.draws.pop();                     // tail dropped, head still claims it
+const noHead    = clone(ok); noHead.head = {};                          // genuinely no head info -> not flagged
 console.log(JSON.stringify({
   genesisConst: V.GENESIS_PREV,
   ok: V.verifyChain(ok),
@@ -50,6 +54,10 @@ console.log(JSON.stringify({
   midPrev: V.verifyChain(midPrev),
   badHead: V.verifyChain(badHead),
   genesis: V.verifyChain(genesis),
+  bogusId: V.verifyChain(bogusId),
+  missHead: V.verifyChain(missHead),
+  truncated: V.verifyChain(truncated),
+  noHead: V.verifyChain(noHead),
 }));
 """
 
@@ -73,6 +81,12 @@ class TestVerifyJs(unittest.TestCase):
         self.assertEqual(r["midPrev"], {"ok": False, "brokenAt": 1})
         self.assertEqual(r["badHead"], {"ok": False, "brokenAt": "head"})
         self.assertEqual(r["genesis"], {"ok": False, "brokenAt": 0})
+        # a present-but-decoupled head must NOT silently pass: bogus id, missing
+        # head hash, and a truncated tail all break at "head"...
+        self.assertEqual(r["bogusId"], {"ok": False, "brokenAt": "head"})
+        self.assertEqual(r["missHead"], {"ok": False, "brokenAt": "head"})
+        self.assertEqual(r["truncated"], {"ok": False, "brokenAt": "head"})
+        self.assertEqual(r["noHead"], {"ok": True, "brokenAt": None})    # ...but no head info at all is fine
 
 
 if __name__ == "__main__":
