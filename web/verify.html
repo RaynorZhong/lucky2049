@@ -152,6 +152,22 @@
             $("vdSub").textContent = sub || "";
             $("vdRetry").style.display = state === "err" ? "" : "none";
         }
+        // Pure decision: (result reproduced?, chain state 'pass'|'fail'|'unchecked', draw id) -> the
+        // verdict. Green ONLY when the numbers reproduce AND the commitment chain isn't broken. Kept
+        // pure (no DOM) so tests/test_verify_fetch_js.py can lock the whole truth table.
+        function composeVerdict(resultOk, chainState, id) {
+            if (resultOk && chainState !== "fail") {
+                return { state: "pass", text: "This draw matches the Bitcoin chain.",
+                    sub: "Recomputed in your browser from the 144 block hashes"
+                        + (chainState === "pass"
+                            ? (id === 0 ? " · genesis commitment verified." : " · commitment chain intact.")
+                            : " · result matches, but the commitment link couldn't be checked (not in this snapshot).") };
+            }
+            return { state: "fail",
+                text: resultOk ? "Tamper-evidence chain is BROKEN." : "This draw does NOT match the chain.",
+                sub: resultOk ? "the numbers match, but the commitment doesn't link to the previous draw."
+                              : "the recomputed numbers differ from the published result." };
+        }
         function balls(c, nums, extra) {
             c.innerHTML = "";
             (nums || []).forEach(function (n) { var d = document.createElement("div"); d.className = "white-balls" + (extra ? " " + extra : ""); d.textContent = n; c.appendChild(d); });
@@ -313,17 +329,8 @@
                 }
             } else { $("bChain").className = "badge wait"; $("bChain").textContent = "N/A"; }
 
-            if (resultOk && chainState !== "fail") {
-                setVerdict("pass", "This draw matches the Bitcoin chain.",
-                    "Recomputed in your browser from the 144 block hashes"
-                    + (chainState === "pass"
-                        ? (id === 0 ? " · genesis commitment verified." : " · commitment chain intact.")
-                        : " · result matches, but the commitment link couldn't be checked (not in this snapshot)."));
-            } else {
-                setVerdict("fail", resultOk ? "Tamper-evidence chain is BROKEN." : "This draw does NOT match the chain.",
-                    resultOk ? "the numbers match, but the commitment doesn't link to the previous draw."
-                             : "the recomputed numbers differ from the published result.");
-            }
+            var verdict = composeVerdict(resultOk, chainState, id);
+            setVerdict(verdict.state, verdict.text, verdict.sub);
             $("status").textContent = "Recomputed locally — no server trust.";
         }
 

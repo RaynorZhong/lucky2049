@@ -60,6 +60,38 @@ class TestVerifyFetchJs(unittest.TestCase):
         self.assertTrue(got["c2"], "a blip must restart the window on the other explorer with no mixing")
         self.assertTrue(got["c3"], "per-height fallback must assemble the window when batched fails")
 
+    def test_verdict_composition_truth_table(self):
+        # Lock the /verify page's whole PASS/FAIL/genesis/unchecked verdict (its core trust output).
+        out = subprocess.check_output([NODE, "-e", NODE_SCRIPT_VERDICT, VERIFY_HTML], text=True)
+        v = json.loads(out)
+        # result reproduces + chain intact -> green PASS
+        self.assertEqual(v["genesis"]["state"], "pass"); self.assertIn("genesis commitment verified", v["genesis"]["sub"])
+        self.assertEqual(v["normal"]["state"], "pass"); self.assertIn("commitment chain intact", v["normal"]["sub"])
+        # predecessor missing -> still PASS on the result, but must NOT claim genesis
+        self.assertEqual(v["unchecked"]["state"], "pass")
+        self.assertIn("couldn't be checked", v["unchecked"]["sub"])
+        self.assertNotIn("genesis", v["unchecked"]["sub"])
+        # result mismatch -> FAIL "does NOT match"; numbers ok but chain broken -> FAIL "BROKEN"
+        self.assertEqual(v["mismatch"]["state"], "fail"); self.assertIn("does NOT match", v["mismatch"]["text"])
+        self.assertEqual(v["broken"]["state"], "fail"); self.assertIn("BROKEN", v["broken"]["text"])
+
+
+# Extract the pure composeVerdict(resultOk, chainState, id) and exercise the whole truth table.
+NODE_SCRIPT_VERDICT = r"""
+const fs = require('fs');
+const html = fs.readFileSync(process.argv[1], 'utf8');
+const m = html.match(/function composeVerdict\(resultOk, chainState, id\) \{[\s\S]*?\n        \}/);
+if (!m) { console.error('could not locate composeVerdict'); process.exit(2); }
+const composeVerdict = eval('(' + m[0] + ')');
+console.log(JSON.stringify({
+  genesis:   composeVerdict(true,  'pass',      0),
+  normal:    composeVerdict(true,  'pass',      5),
+  unchecked: composeVerdict(true,  'unchecked', 5),
+  mismatch:  composeVerdict(false, 'pass',      5),
+  broken:    composeVerdict(true,  'fail',      5),
+}));
+"""
+
 
 if __name__ == "__main__":
     unittest.main()
