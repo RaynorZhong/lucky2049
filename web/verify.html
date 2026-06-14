@@ -30,9 +30,25 @@
         .badge.pass { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
         .badge.fail { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
         .badge.wait { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
-        .copy-btn { margin-left: 0.4rem; padding: 0.05rem 0.45rem; font-size: 0.72rem; cursor: pointer; flex: none;
+        /* 28x28 icon button (>= the WCAG 2.5.5 target), not an 11px text link */
+        .copy-btn { width: 1.75rem; height: 1.75rem; padding: 0; cursor: pointer; flex: none;
+            display: inline-flex; align-items: center; justify-content: center;
             border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-secondary); border-radius: var(--radius-sm); }
-        .copy-btn:hover { color: var(--text); }
+        .copy-btn:hover { color: var(--text); background: var(--surface-2); }
+        .copy-btn.done { color: #16a34a; border-color: #bbf7d0; }
+        .copy-btn svg { width: 0.95rem; height: 0.95rem; display: block; }
+        /* the verdict hero: the moment of trust, the biggest thing on the page */
+        .verdict { display: flex; align-items: center; gap: 0.9rem; padding: 1.05rem 1.2rem; margin-bottom: 1.3rem;
+            border: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius-md); }
+        .verdict .vd-icon { width: 2.2rem; height: 2.2rem; border-radius: 50%; flex: none; display: flex;
+            align-items: center; justify-content: center; font-size: 1.35rem; font-weight: 700;
+            background: var(--border-strong); color: var(--text-secondary); }
+        .verdict .vd-text { font-size: 1.2rem; font-weight: 600; line-height: 1.3; }
+        .verdict .vd-sub { font-size: 0.85rem; font-weight: 400; color: var(--text-secondary); margin-top: 0.1rem; }
+        .verdict.pass { background: #f0fdf4; border-color: #bbf7d0; } .verdict.pass .vd-icon { background: #16a34a; color: #fff; } .verdict.pass .vd-text { color: #15803d; }
+        .verdict.fail { background: #fef2f2; border-color: #fecaca; } .verdict.fail .vd-icon { background: #dc2626; color: #fff; } .verdict.fail .vd-text { color: #b91c1c; }
+        .verdict.err  { background: #fffbeb; border-color: #fde68a; } .verdict.err  .vd-icon { background: #d97706; color: #fff; } .verdict.err  .vd-text { color: #92400e; }
+        .verdict .vd-retry { margin-left: auto; flex: none; }
         input#drawId { background: var(--surface); border: 1px solid var(--border-strong); color: var(--text);
             padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); width: 8rem; font-size: 1rem; }
         .note { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5; }
@@ -68,6 +84,14 @@
             </form>
 
             <div class="glass-panel" id="panel" style="display:none;">
+                <div class="verdict wait" id="verdict" role="status" aria-live="polite">
+                    <span class="vd-icon" id="vdIcon" aria-hidden="true">…</span>
+                    <div>
+                        <div class="vd-text" id="vdText">Recomputing from the Bitcoin chain…</div>
+                        <div class="vd-sub" id="vdSub"></div>
+                    </div>
+                    <button class="btn btn-sm vd-retry" id="vdRetry" type="button" style="display:none;">Retry</button>
+                </div>
                 <div class="kv"><span class="k">Draw</span><span class="v"><span id="vId" class="mono"></span></span></div>
                 <div class="kv"><span class="k">Algorithm</span><span class="v"><span id="vAlgo" class="mono"></span></span></div>
                 <div class="kv"><span class="k">Block heights</span><span class="v"><span id="vHeights" class="mono"></span></span></div>
@@ -113,6 +137,14 @@
         var INDEX = null;  // cached index.json
 
         function setBadge(el, ok) { el.className = "badge " + (ok ? "pass" : "fail"); el.textContent = ok ? "PASS" : "FAIL"; }
+        // The verdict hero: 'wait' | 'pass' | 'fail' | 'err'. Retry shows only on 'err'.
+        function setVerdict(state, text, sub) {
+            $("verdict").className = "verdict " + state;
+            $("vdIcon").textContent = state === "pass" ? "✓" : state === "fail" ? "✗" : state === "err" ? "!" : "…";
+            $("vdText").textContent = text;
+            $("vdSub").textContent = sub || "";
+            $("vdRetry").style.display = state === "err" ? "" : "none";
+        }
         function balls(c, nums, extra) {
             c.innerHTML = "";
             (nums || []).forEach(function (n) { var d = document.createElement("div"); d.className = "white-balls" + (extra ? " " + extra : ""); d.textContent = n; c.appendChild(d); });
@@ -239,16 +271,26 @@
             $("vPrev").textContent = rec.prev_commitment || "(none)";
             $("vSeed").textContent = "(recomputing…)";
             ["bResult", "bChain"].forEach(function (b) { $(b).className = "badge wait"; $(b).textContent = "…"; });
+            setVerdict("wait", "Recomputing from the Bitcoin chain…", "fetching the 144 block hashes…");
             $("panel").style.display = "block";
 
             var hashes;
             try { hashes = await fetchHashes(start, end); }
-            catch (e) { if (myRun === RUN) $("status").textContent = "Chain fetch failed (" + e + "). Try again, or run: python verify.py " + id + " --source mempool"; return; }
+            catch (e) {
+                if (myRun !== RUN) return;
+                $("vSeed").textContent = "—";
+                $("status").textContent = "Or run: python verify.py " + id + " --source mempool";
+                setVerdict("err", "Couldn't reach the chain.",
+                    "the public explorers didn't answer (" + e + ") — check your connection and retry.");
+                return;
+            }
             if (myRun !== RUN) return;  // a newer verify() superseded this run -- don't write stale badges
 
             var r = V.generate(hashes);
             $("vSeed").textContent = r.seedHex;
-            setBadge($("bResult"), eq(r.front, rec.front) && eq(r.back, rec.back));
+            var resultOk = eq(r.front, rec.front) && eq(r.back, rec.back);
+            setBadge($("bResult"), resultOk);
+            var chainState = "na";   // 'na' | 'pass' | 'fail'
             if (rec.commitment) {
                 // Recompute from the REAL previous record's commitment (genesis for
                 // draw 0), not the record's self-declared prev -- so a rewritten
@@ -258,10 +300,22 @@
                 if (linkedPrev === null) { $("bChain").className = "badge wait"; $("bChain").textContent = "N/A"; }
                 else {
                     var c = V.commitmentFor(linkedPrev, id, rec.algo_version, r.seedHex, r.front, r.back, start, end);
-                    setBadge($("bChain"), c === rec.commitment);
+                    var chainOk = c === rec.commitment;
+                    setBadge($("bChain"), chainOk);
+                    chainState = chainOk ? "pass" : "fail";
                 }
             } else { $("bChain").className = "badge wait"; $("bChain").textContent = "N/A"; }
-            $("status").textContent = "Done — verified locally against the chain, no server trust.";
+
+            if (resultOk && chainState !== "fail") {
+                setVerdict("pass", "This draw matches the Bitcoin chain.",
+                    "Recomputed in your browser from the 144 block hashes"
+                    + (chainState === "pass" ? " · commitment chain intact." : " · genesis draw (no prior commitment)."));
+            } else {
+                setVerdict("fail", resultOk ? "Tamper-evidence chain is BROKEN." : "This draw does NOT match the chain.",
+                    resultOk ? "the numbers match, but the commitment doesn't link to the previous draw."
+                             : "the recomputed numbers differ from the published result.");
+            }
+            $("status").textContent = "Recomputed locally — no server trust.";
         }
 
         function currentId() {
@@ -270,6 +324,9 @@
             return (INDEX && INDEX.count) ? INDEX.count - 1 : 0;   // empty box -> latest (matches the placeholder)
         }
         $("verifyForm").addEventListener("submit", function (e) { e.preventDefault(); history.replaceState(null, "", "?draw=" + currentId()); verify(currentId()); });
+        $("vdRetry").addEventListener("click", function () { verify(currentId()); });
+        var CLIP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>';
+        var CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg>';
         // Copy-to-clipboard for the hex fields a verifier cross-checks against the CLI.
         // navigator.clipboard needs a secure context (the verifier also targets plain
         // HTTP), so fall back to a hidden-textarea execCommand copy when it's absent.
@@ -293,15 +350,15 @@
         ["vSeed", "vCommit", "vPrev", "vHead"].forEach(function (id) {
             var span = $(id);
             var btn = document.createElement("button");
-            btn.type = "button"; btn.className = "copy-btn"; btn.textContent = "copy";
+            btn.type = "button"; btn.className = "copy-btn"; btn.innerHTML = CLIP;
             btn.setAttribute("aria-label", "Copy " + id.slice(1).toLowerCase());
             btn.addEventListener("click", function () {
                 var t = (span.textContent || "").trim();
                 if (id === "vHead") t = t.split("  ·  ")[0];   // copy just the head hash, not the meta
-                if (!t || t === "(none)" || t === "(recomputing…)" || t === "…") return;
+                if (!t || t === "(none)" || t === "(recomputing…)" || t === "—" || t === "…") return;
                 copyText(t).then(function (ok) {
-                    btn.textContent = ok ? "copied" : "failed";
-                    setTimeout(function () { btn.textContent = "copy"; }, 1200);
+                    btn.innerHTML = ok ? CHECK : CLIP; btn.classList.toggle("done", ok);
+                    setTimeout(function () { btn.innerHTML = CLIP; btn.classList.remove("done"); }, 1200);
                 });
             });
             span.parentNode.appendChild(btn);
