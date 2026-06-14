@@ -190,6 +190,6 @@ any realistically sized prize, this draw is economically secure as a public rand
 - This is a **first-order economic-security** bound (single block, single grind), not an absolute
   cryptographic guarantee, consistent with §7; a VDF on top of the seed gives a stronger guarantee.
 - **lucky2049 itself runs no prize pool, sells no tickets, and pays out nothing**; this ceiling
-  only bounds **downstream** projects, and the homepage displays the current `B / p` value from a
-  live BTC price.
+  only bounds **downstream** projects (the homepage links here from its footer rather than
+  displaying a live `B / p` figure).
 - Theoretical basis: Bonneau, Clark, Goldfeder, *On Bitcoin as a Public Randomness Source* (2015).
