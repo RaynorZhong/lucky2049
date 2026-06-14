@@ -54,7 +54,7 @@
         .ttab .b.hrun, .ttab .b.vrun { background: #fff; color: #345d9d; text-shadow: none;
             box-shadow: inset 0 0 0 1.5px #345d9d, 0 1px 2px rgba(16,24,40,0.2); }
         .ttab .b.bk.hrun, .ttab .b.bk.vrun { color: #f7931a; box-shadow: inset 0 0 0 1.5px #f7931a, 0 1px 2px rgba(16,24,40,0.2); }
-        .ttab .g { color: #cdd2d8; font-style: normal; font-size: 10px; }
+        .ttab .g { color: #6b7280; font-style: normal; font-size: 10px; }   /* miss-gap number: AA-readable */
         .ttab tfoot td { border-top: 2px solid #dfe2e6; }
         .ttab tfoot .ff { color: #1f2937; } .ttab tfoot .fg { color: #9aa3af; font-style: normal; } .ttab tfoot .hot { color: #dc2626; }
         /* grid-wrap already supplies the frame, so the placeholder is borderless inside it. */
@@ -137,7 +137,7 @@
             var body = '';
             for (var i = 0; i < f.rows.length; i++) {
                 var fr = f.rows[i], br = b.rows[i], empty = fr.emptyZones || [];
-                body += '<tr><td class="issue">' + fr.id + '</td>';
+                body += '<tr><td class="issue">' + (fr.id | 0) + '</td>';   // coerce to int (defense-in-depth)
                 for (n = 1; n <= f.maxBall; n++) {
                     var zi2 = zoneIdx(n, zones), c = fr.cells[n - 1];
                     var cls = 'z' + (zi2 % 2) + (n === zones[zi2][0] && zi2 > 0 ? ' sep' : '') + (empty.indexOf(zi2) >= 0 ? ' ez' : '');

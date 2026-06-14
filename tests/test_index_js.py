@@ -24,12 +24,14 @@ NODE_SCRIPT = r"""
 const fs = require('fs');
 const html = fs.readFileSync(process.argv[1], 'utf8');
 const mC = html.match(/var JACKPOT_COMBOS = (\(function[\s\S]*?\}\)\(\));/);
-const mB = html.match(/var BLOCK_SUBSIDY_BTC = ([\d.]+);/);
+const mS = html.match(/(function blockSubsidy\(height\)\s*\{[^}]*\})/);
 const combos = eval(mC[1]);                                  // C(35,5) * C(12,2)
-const subsidy = parseFloat(mB[1]);
+const blockSubsidy = eval('(' + mS[1] + ')');               // subsidy from the halving schedule
 const usd = 100000;                                          // sample BTC price
+const subsidy = blockSubsidy(952000);                       // current era
+const subsidyPost = blockSubsidy(1100000);                  // after the ~2028 halving
 const ceiling = (subsidy * usd) * combos;                   // W_max = B / p
-console.log(JSON.stringify({ combos: combos, subsidy: subsidy, ceiling: ceiling }));
+console.log(JSON.stringify({ combos, subsidy, subsidyPost, genesis: blockSubsidy(0), ceiling }));
 """
 
 
@@ -39,12 +41,14 @@ class TestIndexEconBound(unittest.TestCase):
             self.html = f.read()
 
     @unittest.skipUnless(NODE, "node not available")
-    def test_jackpot_combos_and_ceiling_match_python(self):
+    def test_jackpot_combos_subsidy_and_ceiling_match_python(self):
         got = json.loads(subprocess.check_output([NODE, "-e", NODE_SCRIPT, INDEX], text=True))
         combos = math.comb(35, 5) * math.comb(12, 2)         # 324632 * 66
         self.assertEqual(combos, 21425712)                   # SPEC odds: 5 of 35 + 2 of 12
         self.assertEqual(got["combos"], combos)              # the page computes the right denominator p
-        self.assertEqual(got["subsidy"], 3.125)              # post-2024-halving block subsidy B
+        self.assertEqual(got["subsidy"], 3.125)              # current era (height 952000)
+        self.assertEqual(got["subsidyPost"], 1.5625)         # self-updates across the ~2028 halving
+        self.assertEqual(got["genesis"], 50)                 # halving schedule anchored at 50 BTC
         self.assertAlmostEqual(got["ceiling"], 3.125 * 100000 * combos, places=0)  # ceiling = B / p
 
     def test_next_draw_eta_targets_window_end_plus_6_confirmations(self):

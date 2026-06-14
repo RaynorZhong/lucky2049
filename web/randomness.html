@@ -137,6 +137,10 @@
 
         // ---- config ----
         var COIN_N = 10, DICE_M = 4, WINDOW = 6, POLL_MS = 60000;
+        // The rows accumulate (grow past COIN_N); these are only a high safety cap so a
+        // tab left open for days can't grow the DOM without bound -- a normal session
+        // never reaches them (200 coins ≈ 33 h of blocks).
+        var COIN_MAX = 200, DICE_MAX = 40;
         var NEEDED = Math.max(COIN_N, DICE_M * WINDOW) + WINDOW + 2;   // recent blocks to keep
         var EXPLORERS = ["https://mempool.space/api", "https://blockstream.info/api"];
         // Results reveal ONE AT A TIME and IN PLACE: the single leading spinner spins, then locks onto
@@ -242,8 +246,13 @@
             el.setAttribute("aria-label", (face === "H" ? "Heads" : "Tails") + ", block " + h);
             el.title = "block #" + h + " → " + (face === "H" ? "Heads" : "Tails");
             el.style.transform = "rotateY(" + (face === "T" ? 180 : 0) + "deg)";   // exact face (it stopped here)
-            shownCoins.push(h);                         // results accumulate (no cap) — the row grows past COIN_N
+            shownCoins.push(h);                         // results accumulate -- the row grows past COIN_N
             if (face === "H") coinHeads++;
+            while (shownCoins.length > COIN_MAX) {       // ...up to a high safety cap; drop the oldest (leftmost)
+                shownCoins.shift();
+                var oldc = $("coins").querySelector(".bcoin:not(.pending)");
+                if (oldc) { if ((oldc.getAttribute("aria-label") || "").charAt(0) === "H") coinHeads--; $("coins").removeChild(oldc); }
+            }
             syncInfo();
         }
         function lockDie(k) {                            // turn the live spinner into window k's settled die
@@ -252,7 +261,12 @@
             el.setAttribute("aria-label", "Die showing " + v + ", blocks " + lo + " to " + hi);
             el.title = "blocks #" + lo + "–#" + hi + " → " + v;
             setPips(el, v);
-            shownWindows.push(k);                       // accumulate (no cap)
+            shownWindows.push(k);                       // accumulate up to the safety cap
+            while (shownWindows.length > DICE_MAX) {
+                shownWindows.shift();
+                var oldd = $("dice").querySelector(".bdie:not(.pending)");
+                if (oldd) $("dice").removeChild(oldd);
+            }
             syncInfo();
         }
 
@@ -359,9 +373,18 @@
             polling = true;
             try {
                 var newTip = await explorerNum("/blocks/tip/height");
-                if (newTip <= tip) { lastUpdate = Date.now(); syncLive(); return; }
-                // Fetch the new blocks plus an overlap of at least a full window, so a shallow
-                // tip reorg (re-mined within ~WINDOW blocks) is detected, not just the newest 1-2.
+                if (newTip < tip) { lastUpdate = Date.now(); syncLive(); return; }   // tip regressed -- transient, ignore
+                if (newTip === tip) {
+                    // Same height: an equal-height re-mine won't advance the tip, so re-check the
+                    // recent tip blocks (one /blocks request) for a hash change and reload if so.
+                    var topBlocks = await fetchBlocks(tip, WINDOW + 2);
+                    if (topBlocks.some(function (b) { return blocks[b.height] && blocks[b.height] !== b.id; })) {
+                        setLive("reorg — reloading…", false); await load(); return;
+                    }
+                    lastUpdate = Date.now(); syncLive(); return;
+                }
+                // newTip > tip: fetch the new blocks plus an overlap of at least a full window, so a
+                // shallow tip reorg (re-mined within ~WINDOW blocks) is detected, not just the newest 1-2.
                 var got = await fetchBlocks(newTip, Math.max(newTip - tip + 2, WINDOW + 2));
                 var reorg = got.some(function (b) { return blocks[b.height] && blocks[b.height] !== b.id; });
                 if (reorg) { setLive("reorg — reloading…", false); await load(); return; }
