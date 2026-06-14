@@ -35,6 +35,8 @@
         .chart .bar:hover { filter: brightness(1.06); }
         .chart .expected { position: absolute; left: 0; right: 0; border-top: 2px dashed #ef4444; opacity: 0.8; }
         .caption { color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.75rem; }
+        .placeholder { text-align: center; color: var(--text-secondary); padding: 3rem 1.25rem; background: var(--surface-2);
+            border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.95rem; }
     </style>
 </head>
 
@@ -46,7 +48,7 @@
                 published snapshot — a flat distribution near the dashed line is what fair, unbiased draws look like.</p>
         </header>
 
-        <div id="sections"></div>
+        <div id="sections"><div class="placeholder">Crunching the distribution…</div></div>
 
         <nav class="nav-links" style="margin-top:2rem;">
             <a href="./index.html" class="btn">← Home</a>
@@ -79,11 +81,19 @@
                 + '</section>';
         }
         (async function () {
-            var idx;
+            var idx, sec = document.getElementById("sections");
             try { idx = await (await fetch("./index.json")).json(); }
-            catch (e) { document.getElementById("intro").textContent = "Could not load draw data."; return; }
+            catch (e) {
+                document.getElementById("intro").textContent = "Could not load draw data.";
+                sec.innerHTML = '<div class="placeholder">Couldn’t load draw data — please refresh.</div>';
+                return;
+            }
             var ov = window.Lucky2049Stats.computeStats(idx.draws || []);
-            if (!ov) { document.getElementById("intro").textContent = "No draws yet."; return; }
+            if (!ov) {
+                document.getElementById("intro").textContent = "No draws yet.";
+                sec.innerHTML = '<div class="placeholder">No draws to chart yet — statistics appear once the first draw is published.</div>';
+                return;
+            }
             document.getElementById("intro").textContent =
                 "Distribution analysis over " + ov.draws + " draws, recomputed in your browser from the published "
                 + "snapshot — a flat distribution near the dashed line is what fair, unbiased draws look like.";
