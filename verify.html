@@ -36,7 +36,14 @@
         input#drawId { background: var(--surface); border: 1px solid var(--border-strong); color: var(--text);
             padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); width: 8rem; font-size: 1rem; }
         .note { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5; }
-        .verify-grid { display: grid; gap: 0.75rem; margin: 1rem 0; }
+        /* aligned key/value rows: labels in a left column, values left-aligned in a second column. */
+        .kv { display: grid; grid-template-columns: minmax(0, 15rem) minmax(0, 1fr); gap: 0.3rem 1.5rem; align-items: baseline; padding: 0.25rem 0; }
+        .kv .k { color: var(--text-secondary); }
+        .kv .v { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; min-width: 0; }
+        .kv .v .mono { word-break: break-all; }
+        .kv-group { margin-top: 1rem; padding-top: 0.6rem; border-top: 1px solid var(--border); }
+        .balls-row { display: flex; align-items: center; gap: 0.85rem; flex-wrap: wrap; margin-top: 0.6rem; }
+        @media (max-width: 560px) { .kv { grid-template-columns: 1fr; gap: 0.05rem 0; padding: 0.4rem 0; } }
     </style>
 </head>
 
@@ -55,36 +62,36 @@
         <section>
             <form id="verifyForm" class="row" style="align-items:center; gap:0.5rem; margin-bottom:1rem;">
                 <label for="drawId" class="k">Draw No.</label>
-                <input id="drawId" type="number" min="0" value="0">
+                <input id="drawId" type="number" min="0" inputmode="numeric" placeholder="latest">
                 <button class="btn" id="goBtn" type="submit">Verify</button>
                 <span id="status" class="note" role="status" aria-live="polite"></span>
             </form>
 
             <div class="glass-panel" id="panel" style="display:none;">
-                <div class="row"><span class="k">Draw</span><span id="vId" class="mono"></span></div>
-                <div class="row"><span class="k">Algorithm</span><span id="vAlgo" class="mono"></span></div>
-                <div class="row"><span class="k">Block heights</span><span id="vHeights" class="mono"></span></div>
+                <div class="kv"><span class="k">Draw</span><span class="v"><span id="vId" class="mono"></span></span></div>
+                <div class="kv"><span class="k">Algorithm</span><span class="v"><span id="vAlgo" class="mono"></span></span></div>
+                <div class="kv"><span class="k">Block heights</span><span class="v"><span id="vHeights" class="mono"></span></span></div>
 
                 <h2 style="margin-top:1rem;">Published result</h2>
-                <div class="row">
+                <div class="balls-row">
                     <div class="d-flex" id="vFront" role="group" aria-label="Front numbers"></div>
                     <div class="d-flex" id="vBack" role="group" aria-label="Back numbers"></div>
                 </div>
 
-                <div class="verify-grid" style="margin-top:1rem;">
-                    <div class="row"><span class="k">Result reproduced from chain</span><span id="bResult" class="badge wait">…</span></div>
-                    <div class="row"><span class="k">Commitment chain links to prev</span><span id="bChain" class="badge wait">…</span></div>
+                <div class="kv-group">
+                    <div class="kv"><span class="k">Result reproduced from chain</span><span class="v"><span id="bResult" class="badge wait">…</span></span></div>
+                    <div class="kv"><span class="k">Commitment chain links to prev</span><span class="v"><span id="bChain" class="badge wait">…</span></span></div>
                 </div>
 
-                <div class="verify-grid">
-                    <div class="row"><span class="k">seed (recomputed)</span><span id="vSeed" class="mono"></span></div>
-                    <div class="row"><span class="k">commitment</span><span id="vCommit" class="mono"></span></div>
-                    <div class="row"><span class="k">prev commitment</span><span id="vPrev" class="mono"></span></div>
+                <div class="kv-group">
+                    <div class="kv"><span class="k">seed (recomputed)</span><span class="v"><span id="vSeed" class="mono"></span></span></div>
+                    <div class="kv"><span class="k">commitment</span><span class="v"><span id="vCommit" class="mono"></span></span></div>
+                    <div class="kv"><span class="k">prev commitment</span><span class="v"><span id="vPrev" class="mono"></span></span></div>
                 </div>
             </div>
 
             <div class="glass-panel" style="margin-top:1rem;">
-                <div class="row"><span class="k">History head (commits to all draws)</span><span id="vHead" class="mono">…</span></div>
+                <div class="kv"><span class="k">History head (commits to all draws)</span><span class="v"><span id="vHead" class="mono">…</span></span></div>
                 <p class="note" style="margin-top:0.5rem;">
                     Prefer a terminal? <span class="mono">python verify.py &lt;id&gt; --source mempool</span> does the same check.
                 </p>
@@ -272,7 +279,7 @@
             }
             return Promise.resolve(fallbackCopy(text));
         }
-        ["vSeed", "vCommit", "vHead"].forEach(function (id) {
+        ["vSeed", "vCommit", "vPrev", "vHead"].forEach(function (id) {
             var span = $(id);
             var btn = document.createElement("button");
             btn.type = "button"; btn.className = "copy-btn"; btn.textContent = "copy";
@@ -291,7 +298,14 @@
 
         var q = new URLSearchParams(location.search).get("draw");
         if (q !== null) $("drawId").value = q;
-        loadIndex();
+        loadIndex().then(function (idx) {
+            var count = (idx && idx.count) || 0;
+            if (count > 0) $("drawId").max = count - 1;
+            if (q === null) {                              // no ?draw= -> default to the latest published draw
+                if (count > 0) { $("drawId").value = count - 1; verify(count - 1); }
+                else $("status").textContent = "No draws published yet.";
+            }
+        }, function () { /* loadIndex surfaces its own error in the head panel */ });
         if (q !== null) verify(currentId());
     </script>
 </body>

@@ -57,6 +57,8 @@
         .ttab .g { color: #cdd2d8; font-style: normal; font-size: 10px; }
         .ttab tfoot td { border-top: 2px solid #dfe2e6; }
         .ttab tfoot .ff { color: #1f2937; } .ttab tfoot .fg { color: #9aa3af; font-style: normal; } .ttab tfoot .hot { color: #dc2626; }
+        /* grid-wrap already supplies the frame, so the placeholder is borderless inside it. */
+        .grid-wrap .placeholder { text-align: center; color: var(--text-secondary); padding: 3rem 1.5rem; font-size: 0.95rem; min-width: 260px; }
     </style>
 </head>
 
@@ -87,7 +89,7 @@
             <span>number = miss gap</span>
         </div>
 
-        <div class="grid-wrap" id="grid"></div>
+        <div class="grid-wrap" id="grid"><div class="placeholder">Building the trend chart…</div></div>
 
         <nav class="nav-links" style="margin-top:2rem;">
             <a href="./index.html" class="btn">← Home</a>
@@ -177,11 +179,19 @@
         });
 
         (async function () {
-            var idx;
+            var idx, grid = document.getElementById("grid");
             try { idx = await (await fetch("./index.json")).json(); }
-            catch (e) { document.getElementById("intro").textContent = "Could not load draw data."; return; }
+            catch (e) {
+                document.getElementById("intro").textContent = "Could not load draw data.";
+                grid.innerHTML = '<div class="placeholder">Couldn’t load draw data — please refresh.</div>';
+                return;
+            }
             DRAWS = idx.draws || [];
-            if (!DRAWS.length) { document.getElementById("intro").textContent = "No draws yet."; return; }
+            if (!DRAWS.length) {
+                document.getElementById("intro").textContent = "No draws yet.";
+                grid.innerHTML = '<div class="placeholder">No draws to chart yet — the trend grid fills in once draws are published.</div>';
+                return;
+            }
             render();
         })();
     </script>
