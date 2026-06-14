@@ -250,9 +250,12 @@
                 return;
             }
             var head = lat.head || {};
-            $("summary").textContent =
-                head.count + " draws · algorithm " + head.algo_version
-                + " · history head " + (head.head || "").slice(0, 16) + "…";
+            function renderSummary(h) {
+                h = h || {};
+                $("summary").textContent = h.count + " draws · algorithm " + h.algo_version
+                    + " · history head " + (h.head || "").slice(0, 16) + "…";
+            }
+            renderSummary(head);
 
             // The hero (latest verified draw) + the "Earlier draws" table are rendered together and
             // RE-rendered when a new draw publishes, so a long-lived tab never shows a stale hero while
@@ -271,9 +274,12 @@
                     $("lhVerify").style.display = "none"; $("lhTime").textContent = "";
                 }
             }
+            var TABLE_RUN = 0;
             async function renderTable(latestId) {   // recent draws, minus the featured latest (= the hero)
+                var myT = ++TABLE_RUN;               // run token: a slow load-time call mustn't overwrite a newer one
                 try {
                     var feed = await (await fetch("./feed.json")).json();
+                    if (myT !== TABLE_RUN) return;   // a newer renderTable() superseded this one
                     var items = (feed.items || []).filter(function (it) { return Number(it.id) !== latestId; }).slice(0, 20);
                     $("rows").innerHTML = items.length ? items.map(function (it) {
                         var x = feedDraw(it), id = Number(it.id);
@@ -285,6 +291,7 @@
                             + "<td data-label='Time' class='text-secondary'>" + esc(when) + "</td></tr>";
                     }).join("") : '<tr class="empty-row"><td colspan="5">' + (latestId != null ? 'No earlier draws yet — No. ' + (latestId | 0) + ' is the first.' : 'No draws published yet — the first 144-block window is still being mined.') + '</td></tr>';
                 } catch (e) {  // table is non-critical; the summary/ETA already rendered
+                    if (myT !== TABLE_RUN) return;
                     $("rows").innerHTML = '<tr class="empty-row"><td colspan="5">Couldn’t load the draws list — please refresh.</td></tr>';
                 }
             }
@@ -302,6 +309,7 @@
                     var id = (l.latest && l.latest.id != null) ? l.latest.id : (l.head && l.head.draw_id);
                     if (id != null && id >= 0 && id !== latestId) {
                         latestId = id;
+                        renderSummary(l.head);
                         renderHero(l.latest);
                         renderTable(Number(id));
                     }
