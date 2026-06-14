@@ -85,7 +85,7 @@
                     <span class="lh-id" id="lhId">No. —</span>
                     <span class="lh-time text-muted" id="lhTime"></span>
                 </div>
-                <div class="lh-balls d-flex" id="lhBalls" role="group" aria-label="Latest draw numbers"></div>
+                <div class="lh-balls d-flex" id="lhBalls"></div>
                 <div class="lh-foot">
                     <span class="lh-src" id="lhSrc">derived from 144 Bitcoin block hashes</span>
                     <a class="btn btn-primary" id="lhVerify" href="./verify.html">Verify this draw →</a>
@@ -254,26 +254,26 @@
                 head.count + " draws · algorithm " + head.algo_version
                 + " · history head " + (head.head || "").slice(0, 16) + "…";
 
-            // Hero: the latest verified draw (the actual product) -- big, with a verify hook.
-            var L = lat.latest;
-            if (L) {
-                $("lhId").textContent = "No. " + L.id;
-                $("lhBalls").innerHTML = balls(L.front) + balls(L.back, "powerball");
-                $("lhSrc").innerHTML = "derived from Bitcoin blocks <strong>" + (L.start_height | 0) + "–" + (L.end_height | 0) + "</strong>";
-                $("lhVerify").href = "./verify.html?draw=" + L.id;
-                if (L.timestamp) $("lhTime").textContent = esc(L.timestamp);
-            } else {
-                $("lhId").textContent = "—";
-                $("lhSrc").textContent = "No draws published yet — the first 144-block window is still being mined.";
-                $("lhVerify").style.display = "none";
+            // The hero (latest verified draw) + the "Earlier draws" table are rendered together and
+            // RE-rendered when a new draw publishes, so a long-lived tab never shows a stale hero while
+            // the next-draw strip advances.
+            function renderHero(L) {
+                if (L) {
+                    $("lhId").textContent = "No. " + L.id;
+                    $("lhBalls").innerHTML = '<span class="d-flex" role="group" aria-label="Front numbers">' + balls(L.front)
+                        + '</span><span class="d-flex" role="group" aria-label="Back numbers">' + balls(L.back, "powerball") + '</span>';
+                    $("lhSrc").innerHTML = "derived from Bitcoin blocks <strong>" + (L.start_height | 0) + "–" + (L.end_height | 0) + "</strong>";
+                    $("lhVerify").href = "./verify.html?draw=" + L.id; $("lhVerify").style.display = "";
+                    $("lhTime").textContent = L.timestamp ? esc(L.timestamp) : "";
+                } else {
+                    $("lhId").textContent = "—"; $("lhBalls").innerHTML = "";
+                    $("lhSrc").textContent = "No draws published yet — the first 144-block window is still being mined.";
+                    $("lhVerify").style.display = "none"; $("lhTime").textContent = "";
+                }
             }
-
-            (async function () {
+            async function renderTable(latestId) {   // recent draws, minus the featured latest (= the hero)
                 try {
                     var feed = await (await fetch("./feed.json")).json();
-                    // The newest draw is already the hero above, so drop it from the list below
-                    // (no double-show); fall back to the full list if there's no hero.
-                    var latestId = L ? Number(L.id) : null;
                     var items = (feed.items || []).filter(function (it) { return Number(it.id) !== latestId; }).slice(0, 20);
                     $("rows").innerHTML = items.length ? items.map(function (it) {
                         var x = feedDraw(it), id = Number(it.id);
@@ -283,23 +283,29 @@
                             + "<td data-label='Back'><div class='d-flex' role='group' aria-label='Back numbers'>" + balls(x.back, "powerball") + "</div></td>"
                             + "<td data-label='Heights' class='text-secondary'>" + (x.start_height | 0) + " - " + (x.end_height | 0) + "</td>"
                             + "<td data-label='Time' class='text-secondary'>" + esc(when) + "</td></tr>";
-                    }).join("") : '<tr class="empty-row"><td colspan="5">' + (L ? 'No earlier draws yet — No. ' + (L.id | 0) + ' is the first.' : 'No draws published yet — the first 144-block window is still being mined.') + '</td></tr>';
+                    }).join("") : '<tr class="empty-row"><td colspan="5">' + (latestId != null ? 'No earlier draws yet — No. ' + (latestId | 0) + ' is the first.' : 'No draws published yet — the first 144-block window is still being mined.') + '</td></tr>';
                 } catch (e) {  // table is non-critical; the summary/ETA already rendered
                     $("rows").innerHTML = '<tr class="empty-row"><td colspan="5">Couldn’t load the draws list — please refresh.</td></tr>';
                 }
-            })();
+            }
 
+            var latestId = (lat.latest && lat.latest.id != null) ? lat.latest.id : head.draw_id;
+            renderHero(lat.latest);
+            renderTable(latestId != null && latestId >= 0 ? Number(latestId) : null);
             sourceHealth();
             setInterval(sourceHealth, 120000);
-            var latestId = (lat.latest && lat.latest.id != null) ? lat.latest.id : head.draw_id;
             async function refreshNext() {
-                // re-read latest.json so a newly published draw advances the card
-                // (otherwise a long-lived tab stays stuck on a finished window).
+                // re-read latest.json; when a NEW draw has published, refresh the WHOLE latest section
+                // (hero + table), not just the next-draw strip — otherwise the page contradicts itself.
                 try {
                     var l = await (await fetch("./latest.json")).json();
                     var id = (l.latest && l.latest.id != null) ? l.latest.id : (l.head && l.head.draw_id);
-                    if (id != null && id >= 0) latestId = id;
-                } catch (e) { /* keep the last known id */ }
+                    if (id != null && id >= 0 && id !== latestId) {
+                        latestId = id;
+                        renderHero(l.latest);
+                        renderTable(Number(id));
+                    }
+                } catch (e) { /* keep the last good view */ }
                 if (latestId != null && latestId >= 0) nextDraw(latestId);
             }
             if (latestId != null && latestId >= 0) {
