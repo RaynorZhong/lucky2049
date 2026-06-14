@@ -39,15 +39,15 @@
             font-size: 1.5rem; font-family: ui-sans-serif, "Segoe UI Symbol", "Noto Sans Symbols2", system-ui, sans-serif;
             /* flat coin face: a bright milled rim + a darker inner ring, no domed sphere shading. */
             box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.6), inset 0 0 0 4px rgba(176,104,16,.5), 0 1px 2px rgba(0,0,0,.3); }
-        .bcoin .front { background: radial-gradient(circle at 50% 42%, #ffce74, #f6a32c 80%); transform: translateZ(3px); }
+        .bcoin .front { background: radial-gradient(circle at 50% 42%, #ffce74, #f6a32c 80%); transform: translateZ(1px); }
         .bcoin .front::before { content: "\20BF"; text-shadow: 0 1px 1px rgba(0,0,0,.3); }   /* ₿ */
         /* reverse = the lucky2049 four-leaf clover, minted white on the same gold as the obverse. */
-        .bcoin .back { transform: rotateY(180deg) translateZ(3px); color: #fff;
+        .bcoin .back { transform: rotateY(180deg) translateZ(1px); color: #fff;
             background: radial-gradient(circle at 50% 42%, #ffce74, #f6a32c 80%); }
         .bcoin .back .clover { width: 84%; height: 84%; filter: drop-shadow(0 1px 1px rgba(0,0,0,.28)); }
         /* a milled cylindrical edge (N panels, built in coinInner()) gives the coin real thickness as it flips. */
         .bcoin .cedge { position: absolute; inset: 0; transform-style: preserve-3d; }
-        .bcoin .cedge .rim { position: absolute; left: 50%; top: 50%; width: 10px; height: 6px; margin: -3px 0 0 -5px;
+        .bcoin .cedge .rim { position: absolute; left: 50%; top: 50%; width: 10px; height: 2px; margin: -1px 0 0 -5px;
             background: linear-gradient(to bottom, #ffd680, #e0992e 45%, #a4620d); }
         .bcoin .cedge .rim:nth-child(odd) { filter: brightness(0.82); }   /* alternating shade = a reeded edge */
         /* Bitcoin-orange die with white pips. */
