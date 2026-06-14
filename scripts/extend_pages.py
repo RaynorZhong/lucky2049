@@ -37,6 +37,7 @@ import os
 import re
 import sys
 import time
+import urllib.parse
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
@@ -138,12 +139,19 @@ _CRED_RE = re.compile(r"(\b[\w+.-]+://)?[^\s/@:]+:[^\s/@]+@")
 
 def _redact(e):
     """Strip credentials from an error before it reaches the PUBLIC status.json /
-    workflow logs. Covers URL userinfo (with or without a scheme) AND any known
-    secret VALUE -- the CF Access service-token secret never appears as userinfo
-    (it's a header), so blunt-replace it by value too. Secrets must never leak."""
+    workflow logs. Covers URL userinfo (with or without a scheme) AND known secret
+    VALUES -- the CF Access service-token secret is a header (never userinfo), and a
+    BITCOIN_RPC_URL password may contain '/' or '@' that the userinfo regex can't
+    span, so blunt-replace those by value too. Secrets must never leak."""
     s = _CRED_RE.sub(lambda m: (m.group(1) or "") + "***@", str(e))
-    for var in ("CF_ACCESS_CLIENT_SECRET", "BITCOIN_RPC_PASSWORD"):
-        val = os.environ.get(var)
+    secrets = [os.environ.get("CF_ACCESS_CLIENT_SECRET"), os.environ.get("BITCOIN_RPC_PASSWORD")]
+    rpc = os.environ.get("BITCOIN_RPC_URL")
+    if rpc:
+        try:
+            secrets.append(urllib.parse.urlsplit(rpc).password)   # exact pw, special chars and all
+        except ValueError:
+            pass
+    for val in secrets:
         if val and val in s:
             s = s.replace(val, "***")
     return s

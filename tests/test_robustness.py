@@ -199,6 +199,24 @@ class TestReorgAudit(unittest.TestCase):
             self.assertEqual(st["added"], 0)
             self.assertNotIn("note", st)
 
+    def test_freshly_committed_draw_is_not_re_audited(self):
+        # A run that COMMITS draw 0 must NOT also reorg-audit it -- it was just verified
+        # as it was drawn. confirmed_tip keeps draw 0 within the horizon, so only the
+        # fresh-skip (added>0) prevents a wasted second fetch of the same window.
+        calls = {"n": 0}
+
+        def counting(s, e):
+            calls["n"] += 1
+            return FAKE(s, e)
+        with tempfile.TemporaryDirectory() as tmp:
+            idx = _write_index(tmp, [])
+            # tip 150 -> confirmed 144: draw 0 (end 143) commits AND sits within horizon (144-143=1 < 36).
+            self.assertEqual(_run(idx, _providers(tip=150, hashes=counting)), 0)
+            st = _status(tmp)
+            self.assertEqual(st["added"], 1)              # draw 0 committed this run
+            self.assertNotIn("note", st)
+            self.assertEqual(calls["n"], 2)               # only the commit's 2-source fetch; NO audit re-fetch
+
 
 # ----------------------------- tip regression guard -----------------------------
 class TestTipRegressionGuard(unittest.TestCase):

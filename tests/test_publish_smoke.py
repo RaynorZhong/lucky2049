@@ -9,6 +9,7 @@ seam with a fake source -- no mempool / blockstream / Core calls. Stdlib only.
 """
 import json
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -266,15 +267,27 @@ class TestPublishSmoke(unittest.TestCase):
         self.assertNotIn("cf-Sup3rSecret", cf)
         self.assertIn("***", cf)
 
+    def test_redact_password_with_special_chars(self):
+        # A BITCOIN_RPC_URL password containing '/' or '@' can't be spanned by the
+        # userinfo regex; it must still be redacted by value.
+        url = "http://user:p@ss/w0rd@btc-rpc.example:8332/"
+        with mock.patch.dict(os.environ, {"BITCOIN_RPC_URL": url}):
+            msg = extend_pages._redact("urlopen error for %s : 500" % url)
+        self.assertNotIn("p@ss/w0rd", msg)   # the whole special-char password is gone
+
     def test_publish_inputs_present(self):
-        # The workflow copies exactly these into the published site; a rename that
-        # silently drops one would 404 in production -- guard the list here.
-        for rel in ("web/index.html", "web/verify.html", "web/stats.html", "web/trend.html",
-                    "web/randomness.html", "web/og.png", "web/CNAME",
-                    "static/verify.js", "static/stats.js", "static/trend.js", "static/randomness.js",
-                    "static/style.css", "static/favicon.svg"):
-            self.assertTrue(os.path.exists(os.path.join(REPO_ROOT, rel)),
-                            "missing publish input: " + rel)
+        # Parse the cron's own `cp web/... | static/... site/` lines and assert every
+        # source it copies exists -- so a new published asset (or a typo) is guarded
+        # automatically here instead of 404-ing in production, with no hand-kept list.
+        wf = open(os.path.join(REPO_ROOT, ".github/workflows/refresh-pages.yml")).read()
+        srcs = []
+        for m in re.finditer(r"\bcp (?:-r )?((?:web|static)/[^\n]*?) site/", wf):
+            srcs += [t for t in m.group(1).split() if t.startswith(("web/", "static/"))]
+        self.assertTrue(srcs, "found no `cp web/|static/ ... site/` lines in refresh-pages.yml")
+        for rel in srcs:
+            self.assertTrue(os.path.exists(os.path.join(REPO_ROOT, rel)), "publish input missing on disk: " + rel)
+        for must in ("web/CNAME", "web/randomness.html", "static/randomness.js"):   # sanity anchors
+            self.assertIn(must, srcs, "cron no longer copies " + must)
 
 
 if __name__ == "__main__":
