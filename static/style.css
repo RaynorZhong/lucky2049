@@ -134,6 +134,21 @@ tbody tr:hover td { background: var(--surface-2); }
     box-shadow: inset 0 2px 3px rgba(255, 255, 255, 0.5), 0 2px 6px rgba(247, 147, 26, 0.32);
 }
 
+/* Persistent global nav (same on every page; the active link carries aria-current). */
+.topnav-wrap { position: sticky; top: 0; z-index: 30; width: 100%; background: var(--surface); border-bottom: 1px solid var(--border); }
+.topnav { width: 100%; max-width: 1200px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; padding: 0.6rem 2rem; flex-wrap: wrap; }
+.tn-brand { display: inline-flex; align-items: center; gap: 0.45rem; color: var(--text);
+    font-family: var(--font-heading); font-weight: 700; font-size: 1.02rem; }
+.tn-brand img { width: 1.5rem; height: 1.5rem; }
+.tn-links { display: flex; align-items: center; gap: 0.2rem; flex-wrap: wrap; }
+.tn-links a { color: var(--text-secondary); padding: 0.38rem 0.7rem; border-radius: var(--radius-sm);
+    font-size: 0.92rem; font-weight: 500; }
+.tn-links a:hover { color: var(--text); background: var(--surface-2); }
+.tn-links a[aria-current="page"] { color: var(--text); background: var(--surface-2); font-weight: 600; }
+.tn-links .tn-sep { margin-left: 0.55rem; padding-left: 0.95rem; border-left: 1px solid var(--border); }
+@media (max-width: 560px) { .topnav { padding: 0.55rem 1rem; } .tn-links { gap: 0; } .tn-links a { padding: 0.34rem 0.5rem; font-size: 0.88rem; } .tn-links .tn-sep { margin-left: 0.25rem; padding-left: 0.5rem; } }
+
 /* Navigation & buttons */
 .nav-links { display: flex; justify-content: center; gap: 0.75rem; margin-top: 1.75rem; flex-wrap: wrap; }
 
