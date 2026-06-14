@@ -54,8 +54,9 @@ class TestPageStructure(unittest.TestCase):
         self.assertTrue(m.group(2).startswith("Worth a closer look"), "p<=0.05 branch should flag 'Worth a closer look'")
 
     def test_homepage_earlier_draws_dedup_filter(self):
-        # the list below the hero must drop the featured latest by NUMERIC id
-        self.assertRegex(read("index"), r'filter\(function \(it\) \{ return Number\(it\.id\) !== latestId; \}\)')
+        # the list below the hero must drop the featured latest by NUMERIC id (whitespace-tolerant)
+        self.assertRegex(read("index"),
+                         r'\.filter\(\s*function\s*\(\s*it\s*\)\s*\{\s*return\s+Number\(\s*it\.id\s*\)\s*!==\s*latestId\s*;?\s*\}')
 
 
 if __name__ == "__main__":

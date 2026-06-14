@@ -80,9 +80,16 @@ class TestVerifyFetchJs(unittest.TestCase):
 NODE_SCRIPT_VERDICT = r"""
 const fs = require('fs');
 const html = fs.readFileSync(process.argv[1], 'utf8');
-const m = html.match(/function composeVerdict\(resultOk, chainState, id\) \{[\s\S]*?\n        \}/);
-if (!m) { console.error('could not locate composeVerdict'); process.exit(2); }
-const composeVerdict = eval('(' + m[0] + ')');
+// brace-match the function body (robust to reformatting; its strings contain no braces)
+const start = html.indexOf('function composeVerdict');
+if (start < 0) { console.error('could not locate composeVerdict'); process.exit(2); }
+let depth = 0, end = -1, seen = false;
+for (let i = html.indexOf('{', start); i >= 0 && i < html.length; i++) {
+  if (html[i] === '{') { depth++; seen = true; }
+  else if (html[i] === '}' && --depth === 0 && seen) { end = i + 1; break; }
+}
+if (end < 0) { console.error('could not brace-match composeVerdict'); process.exit(2); }
+const composeVerdict = eval('(' + html.slice(start, end) + ')');
 console.log(JSON.stringify({
   genesis:   composeVerdict(true,  'pass',      0),
   normal:    composeVerdict(true,  'pass',      5),
