@@ -79,7 +79,7 @@ Written by every publisher run (hourly): did each hash source answer, and what d
   "schema": "lucky2049/status/v1",
   "checked_at": "2026-06-11 07:20:12 UTC",
   "checked_at_unix": 1781075212,
-  "tip_source": "core",                    // first source that answered (preference order); not necessarily the quorum tip that gated maturity
+  "tip_source": "core",                    // first source that answered OK (ok:true, preference order); not necessarily the quorum tip that gated maturity
   "sources": [                             // preference order; "core" only when configured
     { "name": "core", "ok": true, "tip": 953202, "ms": 312 },
     { "name": "mempool", "ok": true, "tip": 953202, "ms": 145 },

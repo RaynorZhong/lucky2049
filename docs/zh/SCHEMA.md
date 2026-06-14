@@ -75,7 +75,7 @@ lucky2049 是一个**可验证的公共随机信标**:它只发布**开奖**(号
   "schema": "lucky2049/status/v1",
   "checked_at": "2026-06-11 07:20:12 UTC",
   "checked_at_unix": 1781075212,
-  "tip_source": "core",                    // 第一个应答的源(按优先级);不一定是法定确认所用的链尖
+  "tip_source": "core",                    // 第一个成功应答的源(ok:true,按优先级);不一定是法定确认所用的链尖
   "sources": [                             // 按优先序;"core" 仅在配置后出现
     { "name": "core", "ok": true, "tip": 953202, "ms": 312 },
     { "name": "mempool", "ok": true, "tip": 953202, "ms": 145 },

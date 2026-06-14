@@ -14,8 +14,9 @@ permissions:
 jobs:
   # Locks the frozen draw algorithm + commitment chain (SPEC.md), the publish
   # path (scripts/extend_pages.py, via test_publish_smoke), and the in-browser JS
-  # (verify.js / stats.js / trend.js) run under Node -- pinned via setup-node so
-  # the JS<->Python parity tests can't silently skip. Runtime is stdlib-only, so
+  # (verify.js / stats.js / trend.js / randomness.js, plus the inline logic in
+  # index.html and verify.html) run under Node -- pinned via setup-node so the
+  # JS<->Python parity tests can't silently skip. Runtime is stdlib-only, so
   # pytest is the only dependency.
   test:
     runs-on: ubuntu-latest
