@@ -119,6 +119,24 @@ def write_status(out_dir, sources, checked_unix, head, added=0, held=None, note=
     _write(out_dir, "status.json", obj)
 
 
+def status_problems(status, min_agreement=2):
+    """Reasons the last refresh should ALARM the operator (empty list = healthy).
+    The single source of truth for the refresh-pages.yml alarm step, so the decision
+    is unit-testable and can't silently drift from write_status's field names."""
+    srcs = status.get("sources") or []   # empty for an offline rebuild stub -> no source alarm
+    healthy = sum(1 for s in srcs if s.get("ok"))
+    problems = []
+    if srcs and healthy == 0:
+        problems.append("ALL SOURCES DOWN")
+    elif srcs and healthy < min_agreement:
+        problems.append(f"only {healthy} healthy source(s) < MIN_SOURCE_AGREEMENT={min_agreement} -- drawing stalled")
+    if status.get("held") is not None:
+        problems.append(f"draw {status['held']} HELD -- sources disagree on a confirmed window")
+    if status.get("note"):
+        problems.append(status["note"])
+    return problems
+
+
 def write_beacon(out_dir, draws, head):
     """Write all downstream-facing artifacts (latest.json + feed.json)."""
     write_latest(out_dir, draws, head)

@@ -12,6 +12,12 @@ on:
 permissions:
   contents: write
 
+# One source of truth for the agreement quorum: the drawer (extend_pages.py) and
+# the degraded-refresh alarm step below both read MIN_SOURCE_AGREEMENT from the
+# env, so they can never desync. (Workflow-level env reaches every step.)
+env:
+  MIN_SOURCE_AGREEMENT: "2"
+
 concurrency:
   group: refresh-pages
   cancel-in-progress: false
@@ -19,6 +25,7 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    timeout-minutes: 30          # a hung/degraded source must not run toward the runner's 6h ceiling
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1 (main: verify.py, scripts, web/, static/)
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1 (current published snapshot)
@@ -56,7 +63,12 @@ jobs:
           # every probe), so most hourly runs publish a small "Refresh source
           # health" commit; new draws / asset edits get "Refresh static snapshot"
           # so they stay findable. The diff gate still skips truly empty runs.
-          rsync -a --delete --exclude='.git' site/ _published/
+          # --delete keeps gh-pages a clean mirror, but NEVER let it purge already-
+          # published OpenTimestamps proofs: exclude /anchors from the destructive
+          # pass and sync it additively, so a transient miss in the copy above can't
+          # remove live proofs from the site.
+          rsync -a --delete --exclude='.git' --exclude='/anchors' site/ _published/
+          rsync -a site/anchors/ _published/anchors/ 2>/dev/null || true
           cd _published
           git add -A
           if git diff --cached --quiet; then
@@ -79,21 +91,14 @@ jobs:
         run: |
           python - <<'EOF'
           import json, os, sys
+          sys.path.insert(0, "scripts")
+          import artifacts                       # status_problems is unit-tested in tests/test_artifacts.py
           st = json.load(open("site/status.json"))
-          srcs = st.get("sources") or []          # empty for an offline rebuild stub -> skip
-          healthy = sum(1 for s in srcs if s.get("ok"))
           need = int(os.environ.get("MIN_SOURCE_AGREEMENT") or "2")
-          problems = []
-          if srcs and healthy == 0:
-              problems.append("ALL SOURCES DOWN")
-          elif srcs and healthy < need:
-              problems.append(f"only {healthy} healthy source(s) < MIN_SOURCE_AGREEMENT={need} -- drawing stalled")
-          if st.get("held") is not None:
-              problems.append(f"draw {st['held']} HELD -- sources disagree on a confirmed window")
-          if st.get("note"):   # extend_pages sets note only on an anomaly (implausible tip / reorg mismatch)
-              problems.append(st["note"])
+          problems = artifacts.status_problems(st, need)
           if problems:
               sys.exit("status.json degraded: " + "; ".join(problems)
                        + " -- see https://lucky2049.com/status.json")
-          print(f"healthy sources: {healthy}/{len(srcs)}; no hold")
+          srcs = st.get("sources") or []
+          print(f"healthy sources: {sum(1 for s in srcs if s.get('ok'))}/{len(srcs)}; no hold")
           EOF

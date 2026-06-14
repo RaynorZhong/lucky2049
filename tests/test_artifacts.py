@@ -68,5 +68,37 @@ class TestWriteFeed(unittest.TestCase):
         self.assertEqual(feed["version"], "https://jsonfeed.org/version/1.1")
 
 
+class TestStatusProblems(unittest.TestCase):
+    """Locks the refresh-pages.yml degraded-refresh alarm logic (now status_problems)."""
+    OK2 = [{"name": "a", "ok": True, "tip": 9}, {"name": "b", "ok": True, "tip": 9}]
+
+    def test_healthy_quorum_no_problems(self):
+        self.assertEqual(artifacts.status_problems({"sources": self.OK2}), [])
+
+    def test_empty_sources_offline_stub_no_alarm(self):
+        # an offline rebuild writes no probe results -> must not false-alarm
+        self.assertEqual(artifacts.status_problems({"sources": []}), [])
+        self.assertEqual(artifacts.status_problems({}), [])
+
+    def test_all_sources_down(self):
+        st = {"sources": [{"name": "a", "ok": False}, {"name": "b", "ok": False}]}
+        self.assertIn("ALL SOURCES DOWN", artifacts.status_problems(st)[0])
+
+    def test_sub_quorum_alarms(self):
+        st = {"sources": [{"name": "a", "ok": True, "tip": 9}, {"name": "b", "ok": False}]}
+        probs = artifacts.status_problems(st, min_agreement=2)
+        self.assertTrue(any("MIN_SOURCE_AGREEMENT=2" in p for p in probs))
+        # ...but an operator who trusts a single node (min_agreement=1) sees no alarm
+        self.assertEqual(artifacts.status_problems(st, min_agreement=1), [])
+
+    def test_held_and_note_each_alarm(self):
+        self.assertTrue(any("HELD" in p for p in artifacts.status_problems({"sources": self.OK2, "held": 42})))
+        self.assertIn("a deep reorg", " ".join(
+            artifacts.status_problems({"sources": self.OK2, "note": "REORG/MISMATCH: a deep reorg"})))
+
+    def test_held_zero_is_a_real_hold(self):  # held=0 must alarm (is-not-None, not truthiness)
+        self.assertTrue(any("HELD" in p for p in artifacts.status_problems({"sources": self.OK2, "held": 0})))
+
+
 if __name__ == "__main__":
     unittest.main()

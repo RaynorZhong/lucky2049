@@ -6,6 +6,11 @@ on:
   pull_request:
   workflow_dispatch: {}   # allow re-running the algorithm/commitment/JS locks on demand
 
+# Least privilege: this workflow runs PR-controllable code (pytest/pyflakes over
+# fork PRs) and needs no write access -- read-only token, nothing to push.
+permissions:
+  contents: read
+
 jobs:
   # Locks the frozen draw algorithm + commitment chain (SPEC.md), the publish
   # path (scripts/extend_pages.py, via test_publish_smoke), and the in-browser JS

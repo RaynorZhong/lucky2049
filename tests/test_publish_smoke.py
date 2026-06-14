@@ -270,7 +270,8 @@ class TestPublishSmoke(unittest.TestCase):
         # The workflow copies exactly these into the published site; a rename that
         # silently drops one would 404 in production -- guard the list here.
         for rel in ("web/index.html", "web/verify.html", "web/stats.html", "web/trend.html",
-                    "web/CNAME", "static/verify.js", "static/stats.js", "static/trend.js",
+                    "web/randomness.html", "web/og.png", "web/CNAME",
+                    "static/verify.js", "static/stats.js", "static/trend.js", "static/randomness.js",
                     "static/style.css", "static/favicon.svg"):
             self.assertTrue(os.path.exists(os.path.join(REPO_ROOT, rel)),
                             "missing publish input: " + rel)
