@@ -152,6 +152,22 @@
             $("vdSub").textContent = sub || "";
             $("vdRetry").style.display = state === "err" ? "" : "none";
         }
+        // Pure decision: (result reproduced?, chain state 'pass'|'fail'|'unchecked', draw id) -> the
+        // verdict. Green ONLY when the numbers reproduce AND the commitment chain isn't broken. Kept
+        // pure (no DOM) so tests/test_verify_fetch_js.py can lock the whole truth table.
+        function composeVerdict(resultOk, chainState, id) {
+            if (resultOk && chainState !== "fail") {
+                return { state: "pass", text: "This draw matches the Bitcoin chain.",
+                    sub: "Recomputed in your browser from the 144 block hashes"
+                        + (chainState === "pass"
+                            ? (id === 0 ? " · genesis commitment verified." : " · commitment chain intact.")
+                            : " · result matches, but the commitment link couldn't be checked (not in this snapshot).") };
+            }
+            return { state: "fail",
+                text: resultOk ? "Tamper-evidence chain is BROKEN." : "This draw does NOT match the chain.",
+                sub: resultOk ? "the numbers match, but the commitment doesn't link to the previous draw."
+                              : "the recomputed numbers differ from the published result." };
+        }
         function balls(c, nums, extra) {
             c.innerHTML = "";
             (nums || []).forEach(function (n) { var d = document.createElement("div"); d.className = "white-balls" + (extra ? " " + extra : ""); d.textContent = n; c.appendChild(d); });
@@ -297,14 +313,14 @@
             $("vSeed").textContent = r.seedHex;
             var resultOk = eq(r.front, rec.front) && eq(r.back, rec.back);
             setBadge($("bResult"), resultOk);
-            var chainState = "na";   // 'na' | 'pass' | 'fail'
+            var chainState = "unchecked";   // 'pass' | 'fail' | 'unchecked' (predecessor / commitment unavailable)
             if (rec.commitment) {
                 // Recompute from the REAL previous record's commitment (genesis for
                 // draw 0), not the record's self-declared prev -- so a rewritten
                 // neighbour is caught here instead of being silently trusted.
                 var prevRec = id === 0 ? null : (index.draws || []).find(function (d) { return d.id === id - 1; });
                 var linkedPrev = id === 0 ? V.GENESIS_PREV : (prevRec ? prevRec.commitment : null);
-                if (linkedPrev === null) { $("bChain").className = "badge wait"; $("bChain").textContent = "N/A"; }
+                if (linkedPrev === null) { $("bChain").className = "badge wait"; $("bChain").textContent = "N/A"; }  // non-genesis, predecessor not in this snapshot
                 else {
                     var c = V.commitmentFor(linkedPrev, id, rec.algo_version, r.seedHex, r.front, r.back, start, end);
                     var chainOk = c === rec.commitment;
@@ -313,15 +329,8 @@
                 }
             } else { $("bChain").className = "badge wait"; $("bChain").textContent = "N/A"; }
 
-            if (resultOk && chainState !== "fail") {
-                setVerdict("pass", "This draw matches the Bitcoin chain.",
-                    "Recomputed in your browser from the 144 block hashes"
-                    + (chainState === "pass" ? " · commitment chain intact." : " · genesis draw (no prior commitment)."));
-            } else {
-                setVerdict("fail", resultOk ? "Tamper-evidence chain is BROKEN." : "This draw does NOT match the chain.",
-                    resultOk ? "the numbers match, but the commitment doesn't link to the previous draw."
-                             : "the recomputed numbers differ from the published result.");
-            }
+            var verdict = composeVerdict(resultOk, chainState, id);
+            setVerdict(verdict.state, verdict.text, verdict.sub);
             $("status").textContent = "Recomputed locally — no server trust.";
         }
 
