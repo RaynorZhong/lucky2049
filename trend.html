@@ -66,7 +66,7 @@
     <div class="container" style="max-width:1320px;">
         <header>
             <div class="brand"><img src="./favicon.svg" alt=""><h1>Trend</h1></div>
-            <p id="intro" class="text-secondary" aria-live="polite">One row per draw: the front area (1–35) split into three zones and the back
+            <p id="intro" class="text-secondary">One row per draw: the front area (1–35) split into three zones and the back
                 area (1–12) — hits are balls, misses show the gap (draws since it last appeared, over all history). Runs of
                 three or more (horizontal or vertical) show as white balls with a coloured number, and a zone with no number that draw is shaded. Computed in
                 your browser from the published snapshot.</p>
@@ -74,10 +74,10 @@
 
         <div class="trend-controls">
             <span class="text-secondary" style="font-size:0.9rem;">Last</span>
-            <div class="seg" id="seg">
-                <button data-n="30" class="active">30</button>
-                <button data-n="50">50</button>
-                <button data-n="100">100</button>
+            <div class="seg" id="seg" role="group" aria-label="Number of recent draws to show">
+                <button type="button" data-n="30" class="active" aria-pressed="true">30</button>
+                <button type="button" data-n="50" aria-pressed="false">50</button>
+                <button type="button" data-n="100" aria-pressed="false">100</button>
             </div>
             <span id="range" class="text-muted" style="font-size:0.85rem;"></span>
         </div>
@@ -174,7 +174,9 @@
         document.getElementById('seg').addEventListener('click', function (e) {
             var btn = e.target.closest('button'); if (!btn) return;
             WINDOW = parseInt(btn.dataset.n, 10);
-            [].forEach.call(this.querySelectorAll('button'), function (x) { x.classList.toggle('active', x === btn); });
+            [].forEach.call(this.querySelectorAll('button'), function (x) {
+                var on = x === btn; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
             render();
         });
 

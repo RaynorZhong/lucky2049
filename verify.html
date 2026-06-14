@@ -156,29 +156,36 @@
             var done = 0; for (var i = 0; i < out.length; i++) if (out[i]) done++;
             $("status").textContent = "Fetching block hashes from the chain… " + done + "/" + total;
         }
+        // Pin ONE explorer for the whole 144-block window -- pages must not be mixed
+        // across explorers (during a fork that would assemble a Frankenstein hash
+        // list). If one explorer can't serve every page cleanly, restart the window
+        // on the next; only when none can do we fall back to per-height fetching.
         async function fetchHashesBatched(start, end, out) {
             var total = end - start + 1;
-            for (var top = end; top >= start; top -= 10) {   // /blocks/{top} -> [top .. top-9]
-                var page = null;
-                for (var i = 0; i < BATCH_APIS.length; i++) {
+            for (var e = 0; e < BATCH_APIS.length; e++) {
+                for (var k = 0; k < total; k++) out[k] = undefined;   // fresh slots per explorer
+                var clean = true;
+                for (var top = end; top >= start && clean; top -= 10) {   // /blocks/{top} -> [top .. top-9]
                     try {
-                        var resp = await fetch(BATCH_APIS[i].url(top));
+                        var resp = await fetch(BATCH_APIS[e].url(top));
                         if (!resp.ok) throw new Error("HTTP " + resp.status);
-                        var arr = await resp.json();
-                        if (!Array.isArray(arr) || !arr.length) throw new Error("bad shape");
-                        page = arr; break;
-                    } catch (e) { /* try the next explorer for this page */ }
+                        var page = await resp.json();
+                        if (!Array.isArray(page) || !page.length) throw new Error("bad shape");
+                        for (var j = 0; j < page.length; j++) {
+                            var hgt = page[j].height, id = (page[j].id || "").toLowerCase();
+                            if (typeof hgt !== "number" || !/^[0-9a-f]{64}$/.test(id)) { clean = false; break; }
+                            if (hgt >= start && hgt <= end) out[hgt - start] = id;
+                        }
+                        progress(out, total);
+                    } catch (x) { clean = false; }   // this explorer can't serve the window cleanly
                 }
-                if (!page) return false;   // a page failed on every explorer -> fall back
-                for (var j = 0; j < page.length; j++) {
-                    var hgt = page[j].height, id = (page[j].id || "").toLowerCase();
-                    if (typeof hgt !== "number" || !/^[0-9a-f]{64}$/.test(id)) return false;
-                    if (hgt >= start && hgt <= end) out[hgt - start] = id;
+                if (clean) {
+                    var allFilled = true;
+                    for (var m = 0; m < total; m++) if (!out[m]) { allFilled = false; break; }
+                    if (allFilled) return true;       // one explorer served every slot
                 }
-                progress(out, total);
             }
-            for (var k = 0; k < total; k++) if (!out[k]) return false;  // every slot filled?
-            return true;
+            return false;   // no single explorer served the whole window -> per-height fallback
         }
         async function fetchHashAt(height) {
             var errs = [];
@@ -257,7 +264,11 @@
             $("status").textContent = "Done — verified locally against the chain, no server trust.";
         }
 
-        function currentId() { var v = parseInt($("drawId").value, 10); return isNaN(v) ? 0 : v; }
+        function currentId() {
+            var v = parseInt($("drawId").value, 10);
+            if (!isNaN(v)) return v;
+            return (INDEX && INDEX.count) ? INDEX.count - 1 : 0;   // empty box -> latest (matches the placeholder)
+        }
         $("verifyForm").addEventListener("submit", function (e) { e.preventDefault(); history.replaceState(null, "", "?draw=" + currentId()); verify(currentId()); });
         // Copy-to-clipboard for the hex fields a verifier cross-checks against the CLI.
         // navigator.clipboard needs a secure context (the verifier also targets plain
