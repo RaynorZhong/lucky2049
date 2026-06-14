@@ -131,13 +131,22 @@ def _providers():
     return provs
 
 
-_CRED_RE = re.compile(r"(\w+://)[^/@\s]+@")
+# user:pass@ with an OPTIONAL scheme:// prefix (so a bare `user:pass@host` in an
+# error is redacted too, not only a full URL).
+_CRED_RE = re.compile(r"(\b[\w+.-]+://)?[^\s/@:]+:[^\s/@]+@")
 
 
 def _redact(e):
-    """Strip URL userinfo (user:pass@) from an error before it reaches the PUBLIC
-    status.json / workflow logs -- a BITCOIN_RPC_URL password must never leak."""
-    return _CRED_RE.sub(r"\1***@", str(e))
+    """Strip credentials from an error before it reaches the PUBLIC status.json /
+    workflow logs. Covers URL userinfo (with or without a scheme) AND any known
+    secret VALUE -- the CF Access service-token secret never appears as userinfo
+    (it's a header), so blunt-replace it by value too. Secrets must never leak."""
+    s = _CRED_RE.sub(lambda m: (m.group(1) or "") + "***@", str(e))
+    for var in ("CF_ACCESS_CLIENT_SECRET", "BITCOIN_RPC_PASSWORD"):
+        val = os.environ.get(var)
+        if val and val in s:
+            s = s.replace(val, "***")
+    return s
 
 
 def _call(providers, op, *args):
@@ -317,12 +326,22 @@ def main():
         added += 1
         print(f"committed draw {draws[-1]['id']} (agree: {', '.join(agreed_by)})")
 
-    # Reorg self-audit: on an idle run (nothing committed just now), re-verify the
-    # most recent published draw -- the only one a feasible >CONFIRMATIONS-deep reorg
-    # could still alter -- against the live chain. A mismatch ALARMS (via note); it
-    # never rewrites. Skipped when we just committed (those windows were verified now).
-    if confirmed_tip is not None and note is None and added == 0 and draws:
-        note = _reorg_audit_one(providers, draws[-1], confirmed_tip)
+    # Reorg self-audit: re-verify EVERY already-published draw still within the
+    # reorg horizon (REORG_AUDIT_DEPTH) against the live chain -- newest first,
+    # stopping once a draw is buried (older ones are even more buried). Runs on
+    # every refresh, not just idle ones; draws committed in THIS run were already
+    # verified as they were drawn, so skip those. A mismatch ALARMS (via note); it
+    # never rewrites (the commitment chain makes a silent rewrite illegal).
+    if confirmed_tip is not None and note is None and draws:
+        fresh_ids = set(d["id"] for d in draws[len(draws) - added:]) if added else set()
+        for d in reversed(draws):
+            if confirmed_tip - d["end_height"] >= REORG_AUDIT_DEPTH:
+                break  # buried past the horizon -- and so is everything older
+            if d["id"] in fresh_ids:
+                continue
+            note = _reorg_audit_one(providers, d, confirmed_tip)
+            if note:
+                break
 
     head = verify.head_for(draws)
 

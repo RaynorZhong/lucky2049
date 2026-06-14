@@ -254,6 +254,18 @@ class TestPublishSmoke(unittest.TestCase):
         self.assertNotIn("s3cret", msg)
         self.assertIn("https://***@btc-rpc.example/", msg)
 
+    def test_redact_covers_bare_userinfo_and_cf_secret(self):
+        # Userinfo with NO scheme (a bare host string) must still be stripped...
+        bare = extend_pages._redact("error talking to bitcoinrpc:s3cret@btc-rpc.example : 403")
+        self.assertNotIn("s3cret", bare)
+        self.assertIn("***@btc-rpc.example", bare)
+        # ...and the CF Access service-token secret (a header value, never userinfo)
+        # is redacted by value when it leaks verbatim into an error string.
+        with mock.patch.dict(os.environ, {"CF_ACCESS_CLIENT_SECRET": "cf-Sup3rSecret"}):
+            cf = extend_pages._redact("403 Forbidden (token cf-Sup3rSecret rejected)")
+        self.assertNotIn("cf-Sup3rSecret", cf)
+        self.assertIn("***", cf)
+
     def test_publish_inputs_present(self):
         # The workflow copies exactly these into the published site; a rename that
         # silently drops one would 404 in production -- guard the list here.

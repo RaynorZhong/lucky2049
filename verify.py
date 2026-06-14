@@ -144,13 +144,17 @@ def _http_get(url, timeout=30, retries=3):
     raise RuntimeError("unreachable")  # the loop always returns or raises
 
 
-def _rpc_call(rpc_url, method, params, timeout=30):
+def _rpc_call(rpc_url, method, params, timeout=30, retries=3):
     """One Bitcoin Core JSON-RPC POST.
 
     Sends an explicit HTTP Basic-Auth header parsed from the URL's `user:pass@`:
     urllib does NOT authenticate from URL userinfo on its own, and would even try
     to resolve `user:pass@host` as a hostname -- so we strip the userinfo and add
-    the Authorization header ourselves, then connect to the clean host."""
+    the Authorization header ourselves, then connect to the clean host.
+
+    Retries transient HTTP 429/5xx and connection blips with backoff, exactly like
+    _http_get: the Core node is an agreement voter across a 144-call window, so one
+    flap shouldn't cost its whole vote. A JSON-level RPC error is final (not retried)."""
     parts = urllib.parse.urlsplit(rpc_url)
     # Real User-Agent like _http_get's: urllib's default ("Python-urllib/3.x")
     # gets 403'd by bot protection on proxied endpoints (e.g. Cloudflare).
@@ -170,8 +174,19 @@ def _rpc_call(rpc_url, method, params, timeout=30):
         url = urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
     payload = json.dumps({"jsonrpc": "1.0", "id": "lucky2049", "method": method, "params": params})
     req = urllib.request.Request(url, data=payload.encode(), headers=headers)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        res = json.loads(r.read().decode())
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                res = json.loads(r.read().decode())
+            break
+        except urllib.error.HTTPError as e:
+            if e.code not in (429, 500, 502, 503, 504) or attempt == retries - 1:
+                raise
+            time.sleep(_retry_after(e) or 0.5 * (2 ** attempt))
+        except (urllib.error.URLError, OSError):  # DNS / connection reset / timeout
+            if attempt == retries - 1:
+                raise
+            time.sleep(0.5 * (2 ** attempt))
     if res.get("error"):
         raise RuntimeError(f"RPC error: {res['error']}")
     return res["result"]

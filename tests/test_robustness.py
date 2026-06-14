@@ -112,6 +112,39 @@ class TestHttpRetry(unittest.TestCase):
         self.assertIsNone(verify._retry_after(err({"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"})))  # HTTP-date form
 
 
+# ----------------------------- _rpc_call retry -----------------------------
+class TestRpcRetry(unittest.TestCase):
+    RPC = "http://u:p@127.0.0.1:8332/"
+
+    def test_rpc_retries_transient_then_succeeds(self):
+        # The Core node is an agreement voter across a 144-call window; a transient
+        # 5xx mid-window must be retried away, not drop its whole vote.
+        seq = [urllib.error.HTTPError("u", 503, "busy", {}, None),
+               urllib.error.HTTPError("u", 502, "bad gw", {}, None),
+               io.BytesIO(b'{"result":"ab"}')]
+
+        def fake(req, timeout=None):
+            x = seq.pop(0)
+            if isinstance(x, Exception):
+                raise x
+            return x
+        with mock.patch("urllib.request.urlopen", side_effect=fake), \
+             mock.patch.object(verify.time, "sleep"):
+            self.assertEqual(verify._rpc_call(self.RPC, "getblockcount", []), "ab")
+
+    def test_rpc_does_not_retry_a_json_level_error(self):
+        calls = []
+
+        def fake(req, timeout=None):
+            calls.append(1)
+            return io.BytesIO(b'{"error":{"code":-8,"message":"bad"}}')
+        with mock.patch("urllib.request.urlopen", side_effect=fake), \
+             mock.patch.object(verify.time, "sleep"):
+            with self.assertRaises(RuntimeError):
+                verify._rpc_call(self.RPC, "getblockhash", [99])
+        self.assertEqual(len(calls), 1)  # an RPC-level error is final, not retried
+
+
 # ----------------------------- timestamp fallback -----------------------------
 class TestSafeTimestamp(unittest.TestCase):
     def test_timestamp_outage_commits_draw_with_null_ts(self):
