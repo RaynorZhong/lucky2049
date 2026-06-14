@@ -62,7 +62,8 @@ The whole "draw + publish + verify" loop runs on GitHub, with **no server and no
   `index.json`, and pushes back to `gh-pages` (a draw whose sources disagree is held, not
   published — so a single bad/forked explorer can't corrupt history). Pure stdlib.
 - **Site** — `web/` (`index.html` [+ next-draw ETA] / `verify.html` / `stats.html` /
-  `trend.html` [trend chart]) + `static/` (`verify.js` / `stats.js` / `trend.js` / `style.css`).
+  `trend.html` [trend chart] / `randomness.html` [coin/dice demo]) + `static/`
+  (`verify.js` / `stats.js` / `trend.js` / `randomness.js` / `style.css`).
   The browser reads `index.json` and recomputes with its own SHA-256/HMAC — trusting no server,
   touching no database.
 - **Verifier** — `verify.py`: a standalone stdlib script that recomputes a draw + checks the
@@ -145,8 +146,8 @@ scripts/
   extend_pages.py  cron drawer/publisher: extend index.json from the chain (stdlib, reuses verify.py, no DB)
   export_static.py rebuild the whole index.json + site from a local SQLite cache (stdlib sqlite3) — initial build / disaster recovery
   publish-pages.sh manual publish (export_static + push gh-pages); use the cron normally, pick one
-web/            index.html (home + next-draw ETA) / verify.html / stats.html / trend.html (trend chart) + CNAME
-static/         verify.js (verifier), stats.js (frequency + chi-square), trend.js (trend chart), style.css, favicon.svg — own algorithm, no external scripts
+web/            index.html (home + next-draw ETA) / verify.html / stats.html / trend.html (trend chart) / randomness.html (coin/dice demo) + og.png + CNAME
+static/         verify.js (verifier), stats.js (frequency + chi-square), trend.js (trend chart), randomness.js (coin/dice demo), style.css, favicon.svg — own algorithm, no external scripts
 .github/workflows/  refresh-pages.yml (cron publish), tests.yml (algorithm / commitment / JS locks)
 SPEC.md         frozen algorithm spec v1        docs/DEPLOY.md deployment   docs/TDD.md TDD workflow
 data/           database.db — optional local cache, gitignored, not shipped with the repo; read only by export_static on rebuild

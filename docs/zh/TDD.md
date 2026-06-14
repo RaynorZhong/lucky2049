@@ -38,9 +38,9 @@ python -m unittest discover -s tests                      # 不依赖 pytest 的
 
 - **冻结的算法 + 承诺** —— `tests/test_spec_v1.py` 和 `tests/test_commitment.py` 里的黄金向量
   对着 `verify.py` 和 `SPEC.md` 复算。
-- **浏览器内 JS** —— `tests/test_verify_js.py` 和 `tests/test_stats_js.py` 在 Node 里跑
-  `static/verify.js` / `static/stats.js`,检查它们复现出 Python 的结果(及冻结的黄金值)。
-  Node 缺失时自动跳过。
+- **浏览器内 JS** —— `tests/test_verify_js.py`、`tests/test_stats_js.py`、`tests/test_random_js.py`
+  和 `tests/test_trend_js.py` 在 Node 里跑 `static/verify.js` / `static/stats.js` / `static/randomness.js` /
+  `static/trend.js`,检查它们复现出 Python 的结果(及冻结的黄金值)。Node 缺失时自动跳过。
 
 `tests/test_verify_site.py` 用 mock 掉的 HTTP 覆盖 `verify.py --site` 的链路(实时 API + 静态
 `index.json` 回退)—— 不联网。

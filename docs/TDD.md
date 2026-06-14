@@ -40,9 +40,10 @@ The site is static, so the tests pin the two things that matter:
 
 - **The frozen algorithm + commitment** — golden vectors in `tests/test_spec_v1.py`
   and `tests/test_commitment.py` recompute against `verify.py` and SPEC.md.
-- **The in-browser JS** — `tests/test_verify_js.py` and `tests/test_stats_js.py`
-  run `static/verify.js` / `static/stats.js` under Node and check they reproduce
-  the Python result (and frozen golden values). They self-skip if Node is absent.
+- **The in-browser JS** — `tests/test_verify_js.py`, `tests/test_stats_js.py`,
+  `tests/test_random_js.py`, and `tests/test_trend_js.py` run `static/verify.js` /
+  `static/stats.js` / `static/randomness.js` / `static/trend.js` under Node and check
+  they reproduce the Python result (and frozen golden values). They self-skip if Node is absent.
 
 `tests/test_verify_site.py` covers the `verify.py --site` plumbing (live API +
 static `index.json` fallback) with mocked HTTP — no network.

@@ -7,8 +7,8 @@ app package, no SQLModel) and writes a small static site (no 144-hash blobs, so
 the snapshot stays ~1-2MB):
   site/index.json  - {count, head, algo_version, draws:[slim records]}
   site/head.json   - the commitment head
-  site/index.html, verify.html, stats.html, trend.html + verify.js, stats.js,
-  trend.js, style.css, favicon.svg, CNAME, and anchors/
+  site/index.html, verify.html, stats.html, trend.html, randomness.html, og.png
+  + verify.js, stats.js, trend.js, randomness.js, style.css, favicon.svg, CNAME, and anchors/
 
 Each slim record has id, heights, result, algo_version, commitment and
 prev_commitment -- everything the static verify page needs to recompute against
