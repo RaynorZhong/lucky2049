@@ -102,7 +102,7 @@
         </section>
 
         <section>
-            <h2>Recent draws</h2>
+            <h2>Earlier draws</h2>
             <div class="panel" style="padding:0.5rem 1rem;">
                 <table class="draws-table">
                     <thead>
@@ -320,7 +320,10 @@
             (async function () {
                 try {
                     var feed = await (await fetch("./feed.json")).json();
-                    var items = (feed.items || []).slice(0, 20);
+                    // The newest draw is already the hero above, so drop it from the list below
+                    // (no double-show); fall back to the full list if there's no hero.
+                    var latestId = L ? Number(L.id) : null;
+                    var items = (feed.items || []).filter(function (it) { return Number(it.id) !== latestId; }).slice(0, 20);
                     $("rows").innerHTML = items.length ? items.map(function (it) {
                         var x = feedDraw(it), id = Number(it.id);
                         var when = it.date_published ? it.date_published.replace("T", " ").replace("Z", " UTC") : "";
@@ -329,7 +332,7 @@
                             + "<td data-label='Back'><div class='d-flex' role='group' aria-label='Back numbers'>" + balls(x.back, "powerball") + "</div></td>"
                             + "<td data-label='Heights' class='text-secondary'>" + (x.start_height | 0) + " - " + (x.end_height | 0) + "</td>"
                             + "<td data-label='Time' class='text-secondary'>" + esc(when) + "</td></tr>";
-                    }).join("") : '<tr class="empty-row"><td colspan="5">No draws published yet — the first 144-block window is still being mined.</td></tr>';
+                    }).join("") : '<tr class="empty-row"><td colspan="5">' + (L ? 'No earlier draws yet — No. ' + (L.id | 0) + ' is the first.' : 'No draws published yet — the first 144-block window is still being mined.') + '</td></tr>';
                 } catch (e) {  // table is non-critical; the summary/ETA already rendered
                     $("rows").innerHTML = '<tr class="empty-row"><td colspan="5">Couldn’t load the draws list — please refresh.</td></tr>';
                 }
