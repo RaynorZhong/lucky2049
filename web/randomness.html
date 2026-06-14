@@ -39,20 +39,17 @@
             font-size: 1.5rem; font-family: ui-sans-serif, "Segoe UI Symbol", "Noto Sans Symbols2", system-ui, sans-serif;
             /* flat coin face: a bright milled rim + a darker inner ring, no domed sphere shading. */
             box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.6), inset 0 0 0 4px rgba(176,104,16,.5), 0 1px 2px rgba(0,0,0,.3); }
-        .bcoin .front { background: radial-gradient(circle at 50% 42%, #ffce74, #f6a32c 80%); }
+        .bcoin .front { background: radial-gradient(circle at 50% 42%, #ffce74, #f6a32c 80%); transform: translateZ(3px); }
         .bcoin .front::before { content: "\20BF"; text-shadow: 0 1px 1px rgba(0,0,0,.3); }   /* ₿ */
-        .bcoin .back { transform: rotateY(180deg);
-            background-image:
-                radial-gradient(circle at 25% 27%, #fff 0 1.7px, transparent 2.1px),
-                radial-gradient(circle at 75% 29%, #fff 0 1.7px, transparent 2.1px),
-                radial-gradient(circle at 28% 75%, #fff 0 1.7px, transparent 2.1px),
-                radial-gradient(circle at 73% 73%, #fff 0 1.7px, transparent 2.1px),
-                repeating-linear-gradient(90deg, transparent 0 8px, rgba(255,255,255,.55) 8px 9px),
-                repeating-linear-gradient(0deg, transparent 0 8px, rgba(255,255,255,.38) 8px 9px),
-                radial-gradient(circle at 50% 42%, #ffce74, #f6a32c 80%); }
-        .bcoin .back::before { content: ""; width: 34%; height: 34%; border-radius: 3px;
-            background: rgba(255,255,255,.12);
-            box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.85), 0 1px 1px rgba(0,0,0,.2); }
+        /* reverse = the lucky2049 four-leaf clover, minted white on the same gold as the obverse. */
+        .bcoin .back { transform: rotateY(180deg) translateZ(3px); color: #fff;
+            background: radial-gradient(circle at 50% 42%, #ffce74, #f6a32c 80%); }
+        .bcoin .back .clover { width: 84%; height: 84%; filter: drop-shadow(0 1px 1px rgba(0,0,0,.28)); }
+        /* a milled cylindrical edge (N panels, built in coinInner()) gives the coin real thickness as it flips. */
+        .bcoin .cedge { position: absolute; inset: 0; transform-style: preserve-3d; }
+        .bcoin .cedge .rim { position: absolute; left: 50%; top: 50%; width: 10px; height: 6px; margin: -3px 0 0 -5px;
+            background: linear-gradient(to bottom, #ffd680, #e0992e 45%, #a4620d); }
+        .bcoin .cedge .rim:nth-child(odd) { filter: brightness(0.82); }   /* alternating shade = a reeded edge */
         /* Bitcoin-orange die with white pips. */
         .dice { display: flex; flex-wrap: wrap; gap: 0.55rem; margin-top: 0.6rem; }
         .bdie { width: 3rem; height: 3rem; border-radius: 0.6rem; padding: 0.34rem; display: grid;
@@ -155,8 +152,9 @@
         // ---- state ----
         var blocks = {};            // height -> hash, for the recent window
         var tip = null;             // current chain tip height
-        var shownCoins = [];        // heights locked in, left -> right = oldest -> newest
-        var shownWindows = [];      // window indices locked in, oldest -> newest
+        var shownCoins = [];        // heights locked in, left -> right = oldest -> newest (grows, no cap)
+        var shownWindows = [];      // window indices locked in, oldest -> newest (grows, no cap)
+        var coinHeads = 0;          // running Heads count over shownCoins (survives block-cache trimming)
         var coinQ = [], dieQ = [];  // results waiting to be locked in (oldest first)
         var coinSp = null, dieSp = null, rafId = null;   // the single live spinner per row + the rAF loop
         var lastUpdate = 0, polling = false;
@@ -166,13 +164,29 @@
         function setPips(die, v) {
             for (var k = 0; k < 9; k++) die.children[k].className = "pip" + (PIPS[v].indexOf(k) >= 0 ? " on" : "");
         }
+        // The reverse face: the project's four-leaf clover, white (currentColor) like the obverse ₿.
+        var LEAF = "M12,22C11,20 1.5,15 1.5,8.7C1.5,4.7 4.4,2 7.8,2C10.2,2 11.5,3.7 12,5C12.5,3.7 13.8,2 16.2,2C19.6,2 22.5,4.7 22.5,8.7C22.5,15 13,20 12,22Z";
+        var CLOVER = '<svg class="clover" viewBox="0 0 64 64" aria-hidden="true">'
+            + '<g transform="translate(32 30) rotate(9) scale(1.12)" fill="currentColor" stroke="rgba(120,70,10,.25)" stroke-width="0.7" stroke-linejoin="round">'
+            + '<path d="M-0.5,3C2.4,9 3,13.5 1,20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>'
+            + '<g transform="rotate(45) translate(-12 -22)"><path d="' + LEAF + '"/></g>'
+            + '<g transform="rotate(135) translate(-12 -22)"><path d="' + LEAF + '"/></g>'
+            + '<g transform="rotate(225) translate(-12 -22)"><path d="' + LEAF + '"/></g>'
+            + '<g transform="rotate(315) translate(-12 -22)"><path d="' + LEAF + '"/></g>'
+            + '</g></svg>';
+        // front (₿) + back (clover) + a milled cylindrical edge of N panels = a coin with real thickness.
+        function coinInner() {
+            var R = 24, N = 16, html = '<div class="cface front"></div><div class="cface back">' + CLOVER + '</div><div class="cedge">';
+            for (var i = 0; i < N; i++) html += '<i class="rim" style="transform:rotateZ(' + (i * 360 / N) + 'deg) translateY(' + R + 'px) rotateX(90deg)"></i>';
+            return html + '</div>';
+        }
         // Spinning placeholders: a coin that keeps flipping and a die that keeps tumbling, meaning
         // "the next result is on its way" — shown while loading and always at the front of each row.
         function pendingCoin() {
             var c = document.createElement("div");
             c.className = "bcoin pending"; c.setAttribute("role", "img"); c.setAttribute("aria-label", "waiting for the next block");
             c.title = "waiting for the next block…";
-            c.innerHTML = '<div class="cface front"></div><div class="cface back"></div>';
+            c.innerHTML = coinInner();
             return c;
         }
         function pendingDie() {
@@ -189,17 +203,24 @@
         function windowComplete(k) { for (var b = WINDOW * k; b <= WINDOW * k + WINDOW - 1; b++) if (!blocks[b]) return false; return true; }
 
         // ---- one-at-a-time reveal: queue eligible results, then lock them in, newest first ----
-        function targetCoins() { var a = []; for (var h = tip; h > tip - COIN_N && h >= 0; h--) if (blocks[h]) a.push(h); return a; }
-        function targetDice() {
-            var kLast = Math.floor((tip - (WINDOW - 1)) / WINDOW), a = [];
-            for (var k = kLast; k > kLast - DICE_M && k >= 0; k--) if (windowComplete(k)) a.push(k);
+        // Candidates in ascending (oldest -> newest) order: initially the last COIN_N / DICE_M, then every
+        // result newer than what's already shown — so live blocks ACCUMULATE (11, 12, 13, … no cap).
+        function targetCoins() {
+            var lo = shownCoins.length ? shownCoins[shownCoins.length - 1] + 1 : tip - COIN_N + 1, a = [];
+            for (var h = Math.max(lo, 0); h <= tip; h++) if (blocks[h]) a.push(h);
             return a;
         }
-        // Queue any newly-eligible result not already shown/queued/locking (OLDEST first). The rAF loop
-        // (tick) drains the queues one at a time; nothing is paced by a timer.
+        function targetDice() {
+            var kLast = Math.floor((tip - (WINDOW - 1)) / WINDOW);
+            var lo = shownWindows.length ? shownWindows[shownWindows.length - 1] + 1 : kLast - DICE_M + 1, a = [];
+            for (var k = Math.max(lo, 0); k <= kLast; k++) if (windowComplete(k)) a.push(k);
+            return a;
+        }
+        // Queue any newly-eligible result not already shown/queued/locking (already OLDEST first). The rAF
+        // loop (tick) drains the queues one at a time; nothing is paced by a timer.
         function enqueue() {
-            targetCoins().reverse().forEach(function (h) { if (shownCoins.indexOf(h) < 0 && coinQ.indexOf(h) < 0) coinQ.push(h); });   // oldest -> newest
-            targetDice().reverse().forEach(function (k) { if (shownWindows.indexOf(k) < 0 && dieQ.indexOf(k) < 0) dieQ.push(k); });
+            targetCoins().forEach(function (h) { if (shownCoins.indexOf(h) < 0 && coinQ.indexOf(h) < 0) coinQ.push(h); });
+            targetDice().forEach(function (k) { if (shownWindows.indexOf(k) < 0 && dieQ.indexOf(k) < 0) dieQ.push(k); });
         }
 
         // Timeline (left -> right = old -> new); the live spinner is the FAR-RIGHT element (the future
@@ -221,8 +242,8 @@
             el.setAttribute("aria-label", (face === "H" ? "Heads" : "Tails") + ", block " + h);
             el.title = "block #" + h + " → " + (face === "H" ? "Heads" : "Tails");
             el.style.transform = "rotateY(" + (face === "T" ? 180 : 0) + "deg)";   // exact face (it stopped here)
-            shownCoins.push(h);
-            while (shownCoins.length > COIN_N) { shownCoins.shift(); $("coins").removeChild($("coins").firstChild); }
+            shownCoins.push(h);                         // results accumulate (no cap) — the row grows past COIN_N
+            if (face === "H") coinHeads++;
             syncInfo();
         }
         function lockDie(k) {                            // turn the live spinner into window k's settled die
@@ -231,8 +252,7 @@
             el.setAttribute("aria-label", "Die showing " + v + ", blocks " + lo + " to " + hi);
             el.title = "blocks #" + lo + "–#" + hi + " → " + v;
             setPips(el, v);
-            shownWindows.push(k);
-            while (shownWindows.length > DICE_M) { shownWindows.shift(); $("dice").removeChild($("dice").firstChild); }
+            shownWindows.push(k);                       // accumulate (no cap)
             syncInfo();
         }
 
@@ -259,14 +279,14 @@
         }
         function syncInfo() {
             if (shownCoins.length) {
-                var heads = shownCoins.reduce(function (n, h) { return n + (coinFace(h) === "H" ? 1 : 0); }, 0);
-                $("coinInfo").textContent = "newest: block #" + shownCoins[shownCoins.length - 1] + " · last " + shownCoins.length
-                    + ": " + heads + " H · " + (shownCoins.length - heads) + " T";
+                $("coinInfo").textContent = "newest: block #" + shownCoins[shownCoins.length - 1] + "  ·  " + shownCoins.length
+                    + " shown: " + coinHeads + " H · " + (shownCoins.length - coinHeads) + " T";
             }
             if (shownWindows.length) {
                 var k0 = shownWindows[shownWindows.length - 1], have = (tip % WINDOW) + 1;   // newest = rightmost
                 var forming = have < WINDOW ? "  ·  next die forming: " + have + "/" + WINDOW + " blocks" : "";
-                $("diceInfo").textContent = "newest window: blocks #" + (WINDOW * k0) + "–#" + (WINDOW * k0 + WINDOW - 1) + forming;
+                $("diceInfo").textContent = "newest window: blocks #" + (WINDOW * k0) + "–#" + (WINDOW * k0 + WINDOW - 1)
+                    + "  ·  " + shownWindows.length + " shown" + forming;
             }
         }
         function setLive(text, live) {
@@ -325,7 +345,7 @@
             tip = await explorerNum("/blocks/tip/height");
             var got = await fetchBlocks(tip, NEEDED);
             blocks = {}; got.forEach(function (b) { blocks[b.height] = b.id; });
-            shownCoins = []; shownWindows = []; coinQ = []; dieQ = [];
+            shownCoins = []; shownWindows = []; coinQ = []; dieQ = []; coinHeads = 0;
             coinSp = null; dieSp = null;                 // drop refs before clearing the DOM
             $("coins").innerHTML = ""; $("dice").innerHTML = "";
             spawnCoinSpinner(); spawnDieSpinner();       // one fresh spinner leads each row
