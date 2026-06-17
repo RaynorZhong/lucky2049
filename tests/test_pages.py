@@ -58,6 +58,36 @@ class TestPageStructure(unittest.TestCase):
         self.assertRegex(read("index"),
                          r'\.filter\(\s*function\s*\(\s*it\s*\)\s*\{\s*return\s+Number\(\s*it\.id\s*\)\s*!==\s*latestId\s*;?\s*\}')
 
+    def test_randomness_die_caption_serial_and_block_range(self):
+        # each die carries a caption: a stable serial (the window index #k) over the block range it
+        # was derived from -- a handle for locating a die. Lock both the CSS hooks and the JS wiring.
+        html = read("randomness")
+        for cls in (".die-cell", ".die-cap", ".die-no", ".die-blk"):
+            self.assertIn(cls + " ", html, "missing caption style " + cls)
+        # lockDie writes the serial and the block range into the caption
+        self.assertRegex(html, r'\.die-no"\)\.textContent\s*=\s*"#"\s*\+\s*k')
+        self.assertRegex(html, r'\.die-blk"\)\.textContent\s*=\s*"#"\s*\+\s*lo\s*\+\s*"–#"\s*\+\s*hi')
+        # the serial is also in the per-die aria-label (for screen-reader locating) and the summary line
+        self.assertRegex(html, r'aria-label",\s*"Die #"\s*\+\s*k')
+        self.assertRegex(html, r'newest die #"\s*\+\s*k0')
+
+    def test_randomness_coin_caption_block_number(self):
+        # each coin carries its block number as a caption (a handle for locating it).
+        html = read("randomness")
+        for cls in (".coin-cell", ".coin-cap", ".coin-no"):
+            self.assertIn(cls + " ", html, "missing caption style " + cls)
+        # lockCoin writes the block number into the caption
+        self.assertRegex(html, r'\.coin-no"\)\.textContent\s*=\s*"#"\s*\+\s*h')
+        # perspective must live on .coin-cell, NOT on .coins -- on .coins it skips the coin
+        # (now a grandchild) and flattens the 3-D flip. Lock both halves of that fix.
+        cell_rule = re.search(r'\.coin-cell\s*\{([^}]*)\}', html)
+        self.assertIsNotNone(cell_rule, ".coin-cell rule not found")
+        self.assertIn("perspective", cell_rule.group(1), ".coin-cell must carry the 3-D perspective")
+        coins_rule = re.search(r'\.coins\s*\{([^}]*)\}', html)
+        self.assertIsNotNone(coins_rule, ".coins rule not found")
+        self.assertNotIn("perspective", coins_rule.group(1),
+                         ".coins must NOT set perspective (it would flatten the wrapped coin's flip)")
+
 
 if __name__ == "__main__":
     unittest.main()

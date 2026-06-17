@@ -32,7 +32,14 @@
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(22,163,74,.5); } 70% { box-shadow: 0 0 0 6px rgba(22,163,74,0); } 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0); } }
         h2 .sub { font-weight: 400; font-size: 0.95rem; color: var(--text-secondary); }
         /* Bitcoin-style coin: a 3-D flip between a gold ₿ obverse (Heads) and a white-circuit reverse (Tails). */
-        .coins { display: flex; flex-wrap: wrap; gap: 0.55rem; margin-top: 0.6rem; perspective: 700px; }
+        .coins { display: flex; flex-wrap: wrap; gap: 0.75rem 0.55rem; margin-top: 0.6rem; align-items: flex-start; }
+        /* each coin sits in a column cell over its block number (a handle for locating/citing it).
+           perspective lives on the CELL, not .coins: it only reaches a DIRECT child, and the coin
+           is now the cell's child -- on .coins it would skip the coin and flatten the 3-D flip. */
+        .coin-cell { display: flex; flex-direction: column; align-items: center; gap: 0.3rem; margin: 0; perspective: 700px; }
+        .coin-cap { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-align: center; line-height: 1.15; }
+        .coin-no { font-size: 0.62rem; color: var(--muted); white-space: nowrap; }
+        .coin-cell.pending .coin-no { opacity: 0.5; }
         .bcoin { width: 3rem; height: 3rem; position: relative; transform-style: preserve-3d; transform: rotateY(0deg); }
         .bcoin .cface { position: absolute; inset: 0; border-radius: 50%; backface-visibility: hidden;
             display: flex; align-items: center; justify-content: center; color: #fff; font-style: italic; font-weight: 800;
@@ -51,7 +58,17 @@
             background: linear-gradient(to bottom, #ffd680, #e0992e 45%, #a4620d); }
         .bcoin .cedge .rim:nth-child(odd) { filter: brightness(0.82); }   /* alternating shade = a reeded edge */
         /* Bitcoin-orange die with white pips. */
-        .dice { display: flex; flex-wrap: wrap; gap: 0.55rem; margin-top: 0.6rem; }
+        .dice { display: flex; flex-wrap: wrap; gap: 0.75rem 0.6rem; margin-top: 0.6rem; align-items: flex-start; }
+        /* each die sits in a column cell over a caption: a stable serial (the window index,
+           so the same die is always #k) plus the block-height range it was derived from —
+           a handle for locating/citing any die. The caption defines the cell's width. */
+        .die-cell { display: flex; flex-direction: column; align-items: center; gap: 0.3rem; margin: 0; }
+        .die-cap { display: flex; flex-direction: column; align-items: center; line-height: 1.15;
+            text-align: center; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+        .die-no { font-size: 0.74rem; font-weight: 600; color: var(--text); letter-spacing: 0.01em; }
+        .die-blk { font-size: 0.62rem; color: var(--muted); white-space: nowrap; }
+        .die-cell.pending .die-no { font-weight: 500; opacity: 0.5; }
+        .die-cell.pending .die-blk { opacity: 0.5; }
         .bdie { width: 3rem; height: 3rem; border-radius: 0.6rem; padding: 0.34rem; display: grid;
             grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
             background: linear-gradient(145deg, #ffb24d, #f7931a 55%, #e07c0a);
@@ -237,8 +254,26 @@
         // Timeline (left -> right = old -> new); the live spinner is the FAR-RIGHT element (the future
         // block). It IS the next result: it spins, locks onto its face IN PLACE, then a fresh spinner is
         // appended to its right. So results fill in oldest-first, newest beside the spinner.
-        function spawnCoinSpinner() { coinSp = { el: $("coins").appendChild(pendingCoin()), start: null, lockAngle: null }; }
-        function spawnDieSpinner() { dieSp = { el: $("dice").appendChild(pendingDie()), start: null, lockAt: null, shuffled: 0 }; }
+        function spawnCoinSpinner() {
+            var coin = pendingCoin(), cap = document.createElement("figcaption");
+            cap.className = "coin-cap";
+            cap.innerHTML = '<span class="coin-no">next</span>';
+            var cell = document.createElement("figure");
+            cell.className = "coin-cell pending";
+            cell.appendChild(coin); cell.appendChild(cap);
+            $("coins").appendChild(cell);
+            coinSp = { el: coin, cell: cell, start: null, lockAngle: null };
+        }
+        function spawnDieSpinner() {
+            var die = pendingDie(), cap = document.createElement("figcaption");
+            cap.className = "die-cap";
+            cap.innerHTML = '<span class="die-no">next</span><span class="die-blk">forming…</span>';
+            var cell = document.createElement("figure");
+            cell.className = "die-cell pending";
+            cell.appendChild(die); cell.appendChild(cap);
+            $("dice").appendChild(cell);
+            dieSp = { el: die, cell: cell, start: null, lockAt: null, shuffled: 0 };
+        }
         // The face angle (0 = Heads / ₿, 180 = Tails / circuit) NEAREST to pref, but always kept ahead
         // of the current angle `a` so the coin only ever turns forward into its result.
         function faceAngleNear(pref, a, faceDeg) {
@@ -248,30 +283,40 @@
         }
 
         function lockCoin(h) {                          // turn the live spinner into block h's settled coin
-            var face = coinFace(h), el = coinSp.el;
+            var face = coinFace(h), el = coinSp.el, cell = coinSp.cell;
             el.className = "bcoin";
             el.setAttribute("aria-label", (face === "H" ? "Heads" : "Tails") + ", block " + h);
             el.title = "block #" + h + " → " + (face === "H" ? "Heads" : "Tails");
             el.style.transform = "rotateY(" + (face === "T" ? 180 : 0) + "deg)";   // exact face (it stopped here)
+            cell.classList.remove("pending");           // settle the caption: the block number
+            cell.querySelector(".coin-no").textContent = "#" + h;
             shownCoins.push(h);                         // results accumulate -- the row grows past COIN_N
             if (face === "H") coinHeads++;
             while (shownCoins.length > COIN_MAX) {       // ...up to a high safety cap; drop the oldest (leftmost)
                 shownCoins.shift();
-                var oldc = $("coins").querySelector(".bcoin:not(.pending)");
-                if (oldc) { if ((oldc.getAttribute("aria-label") || "").charAt(0) === "H") coinHeads--; $("coins").removeChild(oldc); }
+                var oldCell = $("coins").querySelector(".coin-cell:not(.pending)");
+                if (oldCell) {
+                    var oldc = oldCell.querySelector(".bcoin");
+                    if (oldc && (oldc.getAttribute("aria-label") || "").charAt(0) === "H") coinHeads--;
+                    $("coins").removeChild(oldCell);
+                }
             }
             syncInfo();
         }
         function lockDie(k) {                            // turn the live spinner into window k's settled die
-            var lo = WINDOW * k, hi = lo + WINDOW - 1, v = Rnd.diceForWindow(windowHashes(k)), el = dieSp.el;
+            var lo = WINDOW * k, hi = lo + WINDOW - 1, v = Rnd.diceForWindow(windowHashes(k)),
+                el = dieSp.el, cell = dieSp.cell;
             el.className = "bdie rolling";              // a final settle roll, then it rests on v
-            el.setAttribute("aria-label", "Die showing " + v + ", blocks " + lo + " to " + hi);
-            el.title = "blocks #" + lo + "–#" + hi + " → " + v;
+            el.setAttribute("aria-label", "Die #" + k + " showing " + v + ", blocks " + lo + " to " + hi);
+            el.title = "die #" + k + " · blocks #" + lo + "–#" + hi + " → " + v;
             setPips(el, v);
+            cell.classList.remove("pending");           // settle the caption: serial (window index) + block range
+            cell.querySelector(".die-no").textContent = "#" + k;
+            cell.querySelector(".die-blk").textContent = "#" + lo + "–#" + hi;
             shownWindows.push(k);                       // accumulate up to the safety cap
             while (shownWindows.length > DICE_MAX) {
                 shownWindows.shift();
-                var oldd = $("dice").querySelector(".bdie:not(.pending)");
+                var oldd = $("dice").querySelector(".die-cell:not(.pending)");
                 if (oldd) $("dice").removeChild(oldd);
             }
             syncInfo();
@@ -306,7 +351,7 @@
             if (shownWindows.length) {
                 var k0 = shownWindows[shownWindows.length - 1], have = (tip % WINDOW) + 1;   // newest = rightmost
                 var forming = have < WINDOW ? "  ·  next die forming: " + have + "/" + WINDOW + " blocks" : "";
-                $("diceInfo").textContent = "newest window: blocks #" + (WINDOW * k0) + "–#" + (WINDOW * k0 + WINDOW - 1)
+                $("diceInfo").textContent = "newest die #" + k0 + " — blocks #" + (WINDOW * k0) + "–#" + (WINDOW * k0 + WINDOW - 1)
                     + "  ·  " + shownWindows.length + " shown" + forming;
             }
         }
