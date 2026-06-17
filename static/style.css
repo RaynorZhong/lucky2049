@@ -26,6 +26,7 @@
     --font-display: 'Source Serif 4', Georgia, "Times New Roman", serif;   /* editorial / forensic voice: headings + wordmark */
     --font-heading: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;  /* ball + stat numbers (sans) */
     --font-body: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, "SF Mono", monospace;   /* forensic numerals: gaps, ids, footer stats */
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }

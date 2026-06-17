@@ -12,7 +12,7 @@
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="lucky2049">
     <meta property="og:title" content="Trend — lucky2049">
-    <meta property="og:description" content="A Sina-style trend chart: front 1–35 in three zones + back 1–12, full-history miss gaps, runs of 3+ and empty zones highlighted.">
+    <meta property="og:description" content="A trend chart: front 1–35 in three zones + back 1–12, full-history miss gaps, runs of 3+ and empty zones highlighted.">
     <meta property="og:url" content="https://lucky2049.com/trend.html">
     <meta name="twitter:card" content="summary_large_image">
     <meta property="og:image" content="https://lucky2049.com/og.png">
@@ -23,44 +23,85 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:wght@500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./style.css">
     <style>
+        /* Run-ball ink: the deep stops of the ball gradients promoted to flat colour (a gradient
+           can't paint a 1px ring or glyph). Back is the gradient's deep stop, which also fixes a
+           real AA bug — the old #f7931a run ink was ~2:1 on white; #c2710a is ~4.6:1. */
+        :root { --run-ink-front: #345d9d; --run-ink-back: #c2710a; }
+
+        /* Controls: active = the site's aria-current underline idiom (accent-blue, not a black pill). */
         .trend-controls { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
-        .seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--radius-md); overflow: hidden; box-shadow: var(--shadow-sm); }
-        .seg button { border: none; background: var(--surface); color: var(--text-secondary); padding: 0.4rem 0.9rem; font: inherit; font-size: 0.9rem; cursor: pointer; }
+        .seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--radius-md); overflow: hidden; box-shadow: var(--shadow-sm); background: var(--surface); }
+        .seg button { border: none; background: transparent; color: var(--text-secondary); padding: 0.4rem 0.95rem; font: inherit; font-size: 0.9rem; font-variant-numeric: tabular-nums; cursor: pointer; }
         .seg button + button { border-left: 1px solid var(--border); }
-        .seg button.active { background: #111827; color: #fff; }
+        .seg button:hover { background: var(--surface-2); color: var(--text); }
+        .seg button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+        .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
         .legend { color: var(--muted); font-size: 0.82rem; display: flex; gap: 1.1rem; flex-wrap: wrap; align-items: center; margin: 0.25rem 0 0.9rem; }
         .legend .dot { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 50%; vertical-align: -1px; margin-right: 0.32rem; }
         .legend .ltc { background: var(--ball-ltc); } .legend .btc { background: var(--ball-btc); }
-        .legend .run { background: #fff; box-shadow: inset 0 0 0 2px #94a3b8; }
-        .legend .sw { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 3px; background: #fdecec; border: 1px solid #f3b6b6; vertical-align: -1px; margin-right: 0.32rem; }
+        .legend .run { background: var(--surface); box-shadow: inset 0 0 0 2px var(--run-ink-front); }
+        .legend .sw { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 3px; background: var(--accent-soft); border: 1px solid var(--accent); vertical-align: -1px; margin-right: 0.32rem; }
 
-        .grid-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); width: fit-content; max-width: 100%; margin: 0 auto; -webkit-overflow-scrolling: touch; }
-        table.ttab { table-layout: fixed; border-collapse: collapse; font-size: 11px; line-height: 1; color: #374151; }
-        col.ci { width: 56px; } col.cn { width: 22px; }
-        .ttab th, .ttab td { height: 26px; text-align: center; border: 1px solid #eef0f3; padding: 0; }
-        .ttab th { color: #5b6573; font-weight: 600; background: #f3f5f8; }
-        .ttab .z0 { background: #f3f8fd; } .ttab .z1 { background: #ffffff; } .ttab .cb { background: #fff8f0; }
-        .ttab thead .z0 { background: #e9f1fb; } .ttab thead .z1 { background: #eef4fb; } .ttab thead .cb { background: #fdeedd; }
-        .ttab td.ez { background: #fdecec; }                 /* empty zone for this draw */
-        .ttab .sep { border-left: 2px solid #cdd2d8; }
-        .ttab .zh { font-weight: 700; color: #334155; } .ttab .zh .zr { font-weight: 500; color: #6b7280; margin-left: 0.25rem; font-size: 10px; }
-        .ttab .issue { width: 56px; position: sticky; left: 0; z-index: 2; background: #fff; color: #6b7280; font-weight: 600; box-shadow: 1px 0 0 #e6e8ec; }
-        .ttab thead .issue, .ttab tfoot .issue { background: #f3f5f8; z-index: 4; }
-        .ttab .b { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%;
-            background: var(--ball-ltc); color: #fff; font-weight: 700; font-size: 9.5px; text-shadow: 0 1px 1px rgba(0,0,0,0.3);
+        /* The panel owns the card; the inner scroller only scrolls. */
+        .panel.trend-panel { padding: 0; overflow: hidden; }
+        .grid-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+        /* The matrix: calm — uniform surface, horizontal hairlines, zone rules only (no cell cage). */
+        table.ttab { table-layout: fixed; border-collapse: collapse; width: max-content; min-width: 100%; font-size: 13px; line-height: 1; color: var(--text-secondary); background: var(--surface); }
+        col.ci { width: 68px; } col.cn { width: 28px; }
+        .ttab th, .ttab td { height: 32px; text-align: center; padding: 0; border: 0; }
+        .ttab tbody td { border-bottom: 1px solid var(--border); }
+
+        /* Header band: quiet, like the global th; zone label in the display serif. */
+        .ttab thead th { background: var(--surface-2); color: var(--text-secondary); font-weight: 600; }
+        .ttab .zh { font-family: var(--font-display); font-weight: 600; color: var(--text); }
+        .ttab .zh .zr { font-family: var(--font-body); font-weight: 500; color: var(--muted); margin-left: 0.25rem; font-size: 11px; }
+
+        /* Zones read by separators, not fills. transparent also out-specifies the global tbody
+           hover so it never repaints zone cells unexpectedly. */
+        .ttab .z0, .ttab .z1, .ttab .cb { background: transparent; }
+        .ttab .sep { border-left: 2px solid var(--border-strong); }
+
+        /* Controlled row hover — recovers horizontal trackability lost with the vertical cage. */
+        .ttab tbody tr:hover td { background: var(--surface-2); }
+        .ttab tbody tr:hover td.issue { background: var(--surface); }
+
+        /* The only body fill: a zone with no number this draw — soft accent (was alarm pink). */
+        .ttab td.ez { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+        .ttab tbody tr:hover td.ez { background: var(--accent-soft); }
+
+        /* Sticky issue gutter, on-token, mono. */
+        .ttab .issue { width: 68px; position: sticky; left: 0; z-index: 2; background: var(--surface); color: var(--text-secondary); font-weight: 600; font-family: var(--font-mono); font-variant-numeric: tabular-nums; box-shadow: 1px 0 0 var(--border); }
+        .ttab thead .issue, .ttab tfoot .issue { background: var(--surface-2); z-index: 4; color: var(--muted); }
+
+        /* Hit balls — gloss preserved verbatim (matches every ball on the site). */
+        .ttab .b { display: inline-flex; align-items: center; justify-content: center; width: 23px; height: 23px; border-radius: 50%;
+            background: var(--ball-ltc); color: #fff; font-family: var(--font-heading); font-weight: 700; font-size: 11.5px; text-shadow: 0 1px 1px rgba(0,0,0,0.3);
             box-shadow: inset 0 1px 1.5px rgba(255,255,255,0.4), 0 1px 2px rgba(16,24,40,0.22); }
         .ttab .b.bk { background: var(--ball-btc); }
-        /* runs of 3+ (horizontal or vertical) — white ball with a coloured number; front blue, back orange */
-        .ttab .b.hrun, .ttab .b.vrun { background: #fff; color: #345d9d; text-shadow: none;
-            box-shadow: inset 0 0 0 1.5px #345d9d, 0 1px 2px rgba(16,24,40,0.2); }
-        .ttab .b.bk.hrun, .ttab .b.bk.vrun { color: #f7931a; box-shadow: inset 0 0 0 1.5px #f7931a, 0 1px 2px rgba(16,24,40,0.2); }
-        .ttab .g { color: #6b7280; font-style: normal; font-size: 10px; }   /* miss-gap number: AA-readable */
-        .ttab tfoot td { border-top: 2px solid #dfe2e6; }
-        .ttab tfoot .ff { color: #1f2937; } .ttab tfoot .fg { color: #6b7280; font-style: normal; } .ttab tfoot .hot { color: #dc2626; }
-        /* grid-wrap already supplies the frame, so the placeholder is borderless inside it. */
+        /* runs of 3+ (horizontal or vertical) — hollow ball with a coloured number; front blue, back orange */
+        .ttab .b.hrun, .ttab .b.vrun { background: var(--surface); color: var(--run-ink-front); text-shadow: none;
+            box-shadow: inset 0 0 0 1.5px var(--run-ink-front), 0 1px 2px rgba(16,24,40,0.2); }
+        .ttab .b.bk.hrun, .ttab .b.bk.vrun { color: var(--run-ink-back); box-shadow: inset 0 0 0 1.5px var(--run-ink-back), 0 1px 2px rgba(16,24,40,0.2); }
+        .ttab .g { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); font-style: normal; font-size: 12px; }   /* miss-gap number: AA-readable */
+        .ttab tfoot td { border-top: 2px solid var(--border-strong); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+        .ttab tfoot tr:hover td { background: transparent; }   /* footer is a summary, not a scannable row */
+        .ttab tfoot .ff { color: var(--text); font-weight: 600; } .ttab tfoot .fg { color: var(--muted); font-style: normal; } .ttab tfoot .hot { color: var(--accent); font-weight: 700; }
+        /* the panel supplies the frame, so the placeholder is borderless inside it. */
         .grid-wrap .placeholder { text-align: center; color: var(--text-secondary); padding: 3rem 1.5rem; font-size: 0.95rem; min-width: 260px; }
         .grid-wrap .placeholder::before { content: ""; display: block; width: 2.5rem; height: 2.5rem; margin: 0 auto 0.7rem;
             background: url(./favicon.svg) center/contain no-repeat; opacity: 0.4; }
+
+        /* Mobile: keep the matrix + honest horizontal scroll, shrink one notch, hint the right edge. */
+        @media (max-width: 640px) {
+            table.ttab { font-size: 12px; }
+            col.ci { width: 58px; } col.cn { width: 24px; }
+            .ttab th, .ttab td { height: 28px; }
+            .ttab .b { width: 19px; height: 19px; font-size: 10px; }
+            .ttab .issue { width: 58px; }
+            .grid-wrap { box-shadow: inset -10px 0 8px -10px rgba(16,24,40,0.12); }
+        }
     </style>
 </head>
 
@@ -101,10 +142,10 @@
             <span><span class="dot btc"></span>Back</span>
             <span><span class="dot run"></span>3+ consecutive</span>
             <span><span class="sw"></span>empty zone</span>
-            <span>number = miss gap</span>
+            <span>number = draws since seen</span>
         </div>
 
-        <div class="grid-wrap" id="grid"><div class="placeholder">Building the trend chart…</div></div>
+        <div class="panel trend-panel"><div class="grid-wrap" id="grid"><div class="placeholder">Building the trend chart…</div></div></div>
 
     </div>
 
