@@ -47,9 +47,13 @@
         .panel.trend-panel { padding: 0; overflow: hidden; }
         .grid-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
-        /* The matrix: calm — uniform surface, horizontal hairlines, zone rules only (no cell cage). */
-        table.ttab { table-layout: fixed; border-collapse: collapse; width: max-content; min-width: 100%; font-size: 13px; line-height: 1; color: var(--text-secondary); background: var(--surface); }
-        col.ci { width: 68px; } col.cn { width: 28px; }
+        /* The matrix: calm — uniform surface, horizontal hairlines, zone rules only (no cell cage).
+           Fluid: width:100% + fixed layout + the 47 number cols on width:auto means they split the
+           available width evenly, so the whole 48-col grid FILLS the panel with no horizontal scroll
+           on desktop — cells just grow on wider screens. min-width is the floor below which it scrolls
+           (≈25px/number col) so narrow windows/phones scroll instead of crushing the balls. */
+        table.ttab { table-layout: fixed; border-collapse: collapse; width: 100%; min-width: 1180px; font-size: 13px; line-height: 1; color: var(--text-secondary); background: var(--surface); }
+        col.ci { width: 68px; } col.cn { width: auto; }
         .ttab th, .ttab td { height: 32px; text-align: center; padding: 0; border: 0; }
         .ttab tbody td { border-bottom: 1px solid var(--border); }
 
@@ -76,8 +80,8 @@
         .ttab thead .issue, .ttab tfoot .issue { background: var(--surface-2); z-index: 4; color: var(--muted); }
 
         /* Hit balls — gloss preserved verbatim (matches every ball on the site). */
-        .ttab .b { display: inline-flex; align-items: center; justify-content: center; width: 23px; height: 23px; border-radius: 50%;
-            background: var(--ball-ltc); color: #fff; font-family: var(--font-heading); font-weight: 700; font-size: 11.5px; text-shadow: 0 1px 1px rgba(0,0,0,0.3);
+        .ttab .b { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%;
+            background: var(--ball-ltc); color: #fff; font-family: var(--font-heading); font-weight: 700; font-size: 11px; text-shadow: 0 1px 1px rgba(0,0,0,0.3);
             box-shadow: inset 0 1px 1.5px rgba(255,255,255,0.4), 0 1px 2px rgba(16,24,40,0.22); }
         .ttab .b.bk { background: var(--ball-btc); }
         /* runs of 3+ (horizontal or vertical) — hollow ball with a coloured number; front blue, back orange */
@@ -93,13 +97,14 @@
         .grid-wrap .placeholder::before { content: ""; display: block; width: 2.5rem; height: 2.5rem; margin: 0 auto 0.7rem;
             background: url(./favicon.svg) center/contain no-repeat; opacity: 0.4; }
 
-        /* Mobile: keep the matrix + honest horizontal scroll, shrink one notch, hint the right edge. */
+        /* Mobile: the matrix can't fit a phone, so drop to a smaller min-width floor and let it
+           scroll honestly (number cols stay width:auto, splitting that floor); hint the right edge. */
         @media (max-width: 640px) {
-            table.ttab { font-size: 12px; }
-            col.ci { width: 58px; } col.cn { width: 24px; }
+            table.ttab { font-size: 11px; min-width: 920px; }
+            col.ci { width: 50px; }
             .ttab th, .ttab td { height: 28px; }
-            .ttab .b { width: 19px; height: 19px; font-size: 10px; }
-            .ttab .issue { width: 58px; }
+            .ttab .b { width: 18px; height: 18px; font-size: 9.5px; }
+            .ttab .issue { width: 50px; }
             .grid-wrap { box-shadow: inset -10px 0 8px -10px rgba(16,24,40,0.12); }
         }
     </style>
@@ -119,7 +124,7 @@
             </div>
         </nav>
     </div>
-    <div class="container" style="max-width:1320px;">
+    <div class="container" style="max-width:1560px;">
         <header>
             <div class="brand"><img src="./favicon.svg" alt=""><h1>Trend</h1></div>
             <p id="intro" class="text-secondary">One row per draw: the front area (1–35) split into three zones and the back
