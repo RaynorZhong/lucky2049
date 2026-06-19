@@ -30,7 +30,12 @@
         .src-health { display: flex; gap: 1.1rem; flex-wrap: wrap; align-items: center;
             color: var(--muted); font-size: 0.82rem; margin-top: 0.6rem; }
         .src-health .dot { display: inline-block; width: 0.6rem; height: 0.6rem;
-            border-radius: 50%; margin-right: 0.3rem; vertical-align: -1px; }
+            border-radius: 50%; margin-right: 0.3rem; vertical-align: -1px;
+            animation: live-breathe 2.2s ease-in-out infinite; }
+        /* "breathing" live pulse — opacity + a subtle scale, so it works for the green
+           next-draw dot AND the source dots whatever colour they are (ok/lagging/down). */
+        @keyframes live-breathe { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.82); } }
+        @media (prefers-reduced-motion: reduce) { .nd-dot, .src-health .dot { animation: none; } }
         .draws-table .empty-row td { text-align: center; color: var(--text-secondary); padding: 1.5rem 1rem; font-size: 0.92rem; }
         /* Latest-draw hero: the actual product, up top and large. */
         .latest-hero { padding: 1.6rem 1.75rem; }
@@ -46,7 +51,7 @@
         /* Next-draw strip: one line right under the latest draw — meta inline on the left,
            the countdown pushed to the right (bold + a bit larger). */
         .next-draw { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.8rem 1.4rem; }
-        .nd-dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: #16a34a; flex: none; }
+        .nd-dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: #16a34a; flex: none; animation: live-breathe 2.2s ease-in-out infinite; }
         .nd-head { color: var(--text-secondary); }
         .nd-head strong { color: var(--text); font-weight: 600; }
         .nd-meta { color: var(--muted); font-size: 0.9rem; }
