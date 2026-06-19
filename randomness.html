@@ -51,7 +51,7 @@
         /* reverse = the lucky2049 four-leaf clover, minted white on the same gold as the obverse. */
         .bcoin .back { transform: rotateY(180deg) translateZ(1px); color: #fff;
             background: radial-gradient(circle at 50% 42%, #ffce74, #f6a32c 80%); }
-        .bcoin .back .clover { width: 60%; height: 60%; filter: drop-shadow(0 1px 1px rgba(0,0,0,.28)); }
+        .bcoin .back .clover { width: 54%; height: 54%; filter: drop-shadow(0 1px 1px rgba(0,0,0,.28)); }
         /* a milled cylindrical edge (N panels, built in coinInner()) gives the coin real thickness as it flips. */
         .bcoin .cedge { position: absolute; inset: 0; transform-style: preserve-3d; }
         .bcoin .cedge .rim { position: absolute; left: 50%; top: 50%; width: 10px; height: 2px; margin: -1px 0 0 -5px;
@@ -110,7 +110,7 @@
     </div>
     <div class="container">
         <header>
-            <div class="brand"><img src="./favicon.svg" alt=""><h1>Verifiable Randomness</h1></div>
+            <h1>Watch the chain flip coins and roll dice.</h1>
             <p class="note">
                 Live from the Bitcoin chain: <strong>every block flips a coin</strong>, <strong>every 6 blocks rolls a die</strong> —
                 derived from the block hashes the network mines, <strong>not chosen by anyone</strong>. Computed
@@ -192,16 +192,13 @@
         function setPips(die, v) {
             for (var k = 0; k < 9; k++) die.children[k].className = "pip" + (PIPS[v].indexOf(k) >= 0 ? " on" : "");
         }
-        // The reverse face: the project's four-leaf clover, white (currentColor) like the obverse ₿.
-        var LEAF = "M12,22C11,20 1.5,15 1.5,8.7C1.5,4.7 4.4,2 7.8,2C10.2,2 11.5,3.7 12,5C12.5,3.7 13.8,2 16.2,2C19.6,2 22.5,4.7 22.5,8.7C22.5,15 13,20 12,22Z";
-        var CLOVER = '<svg class="clover" viewBox="0 0 64 64" aria-hidden="true">'
-            + '<g transform="translate(32 30) rotate(9) scale(1.12)" fill="currentColor" stroke="rgba(120,70,10,.25)" stroke-width="0.7" stroke-linejoin="round">'
-            + '<path d="M-0.5,3C2.4,9 3,13.5 1,20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>'
-            + '<g transform="rotate(45) translate(-12 -22)"><path d="' + LEAF + '"/></g>'
-            + '<g transform="rotate(135) translate(-12 -22)"><path d="' + LEAF + '"/></g>'
-            + '<g transform="rotate(225) translate(-12 -22)"><path d="' + LEAF + '"/></g>'
-            + '<g transform="rotate(315) translate(-12 -22)"><path d="' + LEAF + '"/></g>'
-            + '</g></svg>';
+        // The reverse face: the project's logo (flat four-circle clover), minted white (currentColor) like the obverse ₿.
+        var CLOVER = '<svg class="clover" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">'
+            + '<circle cx="12" cy="6" r="6"/>'
+            + '<circle cx="6" cy="12" r="6"/>'
+            + '<circle cx="18" cy="12" r="6"/>'
+            + '<circle cx="12" cy="18" r="6"/>'
+            + '</svg>';
         // front (₿) + back (clover) + a milled cylindrical edge of N panels = a coin with real thickness.
         function coinInner() {
             var R = 24, N = 16, html = '<div class="cface front"></div><div class="cface back">' + CLOVER + '</div><div class="cedge">';
