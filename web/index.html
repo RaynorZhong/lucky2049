@@ -43,15 +43,21 @@
         .lh-foot { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
             flex-wrap: wrap; border-top: 1px solid var(--border); padding-top: 0.95rem; }
         .lh-src { font-size: 0.9rem; color: var(--text-secondary); }
-        /* Next-draw demoted to a thin live strip. */
-        .nd-strip { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; color: var(--text-secondary);
-            font-size: 0.92rem; background: var(--surface); border: 1px solid var(--border);
-            border-radius: var(--radius-md); padding: 0.7rem 1rem; }
-        .nd-strip strong { color: var(--text); font-weight: 600; }
-        .nd-strip .mono { font-variant-numeric: tabular-nums; }
+        /* Next-draw strip: one line right under the latest draw — meta inline on the left,
+           the countdown pushed to the right (bold + a bit larger). */
+        .next-draw { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.8rem 1.4rem; }
         .nd-dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: #16a34a; flex: none; }
+        .nd-head { color: var(--text-secondary); }
+        .nd-head strong { color: var(--text); font-weight: 600; }
+        .nd-meta { color: var(--muted); font-size: 0.9rem; }
+        .nd-meta .mono { font-variant-numeric: tabular-nums; }
+        .nd-cd { margin-left: auto; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 1.45rem; font-weight: 700; color: var(--text); line-height: 1; }
+        /* a narrower Verify CTA on the latest-draw card */
+        .lh-foot .btn-primary { padding: 0.5rem 0.9rem; }
         @media (max-width: 640px) {
             .latest-hero { padding: 1.2rem 1.1rem; }
+            .next-draw { padding: 0.75rem 1.1rem; }
+            .nd-cd { font-size: 1.25rem; }
         }
     </style>
 </head>
@@ -72,7 +78,7 @@
     </div>
     <div class="container">
         <header>
-            <div class="brand"><img src="./favicon.svg" alt=""><h1>lucky2049</h1></div>
+            <h1>A draw anyone can recompute.</h1>
             <p>Super Lotto numbers (5 of 1–35 + 2 of 1–12) derived deterministically from 144 Bitcoin
                 block hashes — a transparent, independently verifiable snapshot of the draw history.</p>
             <p class="text-muted" id="summary" style="margin-top:0.4rem; font-size:0.9rem;"></p>
@@ -94,6 +100,16 @@
         </section>
 
         <section>
+            <div class="panel next-draw">
+                <span class="nd-dot" aria-hidden="true"></span>
+                <span class="nd-head">Next draw <strong id="ndId">No. —</strong></span>
+                <span class="nd-meta">· est. <span id="ndEta" class="mono">—</span> · <span id="ndBlocks">—</span></span>
+                <span id="ndCd" class="nd-cd">—</span>
+            </div>
+            <div class="src-health" id="srcHealth" style="display:none;"></div>
+        </section>
+
+        <section>
             <h2>Earlier draws</h2>
             <div class="panel" style="padding:0.5rem 1rem;">
                 <table class="draws-table">
@@ -103,17 +119,6 @@
                     <tbody id="rows"><tr class="empty-row"><td colspan="5">Loading recent draws…</td></tr></tbody>
                 </table>
             </div>
-        </section>
-
-        <section>
-            <div class="nd-strip" id="ndStrip">
-                <span class="nd-dot" aria-hidden="true"></span>
-                Next draw&nbsp;<strong id="ndId">No. —</strong>
-                <span class="text-muted">· est.</span>&nbsp;<span id="ndEta" class="mono">—</span>
-                <span class="text-muted">·</span>&nbsp;<span id="ndBlocks">—</span>
-                <span class="text-muted">·</span>&nbsp;<span id="ndCd" class="mono">—</span>
-            </div>
-            <div class="src-health" id="srcHealth" style="display:none;"></div>
         </section>
 
         <footer class="site-foot">
