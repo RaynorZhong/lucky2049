@@ -11,9 +11,9 @@
     --accent: #2563eb;
     --accent-soft: rgba(37, 99, 235, 0.08);
 
-    /* Ball colours (fixed): front = blue, back = orange */
-    --ball-ltc: radial-gradient(circle at 32% 28%, #7da2d9, #345d9d 62%, #21386b);
-    --ball-btc: radial-gradient(circle at 32% 28%, #ffc46b, #f7931a 60%, #c2710a);
+    /* Ball colours (fixed, flat — no gradient/gloss): front = blue, back = orange */
+    --ball-ltc: #345d9d;
+    --ball-btc: #ef8c12;
 
     --radius-lg: 16px;
     --radius-md: 11px;
@@ -124,8 +124,6 @@ tbody tr:hover td { background: var(--surface-2); }
     font-size: 1.05rem;
     color: #fff;
     background: var(--ball-ltc);
-    box-shadow: inset 0 2px 3px rgba(255, 255, 255, 0.45), 0 2px 5px rgba(16, 24, 40, 0.22);
-    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.32);
     transition: transform 0.18s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
@@ -133,7 +131,6 @@ tbody tr:hover td { background: var(--surface-2); }
 
 .powerball {
     background: var(--ball-btc);
-    box-shadow: inset 0 2px 3px rgba(255, 255, 255, 0.5), 0 2px 6px rgba(247, 147, 26, 0.32);
 }
 
 /* Persistent global nav (same on every page; the active link carries aria-current). */

@@ -1,25 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="lucky2049 four-leaf clover">
-  <defs>
-    <radialGradient id="lf" cx="36%" cy="28%" r="78%">
-      <stop offset="0%" stop-color="#9ce86f"/>
-      <stop offset="50%" stop-color="#43c14f"/>
-      <stop offset="100%" stop-color="#2f8a36"/>
-    </radialGradient>
-    <!-- one plump, rounded leaflet: point at (12,22), full lobes up -->
-    <path id="cl" d="M12,22 C11,20 1.5,15 1.5,8.7 C1.5,4.7 4.4,2 7.8,2 C10.2,2 11.5,3.7 12,5 C12.5,3.7 13.8,2 16.2,2 C19.6,2 22.5,4.7 22.5,8.7 C22.5,15 13,20 12,22 Z"/>
-  </defs>
-
-  <!-- transparent background, emoji style -->
-  <g transform="translate(32 29.5) rotate(9) scale(1.3)">
-    <!-- stem -->
-    <path d="M-0.5,3 C2.4,9 3,13.5 1,20" fill="none" stroke="#2f8a36"
-          stroke-width="2.4" stroke-linecap="round"/>
-    <!-- four leaflets, fanned to the diagonals -->
-    <g stroke="#2a7d32" stroke-width="0.9" stroke-linejoin="round">
-      <g transform="rotate(45) translate(-12 -22)"><use href="#cl" fill="url(#lf)"/></g>
-      <g transform="rotate(135) translate(-12 -22)"><use href="#cl" fill="url(#lf)"/></g>
-      <g transform="rotate(225) translate(-12 -22)"><use href="#cl" fill="url(#lf)"/></g>
-      <g transform="rotate(315) translate(-12 -22)"><use href="#cl" fill="url(#lf)"/></g>
-    </g>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="lucky2049 four-leaf clover">
+  <circle cx="12" cy="6" r="6" fill="#22a05a"/>
+  <circle cx="6" cy="12" r="6" fill="#22a05a"/>
+  <circle cx="18" cy="12" r="6" fill="#22a05a"/>
+  <circle cx="12" cy="18" r="6" fill="#1c8c4e"/>
 </svg>
