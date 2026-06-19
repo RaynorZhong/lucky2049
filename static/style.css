@@ -77,10 +77,6 @@ p { color: var(--text-secondary); max-width: 760px; margin: 0 auto 1rem; }
 .text-secondary { color: var(--text-secondary); }
 .text-muted { color: var(--muted); }
 
-/* Brand wordmark + clover in the header */
-.brand { display: inline-flex; align-items: center; gap: 0.6rem; }
-.brand img { width: 2.4rem; height: 2.4rem; }
-
 /* Panel: the flat light card the whole site is built from. */
 .panel {
     background: var(--surface);
