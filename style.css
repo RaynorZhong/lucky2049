@@ -76,6 +76,14 @@ h2 {
 p { color: var(--text-secondary); max-width: 760px; margin: 0 auto 1rem; }
 .text-secondary { color: var(--text-secondary); }
 .text-muted { color: var(--muted); }
+/* Header-lead paragraph under a page's slogan (shared by verify + randomness). */
+.note { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5; }
+
+/* The one live-dot idiom, shared by every page with a liveness dot (home strip, source
+   health, randomness "Live"): opacity + subtle scale so it breathes in any dot colour.
+   Each page applies `animation: live-breathe 2.2s ease-in-out infinite` to its own dot
+   class and guards it behind prefers-reduced-motion AFTER that rule in its cascade. */
+@keyframes live-breathe { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.82); } }
 
 /* Panel: the flat light card the whole site is built from. */
 .panel {

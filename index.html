@@ -32,10 +32,6 @@
         .src-health .dot { display: inline-block; width: 0.6rem; height: 0.6rem;
             border-radius: 50%; margin-right: 0.3rem; vertical-align: -1px;
             animation: live-breathe 2.2s ease-in-out infinite; }
-        /* "breathing" live pulse — opacity + a subtle scale, so it works for the green
-           next-draw dot AND the source dots whatever colour they are (ok/lagging/down). */
-        @keyframes live-breathe { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.82); } }
-        @media (prefers-reduced-motion: reduce) { .nd-dot, .src-health .dot { animation: none; } }
         .draws-table .empty-row td { text-align: center; color: var(--text-secondary); padding: 1.5rem 1rem; font-size: 0.92rem; }
         /* Latest-draw hero: the actual product, up top and large. */
         .latest-hero { padding: 1.6rem 1.75rem; }
@@ -52,6 +48,8 @@
            the countdown pushed to the right (bold + a bit larger). */
         .next-draw { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.8rem 1.4rem; }
         .nd-dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: #16a34a; flex: none; animation: live-breathe 2.2s ease-in-out infinite; }
+        /* AFTER both animated-dot rules, so the equal-specificity override actually wins the cascade. */
+        @media (prefers-reduced-motion: reduce) { .nd-dot, .src-health .dot { animation: none; } }
         .nd-head { color: var(--text-secondary); }
         .nd-head strong { color: var(--text); font-weight: 600; }
         .nd-meta { color: var(--muted); font-size: 0.9rem; }
@@ -186,7 +184,10 @@
             $("ndId").textContent = "No. " + nextId;
             var tip;
             try { tip = await fetchTipHeight(); }
-            catch (e) { $("ndEta").textContent = "—"; $("ndCd").textContent = "—"; $("ndBlocks").textContent = "—"; return; }
+            // On a failed tip fetch keep the CURRENT view (the initial dashes on first load, or the
+            // last good ETA/countdown on a refresh — matches refreshNext's keep-last-good policy);
+            // dashing out here while tick() kept counting made the strip contradict itself.
+            catch (e) { return; }
             var remaining = Math.max(0, target - tip);
             $("ndBlocks").textContent = remaining === 0 ? "0 — ready" : remaining + " blocks";
             if (remaining === 0) {

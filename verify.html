@@ -25,7 +25,7 @@
     <style>
         .row { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
         .row .k { color: var(--text-secondary); }
-        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; word-break: break-all; }
+        .mono { font-family: var(--font-mono); font-size: 0.85rem; word-break: break-all; }
         .badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; font-weight: 600; font-size: 0.85rem; }
         .badge.pass { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
         .badge.fail { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
@@ -51,7 +51,7 @@
         .verdict .vd-retry { margin-left: auto; flex: none; }
         input#drawId { background: var(--surface); border: 1px solid var(--border-strong); color: var(--text);
             padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); width: 8rem; font-size: 1rem; }
-        .note { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5; }
+        /* .note (header-lead paragraph) is shared in style.css */
         /* aligned key/value rows: labels in a left column, values left-aligned in a second column. */
         .kv { display: grid; grid-template-columns: minmax(0, 15rem) minmax(0, 1fr); gap: 0.3rem 1.5rem; align-items: baseline; padding: 0.25rem 0; }
         .kv .k { color: var(--text-secondary); }

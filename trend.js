@@ -1,5 +1,5 @@
 /*
- * trend.js -- dependency-free data for the Sina-style trend chart.
+ * trend.js -- dependency-free data for the trend chart (走势图).
  *
  * Given the FULL list of draws and a display window, it builds, for the front
  * area (1..35) and the back area (1..12):
