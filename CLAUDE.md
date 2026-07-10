@@ -75,7 +75,7 @@ verifier (`test_verify_site`), and the in-browser JS run under Node
   `status.json` source-health) from the draws list; both publishers write them.
   Consumer contract: `docs/SCHEMA.md`.
 - `web/` — `index.html` (+ next-draw ETA) / `verify.html` / `stats.html` /
-  `trend.html` (Sina-style 走势图) / `randomness.html` + `CNAME`. `static/` — `verify.js`,
+  `trend.html` (走势图 trend chart) / `randomness.html` + `CNAME`. `static/` — `verify.js`,
   `stats.js`, `trend.js`, `randomness.js`, `style.css`, `favicon.svg`. Light/minimal theme;
   front balls = blue, back = orange (don't surface "Litecoin"/"Bitcoin" as ball labels in the UI).
 - `randomness.py` + `static/randomness.js` — an **informative, non-frozen** demo of verifiable
@@ -84,6 +84,8 @@ verifier (`test_verify_site`), and the in-browser JS run under Node
 - `SPEC.md` (frozen spec) · `docs/SCHEMA.md` (data contract) · `docs/RANDOMNESS.md` (coin/dice demo) · `docs/DEPLOY.md` · `docs/TDD.md`. Docs are
   **English-canonical**; Chinese mirrors live in `docs/zh/` (same filenames) — edit
   both together (incl. the EN ↔ 中文 cross-link header). UI/code are English-only.
+  (Exception: `docs/essay/README.md` — a bibliography index for the gitignored reference
+  PDFs — is deliberately EN-only, no zh mirror.)
 
 ## Gotchas
 

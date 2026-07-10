@@ -35,8 +35,8 @@
         .y-axis .y-max { top: 0; } .y-axis .y-zero { bottom: 0; } .y-axis .y-exp { color: #64748b; transform: translateY(50%); }
         .chart { position: relative; flex: 1; height: 220px; }
         .chart .bars { display: flex; align-items: flex-end; gap: 2px; height: 100%; }
-        .chart .bar { flex: 1; min-height: 2px; background: linear-gradient(180deg, #5b8fd6, #345d9d); border-radius: 3px 3px 0 0; }
-        .chart .bar.back { background: linear-gradient(180deg, #ffb24d, #f7931a); }
+        .chart .bar { flex: 1; min-height: 2px; background: var(--ball-ltc); border-radius: 3px 3px 0 0; }
+        .chart .bar.back { background: var(--ball-btc); }
         .chart .bar:hover { filter: brightness(1.06); }
         /* neutral-gray (not alarm-red) line = the IDEAL/fair target, with an inline label */
         .chart .expected { position: absolute; left: 0; right: 0; border-top: 2px dashed #94a3b8; }

@@ -23,21 +23,20 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:wght@500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./style.css">
     <style>
-        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; word-break: break-all; }
+        .mono { font-family: var(--font-mono); font-size: 0.85rem; word-break: break-all; }
         .scope { background: #f1f5f9; border: 1px solid #e2e8f0; color: #475569; padding: 0.6rem 0.9rem;
             border-radius: var(--radius-sm); font-size: 0.9rem; line-height: 1.5; }
         .live { display: flex; align-items: center; gap: 0.45rem; color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem; }
         .livedot { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: #16a34a; flex: none;
-            box-shadow: 0 0 0 0 rgba(22,163,74,.5); animation: pulse 2.2s infinite; }
-        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(22,163,74,.5); } 70% { box-shadow: 0 0 0 6px rgba(22,163,74,0); } 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0); } }
+            animation: live-breathe 2.2s ease-in-out infinite; }   /* shared keyframes in style.css */
         h2 .sub { font-weight: 400; font-size: 0.95rem; color: var(--text-secondary); }
-        /* Bitcoin-style coin: a 3-D flip between a gold ₿ obverse (Heads) and a white-circuit reverse (Tails). */
+        /* Bitcoin-style coin: a 3-D flip between a gold ₿ obverse (Heads) and a white-clover reverse (Tails). */
         .coins { display: flex; flex-wrap: wrap; gap: 0.75rem 0.55rem; margin-top: 0.6rem; align-items: flex-start; }
         /* each coin sits in a column cell over its block number (a handle for locating/citing it).
            perspective lives on the CELL, not .coins: it only reaches a DIRECT child, and the coin
            is now the cell's child -- on .coins it would skip the coin and flatten the 3-D flip. */
         .coin-cell { display: flex; flex-direction: column; align-items: center; gap: 0.3rem; margin: 0; perspective: 700px; }
-        .coin-cap { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-align: center; line-height: 1.15; }
+        .coin-cap { font-family: var(--font-mono); text-align: center; line-height: 1.15; }
         .coin-no { font-size: 0.62rem; color: var(--muted); white-space: nowrap; }
         .coin-cell.pending .coin-no { opacity: 0.5; }
         .bcoin { width: 3rem; height: 3rem; position: relative; transform-style: preserve-3d; transform: rotateY(0deg); }
@@ -64,7 +63,7 @@
            a handle for locating/citing any die. The caption defines the cell's width. */
         .die-cell { display: flex; flex-direction: column; align-items: center; gap: 0.3rem; margin: 0; }
         .die-cap { display: flex; flex-direction: column; align-items: center; line-height: 1.15;
-            text-align: center; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+            text-align: center; font-family: var(--font-mono); }
         .die-no { font-size: 0.74rem; font-weight: 600; color: var(--text); letter-spacing: 0.01em; }
         .die-blk { font-size: 0.62rem; color: var(--muted); white-space: nowrap; }
         .die-cell.pending .die-no { font-weight: 500; opacity: 0.5; }
@@ -81,7 +80,7 @@
             50% { transform: rotate(11deg) scale(.95); } 75% { transform: rotate(-6deg) scale(1.03); } 100% { transform: rotate(0) scale(1); } }
         /* "pending" spinners mean "next result incoming". The coin's flip is JS-driven at a constant
            speed (see tick()) so the waiting-spin and the settling-spin match — no opacity on it, since
-           opacity < 1 flattens preserve-3d and would hide the circuit back mid-spin. The die's wobble is
+           opacity < 1 flattens preserve-3d and would hide the clover back mid-spin. The die's wobble is
            CSS; its pips shuffle from tick(). */
         .bdie.pending { animation: dietumble 1.1s ease-in-out infinite; }
         @keyframes dietumble { 0% { transform: rotate(0) scale(1); } 25% { transform: rotate(-11deg) scale(1.05); }
@@ -271,7 +270,7 @@
             $("dice").appendChild(cell);
             dieSp = { el: die, cell: cell, start: null, lockAt: null, shuffled: 0 };
         }
-        // The face angle (0 = Heads / ₿, 180 = Tails / circuit) NEAREST to pref, but always kept ahead
+        // The face angle (0 = Heads / ₿, 180 = Tails / clover) NEAREST to pref, but always kept ahead
         // of the current angle `a` so the coin only ever turns forward into its result.
         function faceAngleNear(pref, a, faceDeg) {
             var t = Math.round((pref - faceDeg) / 360) * 360 + faceDeg;
@@ -403,7 +402,15 @@
             }
             return out;
         }
-        function trimBlocks() { var low = tip - NEEDED; for (var hk in blocks) if (+hk < low) delete blocks[hk]; }
+        function trimBlocks() {
+            var low = tip - NEEDED;
+            for (var hk in blocks) if (+hk < low) delete blocks[hk];
+            // Drop queue entries whose blocks were just evicted: in a long-hidden tab the rAF loop
+            // is paused (queues never drain) while this trim keeps running — a stale queue head
+            // would make tick() derive from undefined on re-focus and kill the reveal loop.
+            coinQ = coinQ.filter(function (h) { return blocks[h]; });
+            dieQ = dieQ.filter(windowComplete);
+        }
 
         // (Re)load the whole recent window and render from scratch (used on init + reorg).
         async function load() {

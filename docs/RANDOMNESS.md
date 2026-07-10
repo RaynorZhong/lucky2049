@@ -50,7 +50,8 @@ The browser page ([`/randomness.html`](https://lucky2049.com/randomness.html)) *
 10 coins and 4 dice and then **keeps accumulating** — revealing them **one at a time** (the leading
 coin/die spins ~3 s, then the result locks in place), and staying current by polling the chain tip in
 the visitor's browser (~60 s); each new block adds another coin and a completed 6-block window adds
-another die, so the rows grow (11, 12, 13, …) rather than dropping the oldest. (The coin is a 3-D mint:
+another die, so the rows grow (11, 12, 13, …) up to a DOM-safety cap of 200 coins / 40 dice (~33 h of
+blocks), after which the leftmost (oldest) is trimmed. (The coin is a 3-D mint:
 a gold ₿ obverse, the lucky2049 four-leaf-clover reverse, and a milled edge.) It is an **effect demonstration**, so it reads the **latest** blocks directly (no confirmation
 wait); the most recent tip blocks can reorg, which the view reconciles on the next poll. Nothing is
 published or stored — every result is recomputed on the fly and verifiable by anyone.

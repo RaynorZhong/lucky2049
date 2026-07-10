@@ -89,5 +89,75 @@ class TestPageStructure(unittest.TestCase):
                          ".coins must NOT set perspective (it would flatten the wrapped coin's flip)")
 
 
+def read_css():
+    with open(os.path.join(REPO_ROOT, "static", "style.css")) as f:
+        return f.read()
+
+
+class TestAudit5Guards(unittest.TestCase):
+    """Locks for the audit-5 cleanup sweep (CSS-cascade and queue-hygiene fixes)."""
+
+    def test_home_reduced_motion_override_after_animated_dot_rules(self):
+        # equal specificity: the prefers-reduced-motion override only wins if it comes LATER
+        # in the cascade than BOTH animated-dot rules it neutralizes.
+        html = read("index")
+        override = html.find("prefers-reduced-motion")
+        self.assertGreater(override, html.find(".nd-dot {"), "reduce-motion block must follow .nd-dot")
+        self.assertGreater(override, html.find(".src-health .dot {"), "reduce-motion block must follow .src-health .dot")
+
+    def test_live_dot_idiom_shared_and_single(self):
+        # one breathing idiom for every liveness dot: keyframes live in style.css, both pages
+        # reference it, and the old randomness box-shadow ripple is gone.
+        self.assertIn("@keyframes live-breathe", read_css())
+        self.assertIn("animation: live-breathe", read("index"))
+        rnd = read("randomness")
+        self.assertIn("animation: live-breathe", rnd)
+        self.assertNotIn("@keyframes pulse", rnd)
+
+    def test_trend_header_band_outspecifies_zone_transparency(self):
+        # .ttab .z0 (0,2,0) beats .ttab thead th (0,1,2), so the header band needs its own
+        # thead-scoped re-assert (0,2,1) AFTER the transparent rule.
+        html = read("trend")
+        transparent = html.find(".ttab .z0, .ttab .z1, .ttab .cb { background: transparent")
+        reassert = html.find(".ttab thead .z0, .ttab thead .z1, .ttab thead .cb { background: var(--surface-2)")
+        self.assertGreater(transparent, -1, "zone transparency rule not found")
+        self.assertGreater(reassert, transparent, "thead band re-assert must exist AFTER the transparent rule")
+
+    def test_trend_cells_immune_to_global_mobile_font_rule(self):
+        # style.css @768px `th, td { font-size: 0.9rem }` is a direct element declaration that
+        # beats inheritance; the matrix cells must re-couple to table.ttab via font-size: inherit
+        # (and the header pins its own size, since the global th 0.72rem no longer reaches it).
+        html = read("trend")
+        cells = re.search(r'\.ttab th, \.ttab td \{([^}]*)\}', html)
+        self.assertIsNotNone(cells, ".ttab th/.ttab td rule not found")
+        self.assertIn("font-size: inherit", cells.group(1))
+        thead = re.search(r'\.ttab thead th \{([^}]*)\}', html)
+        self.assertIsNotNone(thead, ".ttab thead th rule not found")
+        self.assertIn("font-size:", thead.group(1), "header must pin its own font-size")
+
+    def test_stats_bars_use_ball_tokens(self):
+        # the frequency bars are ball-coloured surfaces: they must ride the shared flat tokens,
+        # not a second hardcoded (pre-flat) gradient.
+        html = read("stats")
+        self.assertRegex(html, r'\.chart \.bar \{[^}]*var\(--ball-ltc\)')
+        self.assertRegex(html, r'\.chart \.bar\.back \{[^}]*var\(--ball-btc\)')
+        self.assertNotIn("linear-gradient(180deg, #ffb24d", html)
+
+    def test_randomness_trim_purges_stale_queue_heads(self):
+        # a long-hidden tab pauses the rAF drain while the poll keeps trimming blocks; the trim
+        # must also purge queue entries whose blocks were evicted or tick() derives from
+        # undefined on re-focus and the reveal loop dies.
+        html = read("randomness")
+        self.assertRegex(html, r'coinQ\s*=\s*coinQ\.filter\(\s*function\s*\(\s*h\s*\)\s*\{\s*return\s+blocks\[h\]\s*;?\s*\}\s*\)')
+        self.assertRegex(html, r'dieQ\s*=\s*dieQ\.filter\(\s*windowComplete\s*\)')
+
+    def test_note_class_defined_once_in_shared_css(self):
+        # .note is used by verify AND randomness header leads; the single definition lives in
+        # style.css so the two pages can't silently diverge again.
+        self.assertRegex(read_css(), r'\.note \{[^}]*font-size: 0\.9rem')
+        for p in ("verify", "randomness"):
+            self.assertIsNone(re.search(r'\.note \{', read(p)), "local .note rule on " + p + ".html")
+
+
 if __name__ == "__main__":
     unittest.main()

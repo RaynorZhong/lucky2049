@@ -23,9 +23,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:wght@500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./style.css">
     <style>
-        /* Run-ball ink: the deep stops of the ball gradients promoted to flat colour (a gradient
-           can't paint a 1px ring or glyph). Back is the gradient's deep stop, which also fixes a
-           real AA bug — the old #f7931a run ink was ~2:1 on white; #c2710a is ~4.6:1. */
+        /* Run-ball ink (the ring + glyph of run balls). Front = the flat ball blue. Back must be
+           DARKER than the flat ball orange: --ball-btc #ef8c12 is ~2.5:1 on white (fails AA as
+           text), so run numbers use #c2710a (~4.6:1). */
         :root { --run-ink-front: #345d9d; --run-ink-back: #c2710a; }
 
         /* Controls: active = the site's aria-current underline idiom (accent-blue, not a black pill). */
@@ -54,17 +54,24 @@
            (≈25px/number col) so narrow windows/phones scroll instead of crushing the balls. */
         table.ttab { table-layout: fixed; border-collapse: collapse; width: 100%; min-width: 1180px; font-size: 13px; line-height: 1; color: var(--text-secondary); background: var(--surface); }
         col.ci { width: 68px; } col.cn { width: auto; }
-        .ttab th, .ttab td { height: 32px; text-align: center; padding: 0; border: 0; }
+        /* font-size:inherit re-couples every cell to table.ttab's scale — the global mobile rule
+           (style.css @768px: th,td { font-size: 0.9rem }) is a direct element declaration that
+           would otherwise beat inheritance and blow the matrix up LARGER on phones than desktop. */
+        .ttab th, .ttab td { height: 32px; text-align: center; padding: 0; border: 0; font-size: inherit; }
         .ttab tbody td { border-bottom: 1px solid var(--border); }
 
-        /* Header band: quiet, like the global th; zone label in the display serif. */
-        .ttab thead th { background: var(--surface-2); color: var(--text-secondary); font-weight: 600; }
+        /* Header band: quiet, like the global th; zone label in the display serif.
+           font-size pinned (the global th 0.72rem no longer reaches here past font-size:inherit). */
+        .ttab thead th { background: var(--surface-2); color: var(--text-secondary); font-weight: 600; font-size: 0.72rem; }
         .ttab .zh { font-family: var(--font-display); font-weight: 600; color: var(--text); }
         .ttab .zh .zr { font-family: var(--font-body); font-weight: 500; color: var(--muted); margin-left: 0.25rem; font-size: 11px; }
 
         /* Zones read by separators, not fills. transparent also out-specifies the global tbody
            hover so it never repaints zone cells unexpectedly. */
         .ttab .z0, .ttab .z1, .ttab .cb { background: transparent; }
+        /* ...but the header band must win back its fill: header cells also carry z0/z1/cb, and
+           .ttab .z0 (0,2,0) out-specifies .ttab thead th (0,1,2), so re-assert it at (0,2,1). */
+        .ttab thead .z0, .ttab thead .z1, .ttab thead .cb { background: var(--surface-2); }
         .ttab .sep { border-left: 2px solid var(--border-strong); }
 
         /* Controlled row hover — recovers horizontal trackability lost with the vertical cage. */
@@ -79,7 +86,7 @@
         .ttab .issue { width: 68px; position: sticky; left: 0; z-index: 2; background: var(--surface); color: var(--text-secondary); font-weight: 600; font-family: var(--font-mono); font-variant-numeric: tabular-nums; box-shadow: 1px 0 0 var(--border); }
         .ttab thead .issue, .ttab tfoot .issue { background: var(--surface-2); z-index: 4; color: var(--muted); }
 
-        /* Hit balls — gloss preserved verbatim (matches every ball on the site). */
+        /* Hit balls — flat fills on the shared ball tokens (matches every ball on the site). */
         .ttab .b { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%;
             background: var(--ball-ltc); color: #fff; font-family: var(--font-heading); font-weight: 700; font-size: 11px; }
         .ttab .b.bk { background: var(--ball-btc); }
