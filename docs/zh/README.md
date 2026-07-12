@@ -117,6 +117,8 @@ verify.py       独立引擎(标准库,单文件可复制):算法 generate、承
 scripts/
   extend_pages.py  cron 开奖+发布:从链上扩展 index.json(stdlib,复用 verify.py,无 DB)
   export_static.py 从本地 SQLite 缓存(stdlib sqlite3)重建整个 index.json + 站点(初建/灾备)
+  artifacts.py     下游信标产物(latest.json / feed.json / status.json 源健康);两个发布器都会写
+  anchor_head.py   为已发布的链头打 OpenTimestamps 锚点(由 anchor-head.yml 每日运行)
   publish-pages.sh 手动发布(调 export_static + 推 gh-pages);常态用 cron,二选一
 web/            index.html(首页+下一期预计)/ verify.html / stats.html / trend.html(走势图)/ randomness.html(抛硬币/掷骰子演示)+ og.png + CNAME
 static/         verify.js(验证器)、stats.js(频率+卡方)、trend.js(走势图)、randomness.js(抛硬币/掷骰子演示)、style.css、favicon.svg —— 自带算法、无外部脚本

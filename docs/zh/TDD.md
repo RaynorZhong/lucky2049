@@ -40,8 +40,8 @@ python -m unittest discover -s tests                      # 不依赖 pytest 的
   对着 `verify.py` 和 `SPEC.md` 复算。
 - **浏览器内 JS** —— `tests/test_verify_js.py`、`tests/test_stats_js.py`、`tests/test_random_js.py`
   和 `tests/test_trend_js.py` 在 Node 里跑 `static/verify.js` / `static/stats.js` / `static/randomness.js` /
-  `static/trend.js`,检查它们复现出 Python 的结果(及冻结的黄金值)。`tests/test_index_js.py` 与
-  `tests/test_verify_fetch_js.py` 同样在 Node 里跑页面内联逻辑 —— 首页的下一期 ETA 窗口,以及 verify.html 的 144 哈希抓取/拼装 + 通过/失败裁决。Node 缺失时自动跳过。(页面结构 —— 共享导航、统计页措辞、首页去重 —— 由纯标准库的 `tests/test_pages.py` 守护。)
+  `static/trend.js`,检查它们复现出 Python 的结果(及冻结的黄金值)。`tests/test_verify_fetch_js.py`
+  同样在 Node 里跑 verify.html 的页面内联逻辑 —— 144 哈希抓取/拼装 + 通过/失败裁决。基于 Node 的测试在 Node 缺失时自动跳过。(页面结构 —— 共享导航、统计页措辞、首页去重、首页下一期 ETA 目标 —— 由纯标准库的 `tests/test_pages.py` 与 `tests/test_index_js.py` 文本断言守护。)
 
 `tests/test_verify_site.py` 用 mock 掉的 HTTP 覆盖 `verify.py --site` 的链路(实时 API + 静态
 `index.json` 回退)—— 不联网。

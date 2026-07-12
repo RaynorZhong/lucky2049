@@ -43,11 +43,11 @@ The site is static, so the tests pin the two things that matter:
 - **The in-browser JS** — `tests/test_verify_js.py`, `tests/test_stats_js.py`,
   `tests/test_random_js.py`, and `tests/test_trend_js.py` run `static/verify.js` /
   `static/stats.js` / `static/randomness.js` / `static/trend.js` under Node and check
-  they reproduce the Python result (and frozen golden values). `tests/test_index_js.py`
-  and `tests/test_verify_fetch_js.py` likewise run the inline page logic under Node — the
-  homepage's next-draw ETA window and verify.html's 144-hash fetch/assembly + the pass/fail
-  verdict. They self-skip if Node is absent. (Page structure — the shared nav, the stats read,
-  the homepage de-dup — is guarded by the stdlib `tests/test_pages.py`.)
+  they reproduce the Python result (and frozen golden values). `tests/test_verify_fetch_js.py`
+  likewise runs verify.html's inline page logic under Node — the 144-hash fetch/assembly +
+  the pass/fail verdict. The Node-based tests self-skip if Node is absent. (Page structure —
+  the shared nav, the stats read, the homepage de-dup, the homepage's next-draw ETA target —
+  is guarded by the stdlib `tests/test_pages.py` and `tests/test_index_js.py` text checks.)
 
 `tests/test_verify_site.py` covers the `verify.py --site` plumbing (live API +
 static `index.json` fallback) with mocked HTTP — no network.

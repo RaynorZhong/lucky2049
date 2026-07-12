@@ -11,9 +11,11 @@
     --accent: #2563eb;
     --accent-soft: rgba(37, 99, 235, 0.08);
 
-    /* Ball colours (fixed, flat — no gradient/gloss): front = blue, back = orange */
+    /* Ball colours (fixed, flat — no gradient/gloss): front = blue, back = orange.
+       Back is #d97a0c (not the design-pass #ef8c12): white numerals need AA-large 3:1,
+       and #ef8c12 was ~2.5:1 — #d97a0c is ~3.2:1 with a near-identical hue. */
     --ball-ltc: #345d9d;
-    --ball-btc: #ef8c12;
+    --ball-btc: #d97a0c;
 
     --radius-lg: 16px;
     --radius-md: 11px;

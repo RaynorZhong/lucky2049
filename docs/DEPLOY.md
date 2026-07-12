@@ -79,7 +79,8 @@ vote is simply absent; the two explorers still satisfy `MIN_SOURCE_AGREEMENT=2` 
 continues. Node still in initial block download → it abstains from the chain tip (stale height
 must not delay draws) while still answering hash queries from its header index. A pruned node is
 fine — block hashes and header timestamps come from the header index at any height. The cron log
-shows which source served the tip (`tip <h> (via core)`) and who agreed on each draw's hashes.
+shows each source's probe (`source core: ok tip=<h> (12ms)`), the quorum tip and which source led
+it (`tip <h> (quorum of 2; leading source core)`), and who agreed on each draw's hashes.
 
 **Monitoring your node:** every hourly run probes all sources and publishes the results to
 [`status.json`](https://lucky2049.com/status.json) (per source: ok / tip / latency / error), also

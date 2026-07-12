@@ -52,7 +52,7 @@ make install-dev   # pytest tooling only (runtime is stdlib-only)
 make test          # run once     make watch  # re-run on save (TDD loop)     make cov
 python -m unittest discover -s tests   # stdlib-only fallback (same suite)
 ```
-The suite is **stdlib + Node only** (no DB, no fixtures): golden-vector locks for
+The suite is **stdlib + Node only** (no DB; one small fixture — the SPEC draw-0 window): golden-vector locks for
 the algorithm/commitment (`test_spec_v1`, `test_commitment`), the standalone
 verifier (`test_verify_site`), and the in-browser JS run under Node
 (`test_verify_js`, `test_stats_js`). Write tests first — see `docs/TDD.md`.
@@ -99,8 +99,11 @@ verifier (`test_verify_site`), and the in-browser JS run under Node
   `gh-pages` republish drops the domain → 404. Both publishers copy it.
 - `data/database.db` is an **optional local cache** (gitignored, ~170MB, NOT in the
   repo), only read by `export_static.py` for a local rebuild. The cron never uses it.
-- Anchor `head.json` externally (OpenTimestamps / git tag) to make history truly
-  tamper-evident — code provides the chain, anchoring is the rest.
+- `head.json` is anchored **automatically**: `.github/workflows/anchor-head.yml` (daily
+  cron) runs `scripts/anchor_head.py` + OpenTimestamps (`ots stamp`) and commits proofs
+  to `anchors/` on `main`; `refresh-pages.yml` serves them at `/anchors/` and excludes
+  that dir from its rsync `--delete`. Don't break this path — the commitment chain alone
+  isn't tamper-evident without the external anchor.
 - The old FastAPI server + DB + Docker/Render are gone from `main`; recover from the
   `v1-server` tag if you ever need a live API.
 - macOS system `python3` is 3.9; use `./.venv` (3.13) for anything real.

@@ -145,6 +145,8 @@ verify.py       standalone engine (stdlib, single copyable file): the `generate`
 scripts/
   extend_pages.py  cron drawer/publisher: extend index.json from the chain (stdlib, reuses verify.py, no DB)
   export_static.py rebuild the whole index.json + site from a local SQLite cache (stdlib sqlite3) — initial build / disaster recovery
+  artifacts.py     downstream beacon artifacts (latest.json / feed.json / status.json source-health); written by both publishers
+  anchor_head.py   stamps the published head for OpenTimestamps anchoring (run daily by anchor-head.yml)
   publish-pages.sh manual publish (export_static + push gh-pages); use the cron normally, pick one
 web/            index.html (home + next-draw ETA) / verify.html / stats.html / trend.html (trend chart) / randomness.html (coin/dice demo) + og.png + CNAME
 static/         verify.js (verifier), stats.js (frequency + chi-square), trend.js (trend chart), randomness.js (coin/dice demo), style.css, favicon.svg — own algorithm, no external scripts
