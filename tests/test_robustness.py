@@ -235,5 +235,138 @@ class TestTipRegressionGuard(unittest.TestCase):
             self.assertEqual(st["added"], 0)
 
 
+
+# ------------------- liveness: time budgets + dead sources -------------------
+class TestSourceBudgets(unittest.TestCase):
+    """A slow or dead source must cost a bounded amount of wall-clock, never the run.
+    (2026-08-23: one flaky source turned an idle run into 22.6 min of a 30-min job.)"""
+
+    def _matured(self, tmp):
+        # one confirmed window (0..143) waiting to be drawn: tip 200 - 6 confirmations
+        return _write_index(tmp, [])
+
+    def test_hung_source_gets_no_vote_and_does_not_stall_the_draw(self):
+        import threading
+        release = threading.Event()
+
+        def hang(start, end):
+            release.wait(30)            # far beyond the test's budget
+            return FAKE(start, end)
+        provs = _providers(tip=200, hashes=FAKE, names=("mempool", "blockstream")) + [_src("core", 200, hang)]
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(extend_pages, "SOURCE_BUDGET_S", 0.3), \
+             mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            idx = self._matured(tmp)
+            t0 = __import__("time").monotonic()
+            self.assertEqual(_run(idx, provs), 0)
+            took = __import__("time").monotonic() - t0
+            release.set()
+            st = _status(tmp)
+        self.assertLess(took, 5, "a hung source stalled the run")
+        self.assertEqual(st["added"], 1)                      # the two live sources still formed quorum
+        self.assertNotIn("held", st)
+        self.assertIn("committed draw 0 (agree: mempool, blockstream)", out.getvalue())
+        self.assertIn("core: no vote (timed out", out.getvalue())
+
+    def test_sources_are_fetched_concurrently(self):
+        import threading
+        import time as _t
+        gate = threading.Barrier(2, timeout=5)   # both fetches must be in flight at once
+
+        def together(start, end):
+            gate.wait()
+            return FAKE(start, end)
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("sys.stdout", new_callable=io.StringIO):
+            idx = self._matured(tmp)
+            t0 = _t.monotonic()
+            self.assertEqual(_run(idx, _providers(tip=200, hashes=together)), 0)
+            self.assertLess(_t.monotonic() - t0, 4)
+            self.assertEqual(_status(tmp)["added"], 1)
+
+    def test_source_whose_tip_probe_failed_is_not_asked_for_hashes(self):
+        asked = []
+
+        def dead_tip():
+            raise OSError("Network is unreachable")
+
+        def dead_hashes(start, end):
+            asked.append((start, end))
+            raise OSError("Network is unreachable")
+        dead = {"name": "mempool", "tip": dead_tip, "hashes": dead_hashes, "timestamp": lambda h: None}
+        provs = [dead] + _providers(tip=200, hashes=FAKE, names=("blockstream", "core"))
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("sys.stdout", new_callable=io.StringIO):
+            idx = self._matured(tmp)
+            self.assertEqual(_run(idx, provs), 0)
+            st = _status(tmp)
+        self.assertEqual(asked, [], "a source that failed its probe was still asked for 144 hashes")
+        self.assertEqual(st["added"], 1)
+        self.assertFalse([s for s in st["sources"] if s["name"] == "mempool"][0]["ok"])
+
+    def test_source_that_abstains_from_the_tip_still_votes_on_hashes(self):
+        # a Core node in initial block download: no tip, but its header index answers hashes
+        def abstain():
+            raise extend_pages.TipAbstain("node in initial block download (height 5)")
+        core = {"name": "core", "tip": abstain, "hashes": FAKE, "timestamp": lambda h: None}
+        # only ONE explorer returns hashes; the draw needs core's vote to reach quorum
+        def down(start, end):
+            raise OSError("boom")
+        provs = [core, _src("mempool", 200, FAKE), _src("blockstream", 200, down)]
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            idx = self._matured(tmp)
+            self.assertEqual(_run(idx, provs), 0)
+            st = _status(tmp)
+        self.assertEqual(st["added"], 1, out.getvalue())
+        self.assertIn("agree: core, mempool", out.getvalue())
+        self.assertNotIn("_abstain", json.dumps(st))            # nothing internal leaks into status.json
+
+    def test_run_budget_stops_cleanly_before_more_fetching(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(extend_pages, "RUN_BUDGET_S", 0), \
+             mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            idx = self._matured(tmp)
+            self.assertEqual(_run(idx, _providers(tip=200, hashes=None)), 0)   # hashes=None: any fetch asserts
+            st = _status(tmp)
+            self.assertTrue(os.path.exists(os.path.join(tmp, "head.json")))   # status/head still published
+        self.assertEqual(st["added"], 0)
+        self.assertNotIn("held", st)                              # out of time is not a disagreement
+        self.assertIn("run budget", out.getvalue())
+
+    def test_run_budget_also_bounds_the_reorg_audit(self):
+        # the 2026-08-23 stall was an IDLE run: the time went into the audit re-fetch
+        f, b, _ = verify.generate(FAKE(0, 143))
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(extend_pages, "RUN_BUDGET_S", 0), \
+             mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            idx = _write_index(tmp, [_draw(0, 143, f, b)])
+            self.assertEqual(_run(idx, _providers(tip=160, hashes=None)), 0)
+            st = _status(tmp)
+        self.assertIn("reorg audit of draw 0 skipped", out.getvalue())
+        self.assertNotIn("reorg-audit: skip", out.getvalue())     # no re-fetch was even attempted
+        self.assertNotIn("note", st)
+
+    def test_dead_source_is_not_asked_for_the_timestamp_either(self):
+        asked = []
+
+        def dead(*a):
+            asked.append(a)
+            raise OSError("Network is unreachable")
+        src = {"name": "mempool", "tip": dead, "hashes": dead, "timestamp": dead}
+        provs = [src] + _providers(tip=200, hashes=FAKE, names=("blockstream", "core"))
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("sys.stdout", new_callable=io.StringIO):
+            self.assertEqual(_run(self._matured(tmp), provs), 0)
+            self.assertEqual(_status(tmp)["added"], 1)
+        self.assertEqual(len(asked), 1, "only the tip probe may touch a dead source")
+
+    def test_budget_defaults_and_bad_env_values(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual((extend_pages._budget("SOURCE_BUDGET_S", 300), extend_pages._budget("RUN_BUDGET_S", 900)),
+                             (300.0, 900.0))
+        for bad in ("", "0", "-5", "nan", "inf", "soon"):
+            with mock.patch.dict(os.environ, {"RUN_BUDGET_S": bad}):
+                self.assertEqual(extend_pages._budget("RUN_BUDGET_S", 900), 900.0, repr(bad))
+        with mock.patch.dict(os.environ, {"RUN_BUDGET_S": "42.5"}):
+            self.assertEqual(extend_pages._budget("RUN_BUDGET_S", 900), 42.5)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -23,9 +23,18 @@ then mempool.space, then blockstream.info.
     that regressed below the last committed window, is recorded in status.json
     `note` and ALARMED by the workflow -- never silently rewritten.
 
+  - Liveness: the sources are fetched concurrently and each gets a wall-clock
+    budget (SOURCE_BUDGET_S); a source that failed its tip probe is not asked for
+    hashes at all that run, and a slow one simply loses its vote. (The price: with
+    three sources, a second one failing in the same run holds the draw until the
+    next hourly run -- self-healing, never a wrong commit.) No new draw or audit
+    starts after RUN_BUDGET_S; an in-flight window may still take SOURCE_BUDGET_S
+    plus a timestamp lookup, so a run normally ends well inside the job timeout.
+
 Usage:  python scripts/extend_pages.py [site/index.json]
 Env:    DRAW_CONFIRMATIONS (default 6), MAX_NEW_DRAWS (default 10),
-        MIN_SOURCE_AGREEMENT (default 2),
+        MIN_SOURCE_AGREEMENT (default 2), SOURCE_BUDGET_S (default 300),
+        RUN_BUDGET_S (default 900),
         BITCOIN_RPC_URL or BITCOIN_RPC_USER/PASSWORD/HOST/PORT (optional Core source),
         CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET (optional Cloudflare Access
         service token, when the Core endpoint sits behind Zero Trust)
@@ -33,9 +42,11 @@ Env:    DRAW_CONFIRMATIONS (default 6), MAX_NEW_DRAWS (default 10),
 import datetime
 import hashlib
 import json
+import math
 import os
 import re
 import sys
+import threading
 import time
 import urllib.parse
 
@@ -51,7 +62,33 @@ MIN_AGREEMENT = int(os.environ.get("MIN_SOURCE_AGREEMENT", "2"))  # sources that
 # this many blocks of the tip -- a reorg horizon far beyond CONFIRMATIONS (the commit
 # gate) yet beyond anything mainnet has ever seen, so the audit cost stays bounded.
 REORG_AUDIT_DEPTH = int(os.environ.get("REORG_AUDIT_DEPTH", "36"))
+# Wall-clock budgets (seconds). A healthy source serves a 144-hash window in well
+# under a minute; one that is slow-but-not-dead used to stall the whole run (each of
+# 144 sequential requests may retry for ~90s), so every source gets SOURCE_BUDGET_S
+# per window and then simply loses its vote. RUN_BUDGET_S bounds the run as a whole:
+# past it no new draw or audit is started. Worst case is then roughly RUN_BUDGET_S +
+# one SOURCE_BUDGET_S + a timestamp lookup (~25 min with the defaults), inside the
+# workflow's 30-minute job timeout.
+def _budget(name, default):
+    """A positive, finite number of seconds from the environment, else the default
+    (an empty, non-numeric, zero or negative value must not disable the drawer)."""
+    try:
+        v = float(os.environ.get(name) or default)
+    except ValueError:
+        return float(default)
+    return v if math.isfinite(v) and v > 0 else float(default)
+
+
+SOURCE_BUDGET_S = _budget("SOURCE_BUDGET_S", 300)
+RUN_BUDGET_S = _budget("RUN_BUDGET_S", 900)
 ALGO = "v1"
+
+
+class TipAbstain(RuntimeError):
+    """A source that deliberately declines to report a tip (a Core node in initial
+    block download) but is otherwise reachable: it has no say on maturity, yet still
+    votes on block hashes. Any OTHER tip-probe failure means the source is down for
+    this run and is not asked for hashes at all."""
 
 # Public explorers, tried in order. Both speak the same Esplora-style API:
 #   GET /blocks/tip/height -> tip height (text)
@@ -110,7 +147,7 @@ def _core_provider():
         # still valid -- getblockhash answers from the header index).
         info = rpc("getblockchaininfo", [])
         if info.get("initialblockdownload"):
-            raise RuntimeError(f"node in initial block download (height {info.get('blocks')})")
+            raise TipAbstain(f"node in initial block download (height {info.get('blocks')})")
         return int(info["blocks"])
 
     return {
@@ -170,12 +207,14 @@ def _call(providers, op, *args):
     raise RuntimeError(f"all sources failed for '{op}' -> " + " | ".join(errors))
 
 
-def _probe_sources(providers):
+def _probe_sources(providers, abstained=None):
     """Probe every source's chain tip (health check), in preference order.
 
     Returns [{name, ok, tip, ms} | {name, ok: False, error, ms}]. Published as
     status.json so the operator can see whether each source -- especially a
-    self-hosted Core node -- answered on the last refresh."""
+    self-hosted Core node -- answered on the last refresh. Names of sources that
+    abstained (TipAbstain: reachable, just no tip) are added to `abstained`, so the
+    caller can keep them as hash voters without changing the published shape."""
     out = []
     for p in providers:
         t0 = time.monotonic()
@@ -186,6 +225,8 @@ def _probe_sources(providers):
         except Exception as e:  # unreachable / auth / IBD -- recorded, not fatal
             entry["ok"] = False
             entry["error"] = _redact(e)[:200]
+            if isinstance(e, TipAbstain) and abstained is not None:
+                abstained.add(p["name"])
         entry["ms"] = int((time.monotonic() - t0) * 1000)
         out.append(entry)
     return out
@@ -196,6 +237,43 @@ def _fingerprint(hash_list):
     return hashlib.sha256("".join(hash_list).encode()).hexdigest()[:12]
 
 
+def _fetch_votes(providers, start, end):
+    """Ask every source for the window's hashes CONCURRENTLY, each bounded by
+    SOURCE_BUDGET_S of wall-clock. Returns ({name: hash_list}, [error strings]) with
+    results in provider (preference) order. A source that errors or runs out of time
+    simply doesn't get a vote -- its thread is a daemon and is abandoned."""
+    box = {}
+
+    def work(p):
+        t0 = time.monotonic()
+        try:
+            box[p["name"]] = ("ok", p["hashes"](start, end), time.monotonic() - t0)
+        except Exception as e:  # network / HTTP / parse / RPC
+            box[p["name"]] = ("err", e, time.monotonic() - t0)
+
+    print(f"fetching heights {start}-{end} from: {', '.join(p['name'] for p in providers) or '(no live source)'}",
+          flush=True)
+    threads = [threading.Thread(target=work, args=(p,), daemon=True, name=f"hashes-{p['name']}")
+               for p in providers]
+    for t in threads:
+        t.start()
+    deadline = time.monotonic() + SOURCE_BUDGET_S
+    results, errors = {}, []
+    for p, t in zip(providers, threads):
+        t.join(max(0.0, deadline - time.monotonic()))
+        got = box.get(p["name"])
+        if got is None:
+            errors.append(f"{p['name']}: timed out after {SOURCE_BUDGET_S:g}s")
+            print(f"  {p['name']}: no vote (timed out after {SOURCE_BUDGET_S:g}s)", flush=True)
+        elif got[0] == "ok":
+            results[p["name"]] = got[1]
+            print(f"  {p['name']}: {len(got[1])} hashes in {got[2]:.1f}s", flush=True)
+        else:
+            errors.append(f"{p['name']}: {_redact(got[1])}")
+            print(f"  {p['name']}: no vote ({_redact(got[1])[:160]})", flush=True)
+    return results, errors
+
+
 def _agreed_hashes(providers, start, end):
     """Fetch the window's 144 hashes from every available source and return the
     list that >= MIN_AGREEMENT of them agree on, plus the agreeing source names.
@@ -204,12 +282,7 @@ def _agreed_hashes(providers, start, end):
     reachable). The 144 hashes are the inputs baked into the *irreversible*
     commitment chain, so the caller HOLDS the draw rather than commit hashes that
     only a single (possibly bad / forked / compromised) explorer vouches for."""
-    results, errors = {}, []
-    for p in providers:
-        try:
-            results[p["name"]] = p["hashes"](start, end)
-        except Exception as e:  # an unreachable source simply doesn't get a vote
-            errors.append(f"{p['name']}: {_redact(e)}")
+    results, errors = _fetch_votes(providers, start, end)
     groups = []  # [(hash_list, [source names])], most-agreed first
     for name, hl in results.items():
         for g in groups:
@@ -269,8 +342,18 @@ def main():
     next_id = (draws[-1]["id"] + 1) if draws else 0
     prev_commitment = draws[-1]["commitment"] if draws else verify.GENESIS_PREV
 
+    t_run = time.monotonic()
+
+    def out_of_time():
+        return time.monotonic() - t_run >= RUN_BUDGET_S
+
     providers = _providers()
-    probes = _probe_sources(providers)
+    abstained = set()
+    probes = _probe_sources(providers, abstained)
+    # Hash voters for this run: every source that answered its probe, plus any that
+    # only abstained from the tip. A source whose probe FAILED is down right now --
+    # asking it for 144 hashes would just burn minutes of retries for no vote.
+    voters = [p for p, s in zip(providers, probes) if s["ok"] or p["name"] in abstained]
     for s in probes:
         print(f"source {s['name']}: " + (f"ok tip={s['tip']} ({s['ms']}ms)" if s["ok"]
                                          else f"FAIL ({s.get('error')})"))
@@ -308,8 +391,11 @@ def main():
         start, end = verify.heights_for(next_id)
         if end > confirmed_tip:
             break  # window not fully confirmed yet
+        if out_of_time():
+            print(f"run budget ({RUN_BUDGET_S:g}s) reached -- draw {next_id} waits for the next run")
+            break
         try:
-            hashes, agreed_by = _agreed_hashes(providers, start, end)
+            hashes, agreed_by = _agreed_hashes(voters, start, end)
         except Exception as e:
             # Hold this draw (and every later one) until independent sources agree:
             # never bake unverified hashes into the irreversible commitment chain.
@@ -327,7 +413,7 @@ def main():
             "algo_version": ALGO,
             "commitment": commitment,
             "prev_commitment": prev_commitment,
-            "timestamp": _safe_timestamp(providers, hashes[-1]),
+            "timestamp": _safe_timestamp(voters, hashes[-1]),
         })
         prev_commitment = commitment
         next_id += 1
@@ -347,7 +433,10 @@ def main():
                 break  # buried past the horizon -- and so is everything older
             if d["id"] in fresh_ids:
                 continue
-            note = _reorg_audit_one(providers, d, confirmed_tip)
+            if out_of_time():
+                print(f"run budget ({RUN_BUDGET_S:g}s) reached -- reorg audit of draw {d['id']} skipped this run")
+                break
+            note = _reorg_audit_one(voters, d, confirmed_tip)
             if note:
                 break
 

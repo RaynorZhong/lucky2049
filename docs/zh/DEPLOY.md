@@ -20,7 +20,12 @@ lucky2049 是**纯静态、无服务器**的开奖引擎:出号、发布、验�
 - **站点** — `gh-pages` 上的 `index.json`/`head.json` + `web/`(页面)+ `static/`(JS/CSS)。
   GitHub Pages 免费 CDN 托管;`verify.html` 在浏览器内自带 SHA-256/HMAC 复算,不信任服务器。
 - **链头外锚** — [`.github/workflows/anchor-head.yml`](../../.github/workflows/anchor-head.yml) 每日用
-  OpenTimestamps 把当前链头(`head.json`)盖时间戳到比特币链上;证明提交进 `anchors/`,并服务于 `/anchors/`。
+  OpenTimestamps 把当前链头(`head.json`)盖时间戳到比特币链上;证明提交进 `anchors/`,并服务于
+  `/anchors/<id>.head.json(.ots)`(没有目录列表;已锚定的期号清单见 GitHub 上的
+  [`anchors/`](../../anchors/) 目录)。该工作流特意拆成两个 job:`stamp` 用只读令牌、按哈希锁定安装
+  ([`ops/anchor-requirements.txt`](../../ops/anchor-requirements.txt))来运行从 PyPI 装的 OpenTimestamps
+  客户端;`commit` 持有写令牌、不运行任何第三方代码,只通过
+  [`scripts/accept_anchors.py`](../../scripts/accept_anchors.py) 放行盖好戳的文件。
 
 > 一个窗口约 144 个区块(≈24h)才成熟;`refresh-pages.yml` 的设计是**每小时**跑一次,成熟的窗口
 > 一小时内就会发布(没有新开奖的运行只刷新 `status.json` 源健康心跳,提交信息为
@@ -46,6 +51,10 @@ lucky2049 是**纯静态、无服务器**的开奖引擎:出号、发布、验�
 - 登记域名若遇 `gh api ... -f cname=... -F https_enforced=...` 报 `certificate does not exist yet`,
   改为直接往 `gh-pages` 提交 `CNAME` 文件(`gh api -X PUT .../contents/CNAME ... -f branch=gh-pages`),
   Pages 构建会自动认领域名并签证书。
+- **验证域名**(一次性):GitHub 账号 **Settings → Pages → Add a domain** → 填 `lucky2049.com` →
+  按提示创建 `_github-pages-challenge-<user>` TXT 记录(仅 DNS),并一直保留。未验证时,如果本
+  Pages 站点哪天被取消发布而 DNS 仍指向 GitHub,别的 GitHub 账号可以认领这个域名。用
+  `gh api repos/<owner>/<repo>/pages --jq .protected_domain_state` 检查(应为 `verified`)。
 
 ---
 
@@ -56,6 +65,34 @@ lucky2049 是**纯静态、无服务器**的开奖引擎:出号、发布、验�
   二选一:常态用 cron。
 - **手动发一期**:`gh workflow run refresh-pages.yml`(改完 `web/`/`static/` 想立刻上线时用)。
 - `refresh-pages.yml` 与跑测试的 `tests.yml` 是两个独立 workflow,互不影响。
+- **时间预算**:开奖脚本并发抓取各数据源,每个源每个窗口最多 `SOURCE_BUDGET_S`(默认 300 秒),
+  链尖探测失败的源本次直接跳过,超过 `RUN_BUDGET_S`(默认 900 秒)后不再开始新的开奖或审计——
+  一个慢源最多丢掉自己那一票,拖不垮整次运行;正常情况下远在 30 分钟的 job 超时之内结束(最坏约为
+  `RUN_BUDGET_S` + 一个 `SOURCE_BUDGET_S` + 一次时间戳查询)。代价:探测失败的源本次不投哈希票,
+  所以三个源时,同一次运行里若再有一个源出错,该期会暂缓到下一个整点——可自愈,绝不会错开。
+- **`anchor-head` 运行变红并显示 `REJECTED the stamp job's output`**:commit job 拒收了盖戳产物,
+  什么都没提交。若是刚开奖几分钟后出现 `… is not a published draw`,那只是 `index.json` 的 CDN
+  旧副本(它会先重试几分钟),下一次每日运行自愈。其他原因则说明 stamp job 产出了不该有的东西:
+  先看日志再决定是否重跑。闸门把盖戳方限制在 `anchors/` 内、并把每份证明绑定到已发布的链头,
+  但不会拿证明去对照比特币链——请不时对最近的证明跑一次 `ots verify`
+  (见 [`anchors/README.md`](../../anchors/README.md))。
+
+---
+
+## 监控(停摆报警)
+
+运行失败会通知你;根本没有运行则不会。触发器令牌过期、schedule 被停用、GitHub 故障,都是无声的。
+所以每个工作流的最后一步可以向外部监控发一次 ping,由它在 ping **停止**时报警。不设置 secret 时
+两者都是空操作:
+
+| Secret(仓库 → Settings → Secrets and variables → Actions) | 谁来 ping | 监控端建议的周期 |
+|---|---|---|
+| `HEARTBEAT_URL` | `refresh-pages.yml`,在一次完全健康的运行之后 | 周期 1 小时,宽限 2 小时 |
+| `ANCHOR_HEARTBEAT_URL` | `anchor-head.yml`,在证明已提交且没有卡在 pending 的之后 | 周期 1 天,宽限 12 小时 |
+
+任何提供普通 ping 地址的"定时任务监控"服务都行(例如 [healthchecks.io](https://healthchecks.io)
+的免费检查)。每小时的 ping 配 2 小时宽限时,单是外部触发器失效就足以报警,因为 GitHub 自己的
+schedule 每隔几小时才触发一次。这个地址要当作 secret:知道它的人可以让检查一直显示正常。
 
 ---
 
@@ -137,13 +174,16 @@ GitHub 的 `schedule:` 事件那样被限流。这个 Worker 没有公开 URL(`w
 # A) 有本地 DB 缓存时:stdlib sqlite3 直读,秒级重建整份快照
 python scripts/export_static.py --out site --db data/database.db
 
-# B) 没有 DB 时:从一份空 index.json 让 cron 从创世开始从链上重算(慢,可重复跑/调大 MAX_NEW_DRAWS)
+# B) 没有 DB 时:从一份空 index.json 从创世开始从链上重算
+#    (慢:每次运行在 RUN_BUDGET_S 后不再开始新的开奖,此时才写 index.json——所以用循环重复跑,
+#    不要调大预算;每一轮都是一个存档点)
 echo '{"count":0,"head":{},"algo_version":"v1","draws":[]}' > site/index.json
-MAX_NEW_DRAWS=500 python scripts/extend_pages.py site/index.json   # 重复运行直到追平链尖
+while MAX_NEW_DRAWS=500 python scripts/extend_pages.py site/index.json | tee /dev/stderr | grep -q 'run budget'; do :; done
 ```
 
 `data/database.db` 是**可选本地缓存**(gitignored、不随仓库分发),只有路径 A 会读它;
-cron 永远不碰 DB。
+cron 永远不碰 DB。缓存只新到你上次填充它的时候,所以走完路径 A 后,发布前再跑
+`python scripts/extend_pages.py site/index.json`(重复到输出 `ADDED=0`),把缓存最后一期到链尖之间补齐。
 
 ---
 

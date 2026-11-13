@@ -106,7 +106,12 @@ verifier (`test_verify_site`), and the in-browser JS run under Node
   cron) runs `scripts/anchor_head.py` + OpenTimestamps (`ots stamp`) and commits proofs
   to `anchors/` on `main`; `refresh-pages.yml` serves them at `/anchors/` and excludes
   that dir from its rsync `--delete`. Don't break this path — the commitment chain alone
-  isn't tamper-evident without the external anchor.
+  isn't tamper-evident without the external anchor. It is **two jobs by design**: `stamp`
+  (read-only token, hash-locked `ops/anchor-requirements.txt`) runs the PyPI code; `commit`
+  (write token) runs none and admits files only via `scripts/accept_anchors.py`. Never
+  merge them back or add a `pip install` to `commit` (`tests/test_workflows.py` locks this).
+- **Monitoring**: optional dead-man pings from both workflows (`HEARTBEAT_URL`,
+  `ANCHOR_HEARTBEAT_URL` secrets; no-ops when unset) — see `docs/DEPLOY.md` "Monitoring".
 - **External trigger**: `ops/trigger-worker/` holds no draw logic and no secret in git —
   its GitHub token is a Worker secret (fine-grained PAT, this repo, Actions: Read and write,
   nothing else — which still lets a holder dispatch any workflow at any ref, incl. the

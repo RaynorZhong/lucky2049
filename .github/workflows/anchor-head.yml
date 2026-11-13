@@ -6,34 +6,45 @@ name: anchor-head
 # ~daily as a window matures, so daily anchoring keeps the most-recent draws'
 # unanchored window to ~1 day (vs ~1 week before). Commits proofs to main; the
 # refresh-pages workflow then serves them at /anchors/.
+#
+# Two jobs, on purpose. Stamping needs third-party code from PyPI (the OTS client
+# and 8 dependencies); committing needs a token that can push to main -- i.e. write
+# verify.py / the drawer, exactly the tamper class this project exists to prevent.
+# They never meet:
+#   stamp   read-only token; hash-locked install; produces anchors/ as an artifact.
+#   commit  write token; runs NO third-party code; admits the artifact only through
+#           scripts/accept_anchors.py (names, sizes, at most one new head and it must be
+#           the PUBLISHED one, each proof must parse as an OTS proof of that file, an
+#           attested proof never changes). It does not check proofs against the chain.
 on:
   schedule:
     - cron: "40 2 * * *"   # daily ~02:40 UTC
   workflow_dispatch: {}
 
+# Default for every job; `commit` alone raises it.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: anchor-head
   cancel-in-progress: false
 
 jobs:
-  anchor:
+  stamp:
     runs-on: ubuntu-latest
+    timeout-minutes: 15           # a hung calendar must not run toward the 6h default
+    permissions:
+      contents: read
     steps:
-      # Don't leave the push token on disk while third-party PyPI code (the OTS
-      # client + its deps) runs -- this workflow can write verify.py/index.json,
-      # exactly the tamper class the project exists to prevent. The final step
-      # pushes with an explicit token URL instead.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.13"
-      - name: Install the OpenTimestamps client (pinned)
-        run: pip install 'opentimestamps-client>=0.7,<0.8'
+      - name: Install the OpenTimestamps client (hash-locked; see ops/anchor-requirements.txt)
+        run: |
+          pip install --require-hashes --only-binary=:all: -r ops/anchor-requirements.txt
 
       - name: Stamp the current published head (skips draws already anchored)
         run: |
@@ -43,10 +54,45 @@ jobs:
           done
 
       - name: Upgrade earlier pending proofs to full Bitcoin attestations
+        # Best-effort here (a calendar may be briefly down); the commit job's last step
+        # turns the run red if proofs STAY pending, so a broken upgrade can't hide.
         run: |
           for f in anchors/*.ots; do ots upgrade "$f" || true; done
-          rm -f anchors/*.ots.bak   # ots upgrade leaves .bak backups -- don't version-control them
+          rm -f anchors/*.ots.bak   # ots upgrade leaves .bak backups -- don't hand them over
         continue-on-error: true
+
+      - name: Hand the anchors over to the commit job
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: anchors
+          path: |
+            anchors/*.head.json
+            anchors/*.head.json.ots
+          if-no-files-found: error
+          retention-days: 1
+
+  commit:
+    needs: stamp
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      # A FRESH checkout: nothing the stamp job touched reaches this job except the
+      # artifact, and that only through accept_anchors.py. No pip install, no `ots`.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.13"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: anchors
+          path: ${{ runner.temp }}/incoming
+
+      - name: Admit only valid anchors (stdlib; rejects the whole batch on any violation)
+        run: python scripts/accept_anchors.py "$RUNNER_TEMP/incoming"
 
       - name: Commit new / upgraded proofs to main
         run: |
@@ -54,10 +100,29 @@ jobs:
           if git diff --cached --quiet; then
             echo "no anchor changes"; exit 0
           fi
-          git -c user.email=anchor@users.noreply.github.com \
-              -c user.name="lucky2049 anchor bot" \
-              commit -m "Anchor commitment head via OpenTimestamps"
-          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
+          ident=(-c user.email=anchor@users.noreply.github.com -c user.name="lucky2049 anchor bot")
+          git "${ident[@]}" commit -m "Anchor commitment head via OpenTimestamps"
+          url="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          # main also receives the keepalive commit, Dependabot merges and operator pushes.
+          # anchors/ only ever gains files, so rebasing onto a newer main cannot conflict.
+          for attempt in 1 2 3; do
+            if git push "$url" HEAD:main; then exit 0; fi
+            echo "push rejected (attempt $attempt) -- rebasing onto the latest main"
+            sleep $((attempt * 5))
+            git fetch "$url" main
+            git "${ident[@]}" rebase FETCH_HEAD
+          done
+          echo "could not push after 3 attempts"; exit 1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+
+      - name: Fail if older proofs are still pending (upgrade path broken)
+        run: python scripts/accept_anchors.py --check-pending
+
+      - name: Heartbeat (dead-man's switch; no-op unless the ANCHOR_HEARTBEAT_URL secret is set)
+        env:
+          HEARTBEAT_URL: ${{ secrets.ANCHOR_HEARTBEAT_URL }}
+        run: |
+          if [ -z "$HEARTBEAT_URL" ]; then echo "no heartbeat URL configured -- skipping"; exit 0; fi
+          curl -fsS -m 10 --retry 3 -o /dev/null "$HEARTBEAT_URL" || echo "heartbeat ping failed (non-fatal)"

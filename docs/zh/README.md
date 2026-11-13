@@ -105,7 +105,7 @@ commitment = SHA256( 上一期承诺 | 期号 | 算法版本 | 种子 | 前区 |
 
 于是整段历史被压缩成一个 32 字节的**链头**（`head.json`）。改动任何一期都会改变链头。**链头每日经
 [OpenTimestamps](https://opentimestamps.org) 外锚到比特币区块链**（[`anchor-head.yml`](../../.github/workflows/anchor-head.yml)，
-证明发布在 [`anchors/`](../../anchors/) 并同时服务于 `https://lucky2049.com/anchors/`），于是旧链头被第三方
+证明发布在 [`anchors/`](../../anchors/) 并同时服务于 `https://lucky2049.com/anchors/<id>.head.json.ots`），于是旧链头被第三方
 时间戳固定，运营方无法在事后悄悄改写历史。关键在于 `verify.py` 与 `verify.html` 都能**独立重算**这条
 链，承诺并非运营方自说自话；任何人可 `ots verify anchors/<id>.head.json.ots` 复核锚点。
 
@@ -119,9 +119,11 @@ scripts/
   export_static.py 从本地 SQLite 缓存(stdlib sqlite3)重建整个 index.json + 站点(初建/灾备)
   artifacts.py     下游信标产物(latest.json / feed.json / status.json 源健康);两个发布器都会写
   anchor_head.py   为已发布的链头打 OpenTimestamps 锚点(由 anchor-head.yml 每日运行)
+  accept_anchors.py anchor-head 两个 job 之间的闸门:提交前只放行合法的锚点/证明
   publish-pages.sh 手动发布(调 export_static + 推 gh-pages);常态用 cron,二选一
 web/            index.html(首页+下一期预计)/ verify.html / stats.html / trend.html(走势图)/ randomness.html(抛硬币/掷骰子演示)+ og.png + CNAME
 static/         verify.js(验证器)、stats.js(频率+卡方)、trend.js(走势图)、randomness.js(抛硬币/掷骰子演示)、style.css、favicon.svg —— 自带算法、无外部脚本
+ops/anchor-requirements.txt  OpenTimestamps 客户端的哈希锁定安装清单(anchor-head 的 stamp job 用)
 ops/trigger-worker/ Cloudflare Worker 定时器:每小时触发 refresh-pages.yml(GitHub 自身的 schedule 会被限流)—— 见 docs/DEPLOY.md
 .github/workflows/  refresh-pages.yml(cron 发布)、tests.yml(算法/承诺/JS 锁)、anchor-head.yml(OpenTimestamps 头部锚定)、keepalive.yml(防止 cron 自动停用)
 SPEC.md         冻结算法规范 v1        docs/DEPLOY.md 部署   docs/TDD.md TDD 工作流

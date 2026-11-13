@@ -106,3 +106,15 @@ jobs:
           srcs = st.get("sources") or []
           print(f"healthy sources: {sum(1 for s in srcs if s.get('ok'))}/{len(srcs)}; no hold")
           EOF
+
+      # Dead-man's switch. Every alarm above needs a run that executes and FAILS; nothing
+      # fires when runs simply stop (trigger token expired, schedule disabled, GitHub
+      # outage). So each fully healthy run pings an external monitor, which alerts when
+      # the pings stop. Optional: a no-op until the HEARTBEAT_URL secret is set
+      # (docs/DEPLOY.md, "Monitoring").
+      - name: Heartbeat (dead-man's switch; no-op unless the HEARTBEAT_URL secret is set)
+        env:
+          HEARTBEAT_URL: ${{ secrets.HEARTBEAT_URL }}
+        run: |
+          if [ -z "$HEARTBEAT_URL" ]; then echo "no heartbeat URL configured -- skipping"; exit 0; fi
+          curl -fsS -m 10 --retry 3 -o /dev/null "$HEARTBEAT_URL" || echo "heartbeat ping failed (non-fatal)"

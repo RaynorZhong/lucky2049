@@ -24,7 +24,12 @@ run on GitHub — no standing backend, no database on the critical path.
   on GitHub Pages' free CDN; `verify.html` recomputes SHA-256/HMAC in the browser, trusting no server.
 - **Head anchoring** — [`.github/workflows/anchor-head.yml`](../.github/workflows/anchor-head.yml)
   daily timestamps the current head (`head.json`) onto the Bitcoin chain via OpenTimestamps; proofs
-  are committed under `anchors/` and served at `/anchors/`.
+  are committed under `anchors/` and served at `/anchors/<id>.head.json(.ots)` (no directory
+  listing; the list of anchored ids is the [`anchors/`](../anchors/) directory on GitHub). The
+  workflow is two jobs on purpose: `stamp` runs the PyPI-installed OpenTimestamps client with a
+  read-only token and a hash-locked install ([`ops/anchor-requirements.txt`](../ops/anchor-requirements.txt));
+  `commit` holds the write token, runs no third-party code, and admits the stamped files only
+  through [`scripts/accept_anchors.py`](../scripts/accept_anchors.py).
 
 > A window takes ~144 blocks (≈24h) to mature; `refresh-pages.yml` is meant to run **hourly**, so a
 > matured window publishes within the hour (runs without a new draw just refresh the `status.json`
@@ -55,6 +60,11 @@ the next refresh and the site falls back to 404.
   `certificate does not exist yet`, instead commit a `CNAME` file directly to `gh-pages`
   (`gh api -X PUT .../contents/CNAME ... -f branch=gh-pages`); the Pages build then auto-claims the
   domain and issues the certificate.
+- **Verify the domain** (once): GitHub account **Settings → Pages → Add a domain** → enter
+  `lucky2049.com` → create the `_github-pages-challenge-<user>` TXT record it shows (DNS only) and
+  leave it in place. Until it is verified, another GitHub account could claim the domain if this
+  Pages site were ever unpublished while DNS still pointed at GitHub. Check with
+  `gh api repos/<owner>/<repo>/pages --jq .protected_domain_state` (expect `verified`).
 
 ---
 
@@ -67,6 +77,39 @@ the next refresh and the site falls back to 404.
   `web/` / `static/` and want it live immediately).
 - `refresh-pages.yml` and the test workflow `tests.yml` are two independent workflows that don't
   affect each other.
+- **Time budgets**: the drawer fetches its sources concurrently, gives each `SOURCE_BUDGET_S`
+  (default 300 s) per window, skips a source whose tip probe failed, and starts no new draw or
+  audit after `RUN_BUDGET_S` (default 900 s) — so one slow source can cost a vote but not the run,
+  which normally finishes well inside the 30-minute job timeout (worst case ≈ `RUN_BUDGET_S` + one
+  `SOURCE_BUDGET_S` + a timestamp lookup). The price: a source that failed its probe casts no hash
+  vote that run, so with three sources a second one failing in the same run holds the draw until
+  the next hourly run — self-healing, never a wrong commit.
+- **A red `anchor-head` run saying `REJECTED the stamp job's output`**: the commit job refused the
+  stamped files and committed nothing. `… is not a published draw` minutes after a fresh draw is
+  just a stale CDN copy of `index.json` (it retries for a few minutes first) — the next daily run
+  heals it. Any other reason means the stamp job produced something it should not have: read the
+  log before re-running. The gate confines the stamper to `anchors/` and binds each proof to its
+  published head, but it does not check a proof against the Bitcoin chain — run `ots verify` on a
+  recent proof now and then (see [`anchors/README.md`](../anchors/README.md)).
+
+---
+
+## Monitoring (dead-man's switch)
+
+A failed run notifies you; a run that never happens does not. The trigger token expiring, the
+schedule being disabled, or a GitHub outage would all be silent. So the last step of each workflow
+can ping an external monitor that alerts when pings **stop**. Both are no-ops until you set the
+secret:
+
+| Secret (repo → Settings → Secrets and variables → Actions) | Pinged by | Suggested schedule on the monitor |
+|---|---|---|
+| `HEARTBEAT_URL` | `refresh-pages.yml`, after a fully healthy run | period 1 h, grace 2 h |
+| `ANCHOR_HEARTBEAT_URL` | `anchor-head.yml`, after the proofs are committed and none is stuck pending | period 1 day, grace 12 h |
+
+Any "cron job monitoring" service with a plain ping URL works (e.g. a free
+[healthchecks.io](https://healthchecks.io) check). With a 2-hour grace on the hourly ping, losing
+the external trigger alone is enough to alert, because GitHub's own schedule fires only every few
+hours. The URL is a secret because anyone who knows it can keep the check green.
 
 ---
 
@@ -158,14 +201,17 @@ OpenTimestamps by `anchor-head.yml` (see `anchors/`), making the tamper-evidence
 # A) with a local DB cache: stdlib sqlite3 reads it directly, rebuilding the whole snapshot in seconds
 python scripts/export_static.py --out site --db data/database.db
 
-# B) without a DB: start from an empty index.json and let the cron recompute from genesis off the chain
-#    (slow; repeatable / raise MAX_NEW_DRAWS)
+# B) without a DB: start from an empty index.json and recompute from genesis off the chain
+#    (slow: each invocation stops starting new draws after RUN_BUDGET_S and only then writes
+#    index.json -- so loop it rather than raising the budget; every pass is a checkpoint)
 echo '{"count":0,"head":{},"algo_version":"v1","draws":[]}' > site/index.json
-MAX_NEW_DRAWS=500 python scripts/extend_pages.py site/index.json   # rerun until it catches the chain tip
+while MAX_NEW_DRAWS=500 python scripts/extend_pages.py site/index.json | tee /dev/stderr | grep -q 'run budget'; do :; done
 ```
 
 `data/database.db` is an **optional local cache** (gitignored, not shipped with the repo); only path
-A reads it — the cron never touches the DB.
+A reads it — the cron never touches the DB. The cache is only as new as the last time you filled it,
+so after path A run `python scripts/extend_pages.py site/index.json` (repeat until it reports
+`ADDED=0`) to catch up from the cache's last draw to the chain tip before publishing.
 
 ---
 

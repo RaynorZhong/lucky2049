@@ -133,7 +133,7 @@ So the entire history compresses to a single 32-byte **head** (`head.json`). Cha
 changes the head. **The head is anchored daily to the Bitcoin blockchain via
 [OpenTimestamps](https://opentimestamps.org)**
 ([`.github/workflows/anchor-head.yml`](.github/workflows/anchor-head.yml); proofs are published
-under [`anchors/`](anchors/) and also served at `https://lucky2049.com/anchors/`), so an old head
+under [`anchors/`](anchors/) and also served at `https://lucky2049.com/anchors/<id>.head.json.ots`), so an old head
 is fixed by a third-party timestamp and the operator can't quietly rewrite history after the
 fact. The key point: both `verify.py` and `verify.html` **independently recompute** this chain —
 the commitment isn't the operator's word; anyone can `ots verify anchors/<id>.head.json.ots` to
@@ -150,9 +150,11 @@ scripts/
   export_static.py rebuild the whole index.json + site from a local SQLite cache (stdlib sqlite3) — initial build / disaster recovery
   artifacts.py     downstream beacon artifacts (latest.json / feed.json / status.json source-health); written by both publishers
   anchor_head.py   stamps the published head for OpenTimestamps anchoring (run daily by anchor-head.yml)
+  accept_anchors.py gate between anchor-head's two jobs: admits only valid anchors/proofs before the commit
   publish-pages.sh manual publish (export_static + push gh-pages); use the cron normally, pick one
 web/            index.html (home + next-draw ETA) / verify.html / stats.html / trend.html (trend chart) / randomness.html (coin/dice demo) + og.png + CNAME
 static/         verify.js (verifier), stats.js (frequency + chi-square), trend.js (trend chart), randomness.js (coin/dice demo), style.css, favicon.svg — own algorithm, no external scripts
+ops/anchor-requirements.txt  hash-locked install set for the OpenTimestamps client (anchor-head's stamp job)
 ops/trigger-worker/ Cloudflare Worker cron: dispatches refresh-pages.yml hourly (GitHub throttles its own schedule) — docs/DEPLOY.md
 .github/workflows/  refresh-pages.yml (cron publish), tests.yml (algorithm / commitment / JS locks), anchor-head.yml (OpenTimestamps head anchor), keepalive.yml (keep the cron from auto-disabling)
 SPEC.md         frozen algorithm spec v1        docs/DEPLOY.md deployment   docs/TDD.md TDD workflow

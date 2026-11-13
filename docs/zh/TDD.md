@@ -46,6 +46,10 @@ python -m unittest discover -s tests                      # 不依赖 pytest 的
 `tests/test_trigger_worker.py` 在 Node 里用 stub 掉的 `fetch` 跑外部触发器(`ops/trigger-worker`):
 恰好一次带鉴权的 dispatch、仅对瞬时错误重试一次、失败要响亮且错误文本绝不含令牌、HTTP 入口不触发。
 
+`tests/test_accept_anchors.py` 钉住锚定工作流两个 job 之间的闸门(只有合法、已发布的链头和真实的证明
+才会被提交;升级只增不减),`tests/test_workflows.py` 以文本方式锁住各工作流的安全形态:action 按 SHA
+锁定、stamp/commit 拆分、哈希锁定安装、超时、可选心跳。
+
 `tests/test_verify_site.py` 用 mock 掉的 HTTP 覆盖 `verify.py --site` 的链路(实时 API + 静态
 `index.json` 回退)—— 不联网。
 

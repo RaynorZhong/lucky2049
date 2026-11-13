@@ -12,7 +12,8 @@ is provably older than any such rewrite. This is the external, trustless anchor
 that completes the tamper-evidence story (the code provides the chain).
 
 Produced daily by [`.github/workflows/anchor-head.yml`](../.github/workflows/anchor-head.yml)
-and also served at `https://lucky2049.com/anchors/`.
+and also served at `https://lucky2049.com/anchors/NNNNNN.head.json` (+ `.ots`). The site has no
+directory listing — this directory on GitHub is the list of anchored draws.
 
 ## Verify an anchor
 
@@ -24,6 +25,9 @@ ots info   anchors/006612.head.json.ots   # inspect the proof
 
 `ots verify` checks that the `.head.json` next to the `.ots` is the file that was
 stamped, then reports the Bitcoin block (and time) the timestamp is anchored to.
+
+The workflow's own checks stop at "this is a well-formed proof of this exact file" — only
+`ots verify` (above) ties a proof to the Bitcoin chain, so spot-check a recent one now and then.
 
 A freshly created proof is **pending** (committed to the OTS calendars) until it
 is confirmed in a Bitcoin block (~a few hours); `ots upgrade <file>.ots` then

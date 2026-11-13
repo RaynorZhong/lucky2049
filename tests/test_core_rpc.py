@@ -110,7 +110,7 @@ class TestCoreProviderTip(_RpcServerCase):
 
     def test_abstains_during_initial_block_download(self):
         _Handler.responses["getblockchaininfo"] = {"blocks": 500000, "initialblockdownload": True}
-        with self.assertRaisesRegex(RuntimeError, "initial block download"):
+        with self.assertRaisesRegex(extend_pages.TipAbstain, "initial block download"):
             self._provider()["tip"]()
 
     def test_serves_tip_when_synced(self):
