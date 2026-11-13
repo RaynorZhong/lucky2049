@@ -26,9 +26,15 @@ run on GitHub — no standing backend, no database on the critical path.
   daily timestamps the current head (`head.json`) onto the Bitcoin chain via OpenTimestamps; proofs
   are committed under `anchors/` and served at `/anchors/`.
 
-> A window takes ~144 blocks (≈24h) to mature; the `refresh-pages.yml` cron runs **hourly**, so a
+> A window takes ~144 blocks (≈24h) to mature; `refresh-pages.yml` is meant to run **hourly**, so a
 > matured window publishes within the hour (runs without a new draw just refresh the `status.json`
 > source-health heartbeat, committed as "Refresh source health") — still server-less.
+>
+> GitHub does not honour the hourly `schedule:` reliably (by Nov 2026 it fired ~4×/day on this
+> repo), so the hourly cadence comes from a tiny external trigger — see
+> [External trigger](#external-trigger-cloudflare-worker) below. The workflow's own `schedule:`
+> stays as the fallback, and the trigger carries no draw logic: everything that decides or
+> publishes a draw still runs on GitHub.
 
 ---
 
@@ -61,6 +67,58 @@ the next refresh and the site falls back to 404.
   `web/` / `static/` and want it live immediately).
 - `refresh-pages.yml` and the test workflow `tests.yml` are two independent workflows that don't
   affect each other.
+
+---
+
+## External trigger (Cloudflare Worker)
+
+[`ops/trigger-worker/`](../ops/trigger-worker/) is a Cloudflare Worker with a cron
+(`50 * * * *`, UTC) that sends one `workflow_dispatch` for `refresh-pages.yml` every hour. A
+dispatch runs immediately, unlike GitHub's throttled `schedule:` events. The Worker has no public
+URL (`workers_dev = false`, no routes) and does nothing but that one API call; the workflow's
+concurrency group makes an overlap with the fallback schedule harmless.
+
+**Deploy (once):**
+
+1. Create a **fine-grained personal access token** (GitHub → Settings → Developer settings →
+   Personal access tokens → Fine-grained tokens): *Repository access* = only this repository; *Repository permissions* →
+   **Actions: Read and write** (Metadata: Read-only is added automatically); nothing else. Pick an
+   expiry of a year or less (GitHub also offers "No expiration" — avoid it: an expiring token
+   limits the damage if it leaks) and put a reminder in your calendar.
+2. From `ops/trigger-worker/`:
+   ```shell
+   npx wrangler login
+   npx wrangler deploy
+   npx wrangler secret put GITHUB_TOKEN     # paste the token; it is stored only as a Worker secret
+   ```
+3. Check after the next `:50`: `gh run list --workflow=refresh-pages.yml -L 3` shows a
+   `workflow_dispatch` run, and `npx wrangler tail` (or the Worker's logs in the dashboard) prints
+   `dispatched refresh-pages.yml …`.
+
+**Rotate the token** (before it expires, or if it may have leaked): create a new one as in step 1,
+run `npx wrangler secret put GITHUB_TOKEN` again (no redeploy needed), then delete the old token on
+GitHub.
+
+**If it stops:** an expired/revoked token makes every invocation fail with `HTTP 401 … rotate it`
+in the Worker's logs. Nothing breaks — publishing falls back to GitHub's own schedule — but the
+cadence drops again and the homepage source line starts reading "stale" (>4 h since a refresh).
+
+**If the token leaks:** it cannot push code or read secrets, but it is not harmless. A
+fine-grained token can't be narrowed to one workflow or one ref, so "Actions: Read and write" lets
+its holder dispatch **any** workflow in this repository at **any** ref, re-run or cancel runs,
+delete run logs/artifacts/caches, and disable workflows. The sharp edge is the archived
+`v1-server` tag: its old `refresh-pages.yml` is still dispatchable and force-pushes `gh-pages`
+from a single hash source. The next run from `main` restores the site, but `gh-pages` history
+would be gone. So: revoke the token at once on any suspicion, check that nothing was disabled
+(`gh workflow list --all`), and re-run `refresh-pages` from `main`.
+
+**Recommended hardening (once, in the repo's Settings → Rules → Rulesets):** block force pushes
+and deletion on `gh-pages` and `main`. Every workflow on `main` uses a normal push, so nothing
+legitimate is affected, and the archived publisher's `push -f` can no longer rewrite the site.
+(`scripts/publish-pages.sh` also force-pushes — it is the disaster-recovery path; lift the rule
+temporarily if you ever need it.)
+
+**Remove:** `npx wrangler delete` from `ops/trigger-worker/`, and delete the token on GitHub.
 
 ---
 

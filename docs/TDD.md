@@ -49,6 +49,10 @@ The site is static, so the tests pin the two things that matter:
   the shared nav, the stats read, the homepage de-dup, the homepage's next-draw ETA target —
   is guarded by the stdlib `tests/test_pages.py` and `tests/test_index_js.py` text checks.)
 
+`tests/test_trigger_worker.py` runs the external trigger (`ops/trigger-worker`) under Node with a
+stubbed `fetch`: exactly one authenticated dispatch, one retry on transient errors only, loud
+failures that never contain the token, and no dispatch over HTTP.
+
 `tests/test_verify_site.py` covers the `verify.py --site` plumbing (live API +
 static `index.json` fallback) with mocked HTTP — no network.
 

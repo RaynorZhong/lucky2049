@@ -44,6 +44,9 @@ python -m http.server -d /tmp/site 8000           # open http://localhost:8000
 The published site self-updates: `.github/workflows/refresh-pages.yml` (hourly
 cron) runs `scripts/extend_pages.py` to draw any newly-confirmed 144-block window
 from the chain and republish `gh-pages`. No server, no DB — stdlib + `verify.py`.
+GitHub throttles that `schedule:` heavily, so the hourly cadence really comes from
+`ops/trigger-worker/` (a Cloudflare Worker cron that sends a `workflow_dispatch`); the
+workflow's own schedule is only the fallback.
 
 ## Test / TDD
 
@@ -104,6 +107,12 @@ verifier (`test_verify_site`), and the in-browser JS run under Node
   to `anchors/` on `main`; `refresh-pages.yml` serves them at `/anchors/` and excludes
   that dir from its rsync `--delete`. Don't break this path — the commitment chain alone
   isn't tamper-evident without the external anchor.
+- **External trigger**: `ops/trigger-worker/` holds no draw logic and no secret in git —
+  its GitHub token is a Worker secret (fine-grained PAT, this repo, Actions: Read and write,
+  nothing else — which still lets a holder dispatch any workflow at any ref, incl. the
+  archived `v1-server` publisher; see the leak notes in `docs/DEPLOY.md`)
+  that **expires**; when it does, publishing silently drops back to GitHub's throttled
+  schedule and the homepage source line reads "stale". Deploy/rotate: `docs/DEPLOY.md`.
 - The old FastAPI server + DB + Docker/Render are gone from `main`; recover from the
   `v1-server` tag if you ever need a live API.
 - macOS system `python3` is 3.9; use `./.venv` (3.13) for anything real.

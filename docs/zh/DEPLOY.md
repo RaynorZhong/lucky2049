@@ -22,9 +22,13 @@ lucky2049 是**纯静态、无服务器**的开奖引擎:出号、发布、验�
 - **链头外锚** — [`.github/workflows/anchor-head.yml`](../../.github/workflows/anchor-head.yml) 每日用
   OpenTimestamps 把当前链头(`head.json`)盖时间戳到比特币链上;证明提交进 `anchors/`,并服务于 `/anchors/`。
 
-> 一个窗口约 144 个区块(≈24h)才成熟;`refresh-pages.yml` 的 cron **每小时**跑一次,成熟的窗口
+> 一个窗口约 144 个区块(≈24h)才成熟;`refresh-pages.yml` 的设计是**每小时**跑一次,成熟的窗口
 > 一小时内就会发布(没有新开奖的运行只刷新 `status.json` 源健康心跳,提交信息为
 > "Refresh source health")——仍然无服务器。
+>
+> GitHub 并不可靠地兑现每小时的 `schedule:`(到 2026 年 11 月,本仓库每天只触发约 4 次),所以
+> 每小时的节奏由一个很小的外部触发器保证——见下文[外部触发器](#外部触发器cloudflare-worker)。
+> 工作流自身的 `schedule:` 保留作兜底;触发器不含任何开奖逻辑:决定和发布开奖的一切仍跑在 GitHub 上。
 
 ---
 
@@ -52,6 +56,51 @@ lucky2049 是**纯静态、无服务器**的开奖引擎:出号、发布、验�
   二选一:常态用 cron。
 - **手动发一期**:`gh workflow run refresh-pages.yml`(改完 `web/`/`static/` 想立刻上线时用)。
 - `refresh-pages.yml` 与跑测试的 `tests.yml` 是两个独立 workflow,互不影响。
+
+---
+
+## 外部触发器(Cloudflare Worker)
+
+[`ops/trigger-worker/`](../../ops/trigger-worker/) 是一个带 cron(`50 * * * *`,UTC)的 Cloudflare
+Worker,每小时为 `refresh-pages.yml` 发送一次 `workflow_dispatch`。dispatch 会立即运行,不像
+GitHub 的 `schedule:` 事件那样被限流。这个 Worker 没有公开 URL(`workers_dev = false`、无路由),
+只做这一次 API 调用;工作流的并发组保证它与兜底的 schedule 重叠时也无害。
+
+**部署(一次性):**
+
+1. 创建一个**细粒度个人访问令牌**(GitHub → Settings → Developer settings → Personal access
+   tokens → Fine-grained tokens):*Repository access* 只选本仓库;*Repository permissions* → **Actions: Read and
+   write**(Metadata: Read-only 会自动加上);其余一概不给。选一个不超过 1 年的
+   有效期(GitHub 也提供 "No expiration"——不要选:会过期的令牌在泄露时损失有限),并在日历里设好提醒。
+2. 在 `ops/trigger-worker/` 目录下:
+   ```shell
+   npx wrangler login
+   npx wrangler deploy
+   npx wrangler secret put GITHUB_TOKEN     # 粘贴令牌;它只作为 Worker secret 保存
+   ```
+3. 等下一个 `:50` 过后检查:`gh run list --workflow=refresh-pages.yml -L 3` 能看到一条
+   `workflow_dispatch` 运行,`npx wrangler tail`(或控制台里该 Worker 的日志)会打印
+   `dispatched refresh-pages.yml …`。
+
+**轮换令牌**(到期前,或怀疑泄露时):按第 1 步新建一个,再跑一次
+`npx wrangler secret put GITHUB_TOKEN`(无需重新部署),然后在 GitHub 上删掉旧令牌。
+
+**如果它停了:**令牌过期/被撤销时,每次调用都会失败,Worker 日志里是 `HTTP 401 … rotate it`。
+不会有东西坏掉——发布退回到 GitHub 自己的 schedule——但节奏会再次变慢,首页的数据源一行会开始
+显示 "stale"(距上次刷新超过 4 小时)。
+
+**如果令牌泄露:**它不能推代码、不能读 secrets,但并非无害。细粒度令牌无法收窄到某一个工作流或
+某一个 ref,所以 "Actions: Read and write" 允许持有者在**任意 ref** 上触发本仓库的**任意**工作流、
+重跑或取消运行、删除运行日志/产物/缓存,以及禁用工作流。最锋利的一处是存档的 `v1-server` 标签:
+那里的旧版 `refresh-pages.yml` 仍可被触发,它会用单一哈希源强制推送 `gh-pages`。下一次从 `main`
+的运行会把站点恢复,但 `gh-pages` 的历史就没了。所以:一有怀疑立即吊销令牌,检查有没有工作流被
+禁用(`gh workflow list --all`),并从 `main` 重跑一次 `refresh-pages`。
+
+**建议的加固(一次性,在仓库 Settings → Rules → Rulesets 里):**对 `gh-pages` 和 `main` 禁止强制
+推送和删除。`main` 上的所有工作流都用普通推送,正常流程不受影响,而存档发布器的 `push -f` 就再也
+改写不了站点。(`scripts/publish-pages.sh` 也是强制推送——它是灾备路径;真要用时临时解除规则。)
+
+**移除:**在 `ops/trigger-worker/` 下执行 `npx wrangler delete`,并在 GitHub 上删除令牌。
 
 ---
 

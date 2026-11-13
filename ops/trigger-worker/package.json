@@ -1,0 +1,6 @@
+{
+  "name": "lucky2049-trigger",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker cron that dispatches the refresh-pages workflow hourly (see docs/DEPLOY.md)."
+}

@@ -60,7 +60,10 @@ The whole "draw + publish + verify" loop runs on GitHub, with **no server and no
   confirmed** new 144-block window it fetches the hashes from **≥2 independent sources and
   requires them to agree**, recomputes with `verify.py`, chains the commitment, appends to
   `index.json`, and pushes back to `gh-pages` (a draw whose sources disagree is held, not
-  published — so a single bad/forked explorer can't corrupt history). Pure stdlib.
+  published — so a single bad/forked explorer can't corrupt history). Pure stdlib. It is
+  kicked hourly by a small external trigger ([`ops/trigger-worker/`](ops/trigger-worker/), a
+  Cloudflare Worker cron) because GitHub throttles scheduled workflows; the workflow's own
+  schedule remains as the fallback.
 - **Site** — `web/` (`index.html` [+ next-draw ETA] / `verify.html` / `stats.html` /
   `trend.html` [trend chart] / `randomness.html` [coin/dice demo]) + `static/`
   (`verify.js` / `stats.js` / `trend.js` / `randomness.js` / `style.css`).
@@ -150,6 +153,7 @@ scripts/
   publish-pages.sh manual publish (export_static + push gh-pages); use the cron normally, pick one
 web/            index.html (home + next-draw ETA) / verify.html / stats.html / trend.html (trend chart) / randomness.html (coin/dice demo) + og.png + CNAME
 static/         verify.js (verifier), stats.js (frequency + chi-square), trend.js (trend chart), randomness.js (coin/dice demo), style.css, favicon.svg — own algorithm, no external scripts
+ops/trigger-worker/ Cloudflare Worker cron: dispatches refresh-pages.yml hourly (GitHub throttles its own schedule) — docs/DEPLOY.md
 .github/workflows/  refresh-pages.yml (cron publish), tests.yml (algorithm / commitment / JS locks), anchor-head.yml (OpenTimestamps head anchor), keepalive.yml (keep the cron from auto-disabling)
 SPEC.md         frozen algorithm spec v1        docs/DEPLOY.md deployment   docs/TDD.md TDD workflow
 data/           database.db — optional local cache, gitignored, not shipped with the repo; read only by export_static on rebuild

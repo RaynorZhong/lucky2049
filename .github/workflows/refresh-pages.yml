@@ -1,9 +1,13 @@
 name: refresh-pages
 
-# Server-less "drawer + publisher": on a schedule, extend the published snapshot
+# Server-less "drawer + publisher": extend the published snapshot
 # with any newly-confirmed draws straight from the chain (no DB, stdlib only),
 # then republish to gh-pages. This is what keeps the GitHub Pages site fresh
 # without any external host.
+#
+# Cadence: GitHub throttles `schedule:` hard on this repo, so the hourly kick really
+# comes from ops/trigger-worker (a Cloudflare Worker cron -> workflow_dispatch); the
+# schedule below is only the fallback. See docs/DEPLOY.md ("External trigger").
 on:
   schedule:
     - cron: "20 * * * *"   # hourly at :20 UTC -- publish a matured window within the hour

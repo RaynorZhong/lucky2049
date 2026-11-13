@@ -52,3 +52,9 @@ anchors/*.ots.bak
 # repo — binary bloat + copyright. The committed README maps each to its canonical link.
 docs/essay/*
 !docs/essay/README.md
+
+# Cloudflare Worker (ops/trigger-worker): wrangler's local state, deps, and local secrets.
+.wrangler/
+node_modules/
+.dev.vars*
+.env.*
