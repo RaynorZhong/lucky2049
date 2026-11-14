@@ -115,11 +115,20 @@ hours. The URL is a secret because anyone who knows it can keep the check green.
 
 ## External trigger (Cloudflare Worker)
 
-[`ops/trigger-worker/`](../ops/trigger-worker/) is a Cloudflare Worker with a cron
-(`50 * * * *`, UTC) that sends one `workflow_dispatch` for `refresh-pages.yml` every hour. A
-dispatch runs immediately, unlike GitHub's throttled `schedule:` events. The Worker has no public
-URL (`workers_dev = false`, no routes) and does nothing but that one API call; the workflow's
-concurrency group makes an overlap with the fallback schedule harmless.
+[`ops/trigger-worker/`](../ops/trigger-worker/) uses two Cloudflare Cron Triggers. Each event
+dispatches exactly one workflow on `main`, selected by its exact cron expression:
+
+| Cloudflare cron (UTC) | Beijing time | Workflow | GitHub schedule fallback (UTC) |
+|---|---|---|---|
+| `50 * * * *` | hourly at :50 | `refresh-pages.yml` (`WORKFLOW_FILE`) | `20 * * * *` |
+| `35 2 * * *` (`ANCHOR_CRON`) | daily 10:35 | `anchor-head.yml` (`ANCHOR_WORKFLOW_FILE`) | `40 2 * * *` |
+
+`workflow_dispatch` avoids GitHub's delayed schedule delivery. The Worker has no public URL
+(`workers_dev = false`, no routes); HTTP requests never dispatch anything. Unknown cron
+expressions fail before any request. Both GitHub schedules remain enabled as fallbacks, and each
+workflow's existing concurrency group serializes overlaps. The existing Worker secret
+`GITHUB_TOKEN` covers both dispatches; no additional token or permissions are needed.
+When changing the daily expression, update both `triggers.crons` and `ANCHOR_CRON` together.
 
 **Deploy (once):**
 
@@ -134,17 +143,22 @@ concurrency group makes an overlap with the fallback schedule harmless.
    npx wrangler deploy
    npx wrangler secret put GITHUB_TOKEN     # paste the token; it is stored only as a Worker secret
    ```
-3. Check after the next `:50`: `gh run list --workflow=refresh-pages.yml -L 3` shows a
-   `workflow_dispatch` run, and `npx wrangler tail` (or the Worker's logs in the dashboard) prints
-   `dispatched refresh-pages.yml …`.
+3. Check `gh run list --workflow=refresh-pages.yml -L 3` after the next `:50`, and
+   `gh run list --workflow=anchor-head.yml -L 3` after 02:35 UTC. Both should show successful
+   `workflow_dispatch` runs. `npx wrangler tail` (or the Worker's dashboard logs) identifies the
+   selected cron and prints `dispatched refresh-pages.yml …` or `dispatched anchor-head.yml …`.
+   Cron changes can take up to 15 minutes to propagate; check the deployed schedules as well as
+   the invocation outcome. A local `--test-scheduled` request alone does not prove production
+   scheduling.
 
 **Rotate the token** (before it expires, or if it may have leaked): create a new one as in step 1,
 run `npx wrangler secret put GITHUB_TOKEN` again (no redeploy needed), then delete the old token on
 GitHub.
 
 **If it stops:** an expired/revoked token makes every invocation fail with `HTTP 401 … rotate it`
-in the Worker's logs. Nothing breaks — publishing falls back to GitHub's own schedule — but the
-cadence drops again and the homepage source line starts reading "stale" (>4 h since a refresh).
+in the Worker's logs. Both workflows fall back to GitHub's own schedules, which may be delayed;
+the homepage source line starts reading "stale" after >4 h without a refresh. Check the anchor
+workflow separately and retain its daily dead-man monitor.
 
 **If the token leaks:** it cannot push code or read secrets, but it is not harmless. A
 fine-grained token can't be narrowed to one workflow or one ref, so "Actions: Read and write" lets

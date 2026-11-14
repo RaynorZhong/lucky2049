@@ -1,16 +1,16 @@
 /*
- * lucky2049 — external hourly trigger for the refresh-pages workflow.
+ * lucky2049 — external hourly publishing and daily anchoring triggers.
  *
  * GitHub throttles `schedule:` events on this repo hard (the "hourly" cron was firing
  * ~4x/day by Nov 2026), which delayed draw publication by hours and left the homepage
  * source line "stale". A `workflow_dispatch` is NOT throttled — it runs immediately — so
- * this Cloudflare Worker's cron simply asks GitHub to run the workflow once an hour.
+ * this Cloudflare Worker's crons ask GitHub to publish hourly and anchor daily.
  *
- * It does nothing else: no draw logic, no data, no public HTTP surface. The workflow's
+ * It does nothing else: no draw logic, no data, no public HTTP surface. Each workflow's
  * own `schedule:` stays as a fallback, and its concurrency group makes an overlapping
  * trigger harmless.
  *
- * Config (wrangler.toml [vars]): GITHUB_REPO, WORKFLOW_FILE, WORKFLOW_REF.
+ * Config: GITHUB_REPO, WORKFLOW_FILE, ANCHOR_WORKFLOW_FILE, ANCHOR_CRON, WORKFLOW_REF.
  * Secret (wrangler secret put): GITHUB_TOKEN — a fine-grained PAT scoped to this one
  * repository with "Actions: Read and write" and nothing else. See docs/DEPLOY.md.
  */
@@ -72,8 +72,18 @@ export async function dispatch(env, fetchImpl = fetch, delayMs = RETRY_DELAY_MS)
 
 export default {
   async scheduled(event, env, ctx) {
-    const status = await dispatch(env);
-    console.log(`dispatched ${env.WORKFLOW_FILE} on ${env.GITHUB_REPO}@${env.WORKFLOW_REF || "main"} (HTTP ${status})`);
+    const cron = event && event.cron;
+    if (typeof cron !== "string" || !cron) throw new Error(`unknown cron: ${cron}`);
+    let workflowKey = "WORKFLOW_FILE";
+    if (cron !== "50 * * * *") {
+      if (!env || !env.ANCHOR_CRON) throw new Error("missing ANCHOR_CRON — see docs/DEPLOY.md (external trigger)");
+      if (cron !== env.ANCHOR_CRON) throw new Error(`unknown cron: ${cron}`);
+      workflowKey = "ANCHOR_WORKFLOW_FILE";
+    }
+    if (!env || !env[workflowKey]) throw new Error(`missing ${workflowKey} — see docs/DEPLOY.md (external trigger)`);
+    const target = { ...env, WORKFLOW_FILE: env[workflowKey] };
+    const status = await dispatch(target);
+    console.log(`dispatched ${target.WORKFLOW_FILE} on ${target.GITHUB_REPO}@${target.WORKFLOW_REF || "main"} (cron ${cron}; HTTP ${status})`);
   },
   // No public trigger: the Worker has no route and workers.dev is disabled in wrangler.toml.
   // If it is ever reached over HTTP anyway, it must not dispatch.

@@ -4,8 +4,9 @@ name: anchor-head
 # current published head onto the Bitcoin blockchain (via OTS calendars) so the
 # operator can't silently rewrite history. Daily + manual -- a new head appears
 # ~daily as a window matures, so daily anchoring keeps the most-recent draws'
-# unanchored window to ~1 day (vs ~1 week before). Commits proofs to main; the
-# refresh-pages workflow then serves them at /anchors/.
+# unanchored window to ~1 day (vs ~1 week before). The Cloudflare Worker dispatches
+# this workflow daily at 02:35 UTC; the schedule below remains the fallback.
+# Commits proofs to main; refresh-pages then serves them at /anchors/.
 #
 # Two jobs, on purpose. Stamping needs third-party code from PyPI (the OTS client
 # and 8 dependencies); committing needs a token that can push to main -- i.e. write
@@ -18,7 +19,7 @@ name: anchor-head
 #           attested proof never changes). It does not check proofs against the chain.
 on:
   schedule:
-    - cron: "40 2 * * *"   # daily ~02:40 UTC
+    - cron: "40 2 * * *"   # daily ~02:40 UTC fallback; Worker dispatches at 02:35
   workflow_dispatch: {}
 
 # Default for every job; `commit` alone raises it.

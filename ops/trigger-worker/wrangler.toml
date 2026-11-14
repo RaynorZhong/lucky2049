@@ -1,4 +1,4 @@
-# Cloudflare Worker: hourly external trigger for .github/workflows/refresh-pages.yml.
+# Cloudflare Worker: hourly publishing and daily anchoring workflow triggers.
 # Deploy/rotate steps: docs/DEPLOY.md ("External trigger"). The GitHub token is a
 # Worker SECRET (`wrangler secret put GITHUB_TOKEN`) and is never stored in this file.
 name = "lucky2049-trigger"
@@ -12,11 +12,14 @@ preview_urls = false
 [triggers]
 # Hourly at :50 UTC (Cloudflare crons are UTC). Offset from the workflow's own
 # `schedule:` fallback at :20 so the two don't pile up when GitHub does fire it.
-crons = ["50 * * * *"]
+# Daily anchoring at 02:35 UTC (10:35 Asia/Shanghai), before its 02:40 fallback.
+crons = ["50 * * * *", "35 2 * * *"]
 
 [vars]
 GITHUB_REPO = "RaynorZhong/lucky2049"
 WORKFLOW_FILE = "refresh-pages.yml"
+ANCHOR_WORKFLOW_FILE = "anchor-head.yml"
+ANCHOR_CRON = "35 2 * * *"
 WORKFLOW_REF = "main"
 
 # Keep invocation logs (console.log + thrown errors) so a failing trigger is visible

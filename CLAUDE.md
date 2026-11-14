@@ -113,7 +113,10 @@ verifier (`test_verify_site`), and the in-browser JS run under Node
 - **Monitoring**: optional dead-man pings from both workflows (`HEARTBEAT_URL`,
   `ANCHOR_HEARTBEAT_URL` secrets; no-ops when unset) — see `docs/DEPLOY.md` "Monitoring".
 - **External trigger**: `ops/trigger-worker/` holds no draw logic and no secret in git —
-  its GitHub token is a Worker secret (fine-grained PAT, this repo, Actions: Read and write,
+  it dispatches `refresh-pages.yml` hourly at :50 UTC and `anchor-head.yml` daily at
+  02:35 UTC (Beijing 10:35); both GitHub schedules remain as fallbacks. Route by the
+  exact `event.cron`; unknown events must not dispatch another workflow.
+  Its GitHub token is a Worker secret (fine-grained PAT, this repo, Actions: Read and write,
   nothing else — which still lets a holder dispatch any workflow at any ref, incl. the
   archived `v1-server` publisher; see the leak notes in `docs/DEPLOY.md`)
   that **expires**; when it does, publishing silently drops back to GitHub's throttled

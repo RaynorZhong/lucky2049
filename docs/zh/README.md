@@ -108,6 +108,8 @@ commitment = SHA256( 上一期承诺 | 期号 | 算法版本 | 种子 | 前区 |
 证明发布在 [`anchors/`](../../anchors/) 并同时服务于 `https://lucky2049.com/anchors/<id>.head.json.ots`），于是旧链头被第三方
 时间戳固定，运营方无法在事后悄悄改写历史。关键在于 `verify.py` 与 `verify.html` 都能**独立重算**这条
 链，承诺并非运营方自说自话；任何人可 `ots verify anchors/<id>.head.json.ots` 复核锚点。
+同一个 Cloudflare Worker 每日 02:35 UTC（北京时间 10:35）触发 `anchor-head.yml`，
+工作流自身 02:40 UTC 的 GitHub schedule 保留作兜底。
 
 ## 代码结构
 
@@ -124,7 +126,7 @@ scripts/
 web/            index.html(首页+下一期预计)/ verify.html / stats.html / trend.html(走势图)/ randomness.html(抛硬币/掷骰子演示)+ og.png + CNAME
 static/         verify.js(验证器)、stats.js(频率+卡方)、trend.js(走势图)、randomness.js(抛硬币/掷骰子演示)、style.css、favicon.svg —— 自带算法、无外部脚本
 ops/anchor-requirements.txt  OpenTimestamps 客户端的哈希锁定安装清单(anchor-head 的 stamp job 用)
-ops/trigger-worker/ Cloudflare Worker 定时器:每小时触发 refresh-pages.yml(GitHub 自身的 schedule 会被限流)—— 见 docs/DEPLOY.md
+ops/trigger-worker/ Cloudflare Worker 定时器:每小时触发 refresh-pages.yml、每日触发 anchor-head.yml;GitHub schedule 保留兜底—— 见 docs/DEPLOY.md
 .github/workflows/  refresh-pages.yml(cron 发布)、tests.yml(算法/承诺/JS 锁)、anchor-head.yml(OpenTimestamps 头部锚定)、keepalive.yml(防止 cron 自动停用)
 SPEC.md         冻结算法规范 v1        docs/DEPLOY.md 部署   docs/TDD.md TDD 工作流
 data/           database.db —— 可选本地缓存,gitignored、不随仓库分发,仅 export_static 重建时读

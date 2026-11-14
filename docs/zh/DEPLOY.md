@@ -98,10 +98,19 @@ schedule 每隔几小时才触发一次。这个地址要当作 secret:知道它
 
 ## 外部触发器(Cloudflare Worker)
 
-[`ops/trigger-worker/`](../../ops/trigger-worker/) 是一个带 cron(`50 * * * *`,UTC)的 Cloudflare
-Worker,每小时为 `refresh-pages.yml` 发送一次 `workflow_dispatch`。dispatch 会立即运行,不像
-GitHub 的 `schedule:` 事件那样被限流。这个 Worker 没有公开 URL(`workers_dev = false`、无路由),
-只做这一次 API 调用;工作流的并发组保证它与兜底的 schedule 重叠时也无害。
+[`ops/trigger-worker/`](../../ops/trigger-worker/) 使用两个 Cloudflare Cron Trigger。每次事件按
+完整匹配的 cron 表达式,只触发 `main` 上的一个工作流:
+
+| Cloudflare cron(UTC) | 北京时间 | 工作流 | GitHub schedule 兜底(UTC) |
+|---|---|---|---|
+| `50 * * * *` | 每小时 :50 | `refresh-pages.yml`(`WORKFLOW_FILE`) | `20 * * * *` |
+| `35 2 * * *`(`ANCHOR_CRON`) | 每日 10:35 | `anchor-head.yml`(`ANCHOR_WORKFLOW_FILE`) | `40 2 * * *` |
+
+`workflow_dispatch` 避开 GitHub 定时事件的延迟投递。Worker 没有公开 URL
+(`workers_dev = false`、无路由),HTTP 请求不会触发任务;未知 cron 在发请求前报错。
+两个 GitHub schedule 都保留作兜底,各工作流现有的并发组负责将重叠运行串行化。
+现有 Worker secret `GITHUB_TOKEN` 已覆盖两种触发,无需新增令牌或扩大权限。
+修改每日表达式时,须同步修改 `triggers.crons` 和 `ANCHOR_CRON`。
 
 **部署(一次性):**
 
@@ -115,16 +124,19 @@ GitHub 的 `schedule:` 事件那样被限流。这个 Worker 没有公开 URL(`w
    npx wrangler deploy
    npx wrangler secret put GITHUB_TOKEN     # 粘贴令牌;它只作为 Worker secret 保存
    ```
-3. 等下一个 `:50` 过后检查:`gh run list --workflow=refresh-pages.yml -L 3` 能看到一条
-   `workflow_dispatch` 运行,`npx wrangler tail`(或控制台里该 Worker 的日志)会打印
-   `dispatched refresh-pages.yml …`。
+3. 每小时 `:50` 之后检查 `gh run list --workflow=refresh-pages.yml -L 3`,02:35 UTC 之后检查
+   `gh run list --workflow=anchor-head.yml -L 3`,两者都应出现成功的 `workflow_dispatch` 运行。
+   `npx wrangler tail`(或 Worker 控制台日志)会标出 cron,并打印
+   `dispatched refresh-pages.yml …` 或 `dispatched anchor-head.yml …`。
+   cron 修改最多需要 15 分钟传播;同时核对已部署的定时配置和调用结果。
+   单独一次本地 `--test-scheduled` 请求不能证明生产定时触发正常。
 
 **轮换令牌**(到期前,或怀疑泄露时):按第 1 步新建一个,再跑一次
 `npx wrangler secret put GITHUB_TOKEN`(无需重新部署),然后在 GitHub 上删掉旧令牌。
 
 **如果它停了:**令牌过期/被撤销时,每次调用都会失败,Worker 日志里是 `HTTP 401 … rotate it`。
-不会有东西坏掉——发布退回到 GitHub 自己的 schedule——但节奏会再次变慢,首页的数据源一行会开始
-显示 "stale"(距上次刷新超过 4 小时)。
+两个工作流会退回 GitHub 自己的 schedule,但触发可能延迟;首页数据源一行在超过 4 小时未刷新后
+显示 "stale"。锚定工作流应单独检查,并保留每日停摆监控。
 
 **如果令牌泄露:**它不能推代码、不能读 secrets,但并非无害。细粒度令牌无法收窄到某一个工作流或
 某一个 ref,所以 "Actions: Read and write" 允许持有者在**任意 ref** 上触发本仓库的**任意**工作流、

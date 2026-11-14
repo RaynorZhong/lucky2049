@@ -11,7 +11,8 @@ later rewrite past draws and recompute a consistent head: the old, anchored head
 is provably older than any such rewrite. This is the external, trustless anchor
 that completes the tamper-evidence story (the code provides the chain).
 
-Produced daily by [`.github/workflows/anchor-head.yml`](../.github/workflows/anchor-head.yml)
+Produced daily by [`.github/workflows/anchor-head.yml`](../.github/workflows/anchor-head.yml),
+dispatched by the Cloudflare Worker at 02:35 UTC (GitHub's 02:40 schedule is the fallback),
 and also served at `https://lucky2049.com/anchors/NNNNNN.head.json` (+ `.ots`). The site has no
 directory listing — this directory on GitHub is the list of anchored draws.
 
