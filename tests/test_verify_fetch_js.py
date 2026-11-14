@@ -4,9 +4,8 @@ Locks verify.html's in-browser hash-fetch/assembly path -- the code that selects
 144 block hashes fed into V.generate(), i.e. the page's core trust claim. It lives
 inline in web/verify.html (not in static/verify.js), so it's extracted and run under
 Node with a stubbed fetch. Asserts: a healthy window assembles all 144 in order from
-ONE explorer; a fork/blip on one explorer restarts the whole window on the next with
-NO cross-explorer mixing (the anti-Frankenstein guarantee); and when neither batched
-explorer can serve it, the per-height fallback still assembles the window. Node + stdlib.
+ONE explorer; a fork/blip restarts the whole window on the next with NO cross-explorer
+mixing, including per-height fallback and late in-flight replies. Node + stdlib.
 """
 import json
 import os
@@ -30,6 +29,14 @@ const $ = () => ({});                                   // progress() sink
 const mkApi = (fetch) => new Function('fetch', '$', block + '\nreturn {fetchHashes};')(fetch, $);
 const id = (w, ht) => w + ht.toString(16).padStart(63, '0');           // 64-hex, source-tagged
 const page = (top, w) => { const o = []; for (let i = 0; i < 10 && top - i >= 0; i++) o.push({ height: top - i, id: id(w, top - i) }); return o; };
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+const perHeight = handler => async u => {
+  const s = String(u);
+  if (/\/blocks\/\d+$/.test(s)) throw new Error('no batch');
+  const m = s.match(/block-height\/(\d+)$/);
+  if (!m) throw new Error('unexpected URL: ' + s);
+  return handler(s.includes('mempool') ? 'a' : 'b', +m[1]);
+};
 (async () => {
   // 1) both explorers healthy -> all 144 from ONE (mempool='a'), correct order
   let f = async (u) => { const m = String(u).match(/\/blocks\/(\d+)$/); return { ok: true, json: async () => page(+m[1], String(u).includes('mempool') ? 'a' : 'b') }; };
@@ -41,12 +48,59 @@ const page = (top, w) => { const o = []; for (let i = 0; i < 10 && top - i >= 0;
   const h2 = await mkApi(f).fetchHashes(0, 143);
   const c2 = h2.length === 144 && h2.every((x) => x[0] === 'b');        // all one source, the fallback explorer
 
-  // 3) neither batched explorer works -> per-height fallback assembles the window
-  f = async (u) => { const s = String(u); if (/\/blocks\/\d+$/.test(s)) throw new Error('no batch'); const m = s.match(/block-height\/(\d+)$/); if (m) return { ok: true, text: async () => id('a', +m[1]) }; throw new Error('x'); };
-  const h3 = await mkApi(f).fetchHashes(5, 8);
-  const c3 = h3.length === 4 && h3.every((x, i) => x === id('a', 5 + i));
+  // 3) healthy per-height fallback keeps all 144 slots ordered, with concurrency 8
+  let active = 0, maxActive = 0, secondCalls = 0;
+  f = perHeight(async (w, h) => {
+    if (w === 'b') secondCalls++;
+    active++; maxActive = Math.max(maxActive, active);
+    await delay(1); active--;
+    return { ok: true, text: async () => '  ' + id(w, h).toUpperCase() + '\n' };
+  });
+  const h3 = await mkApi(f).fetchHashes(5, 148);
+  const c3 = h3.length === 144 && h3.every((x, i) => x === id('a', 5 + i))
+    && maxActive === 8 && secondCalls === 0;
 
-  console.log(JSON.stringify({ c1, c2, c3, len1: h1.length, len2: h2.length, len3: h3.length }));
+  // 4) a partial first explorer fails -> refetch EVERY height from the second
+  const calls = { a: [], b: [] };
+  f = perHeight(async (w, h) => {
+    calls[w].push(h);
+    if (w === 'a' && h === 12) throw new Error('first explorer dropped a height');
+    return { ok: true, text: async () => id(w, h) };
+  });
+  const h4 = await mkApi(f).fetchHashes(0, 31);
+  const c4 = calls.a.length > 1 && calls.b.length === 32
+    && h4.length === 32 && h4.every((x, i) => x === id('b', i));
+
+  // 5) complementary partial failures cannot be patched together into a window
+  f = perHeight(async (w, h) => {
+    if ((w === 'a' && h === 4) || (w === 'b' && h === 5)) throw new Error('partial outage');
+    return { ok: true, text: async () => id(w, h) };
+  });
+  let c5 = false;
+  try { await mkApi(f).fetchHashes(0, 15); }
+  catch (e) { c5 = /mempool\.space/.test(e.message) && /blockstream\.info/.test(e.message); }
+
+  // 6) a rejected worker must not start the next explorer while old replies can write
+  let pendingFirst = 0, overlap = false;
+  f = perHeight(async (w, h) => {
+    if (w === 'a') {
+      if (h === 0) throw new Error('first worker fails immediately');
+      pendingFirst++; await delay(15); pendingFirst--;
+    } else if (pendingFirst > 0) overlap = true;
+    return { ok: true, text: async () => id(w, h) };
+  });
+  const h6 = await mkApi(f).fetchHashes(0, 15);
+  const beforeLateReplies = JSON.stringify(h6);
+  await delay(30);
+  const c6 = !overlap && pendingFirst === 0 && h6.every((x, i) => x === id('b', i))
+    && JSON.stringify(h6) === beforeLateReplies;
+
+  // 7) invalid per-height data has the same whole-window retry semantics as an outage
+  f = perHeight(async (w, h) => ({ ok: true, text: async () => w === 'a' && h === 8 ? 'not-a-hash' : id(w, h) }));
+  const h7 = await mkApi(f).fetchHashes(0, 15);
+  const c7 = h7.every((x, i) => x === id('b', i));
+
+  console.log(JSON.stringify({ c1, c2, c3, c4, c5, c6, c7, len1: h1.length, len2: h2.length, len3: h3.length }));
 })().catch((e) => { console.error(e); process.exit(3); });
 """
 
@@ -59,6 +113,10 @@ class TestVerifyFetchJs(unittest.TestCase):
         self.assertTrue(got["c1"], "healthy window must assemble 144 in order from one explorer")
         self.assertTrue(got["c2"], "a blip must restart the window on the other explorer with no mixing")
         self.assertTrue(got["c3"], "per-height fallback must assemble the window when batched fails")
+        self.assertTrue(got["c4"], "a partial per-height outage must restart every height on the next explorer")
+        self.assertTrue(got["c5"], "two partial explorers must reject instead of assembling a mixed window")
+        self.assertTrue(got["c6"], "all old workers must settle before the next explorer starts")
+        self.assertTrue(got["c7"], "invalid hashes must restart the entire window on the next explorer")
 
     def test_verdict_composition_truth_table(self):
         # Lock the /verify page's whole PASS/FAIL/genesis/unchecked verdict (its core trust output).
@@ -67,9 +125,9 @@ class TestVerifyFetchJs(unittest.TestCase):
         # result reproduces + chain intact -> green PASS
         self.assertEqual(v["genesis"]["state"], "pass"); self.assertIn("genesis commitment verified", v["genesis"]["sub"])
         self.assertEqual(v["normal"]["state"], "pass"); self.assertIn("commitment chain intact", v["normal"]["sub"])
-        # predecessor missing -> still PASS on the result, but must NOT claim genesis
-        self.assertEqual(v["unchecked"]["state"], "pass")
-        self.assertIn("couldn't be checked", v["unchecked"]["sub"])
+        # predecessor missing -> incomplete verification must not claim PASS or genesis
+        self.assertEqual(v["unchecked"]["state"], "err")
+        self.assertIn("missing or invalid", v["unchecked"]["sub"])
         self.assertNotIn("genesis", v["unchecked"]["sub"])
         # result mismatch -> FAIL "does NOT match"; numbers ok but chain broken -> FAIL "BROKEN"
         self.assertEqual(v["mismatch"]["state"], "fail"); self.assertIn("does NOT match", v["mismatch"]["text"])

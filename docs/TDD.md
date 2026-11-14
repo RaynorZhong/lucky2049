@@ -61,18 +61,22 @@ hash-locked install, timeouts, optional heartbeats.
 `tests/test_verify_site.py` covers the `verify.py --site` plumbing (live API +
 static `index.json` fallback) with mocked HTTP — no network.
 
-## Worked example: stats.js parity (golden-pinned)
+## Worked example: stats.js model calibration
 
-`tests/test_stats_js.py` is the template for a cross-implementation lock:
+`tests/test_stats_js.py` checks the model as well as its implementation:
 
-1. Compute the authoritative answer once (here, the chi-square via scipy during
-   development) and **hard-code it as a golden vector** in the test.
-2. Run the JS (`static/stats.js`) under Node over a deterministic dataset and
-   assert it matches the golden — and so does an independent pure-Python
-   reference of the same formula. No scipy dependency is left in the repo.
+1. Each draw samples `m` distinct numbers from `K`, so the frequency statistic is
+   `Q = Σ(O−E)² / [E·(K−m)/(K−1)]`, where `E = n·m/K`. For large samples it follows
+   approximately `χ²(K−1)`; theoretical expected counts are not a second sample.
+2. Run the JS under Node against numerical baselines and an independent survival
+   function using finite sums / `erfc`. Fixed-seed uniform simulations check the
+   rejection rate; a biased sample checks that real deviations are detected.
+3. With fewer than five expected inclusions or omissions per number, retain bars
+   but omit the approximate p-value. Rendering tests cover this state and ensure
+   that failing to reject uniformity is not presented as proof of fairness.
 
-Same discipline as the frozen algorithm: pin the known-correct output, then let
-any drift in either implementation turn it red.
+Statistical baselines can change when correcting the model. They are separate
+from the frozen draw-algorithm and commitment vectors below.
 
 ## Locking the frozen algorithm
 

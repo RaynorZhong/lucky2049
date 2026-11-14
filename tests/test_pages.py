@@ -50,7 +50,8 @@ class TestPageStructure(unittest.TestCase):
     def test_stats_plain_read_threshold_and_direction(self):
         m = re.search(r'p > 0\.05\s*\?\s*"([^"]*)"\s*:\s*"([^"]*)"', read("stats"))
         self.assertIsNotNone(m, "stats plain-language read ternary not found")
-        self.assertTrue(m.group(1).startswith("Looks fair"), "p>0.05 branch should read 'Looks fair'")
+        self.assertTrue(m.group(1).startswith("No statistically significant frequency deviation"),
+                        "p>0.05 must not claim that fairness has been established")
         self.assertTrue(m.group(2).startswith("Worth a closer look"), "p<=0.05 branch should flag 'Worth a closer look'")
 
     def test_homepage_earlier_draws_dedup_filter(self):

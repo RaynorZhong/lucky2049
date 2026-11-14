@@ -68,9 +68,9 @@
     </div>
     <div class="container">
         <header>
-            <h1>What a fair draw looks like.</h1>
+            <h1>Number frequencies over time.</h1>
             <p id="intro" class="text-secondary">Distribution analysis recomputed in your browser from the
-                published snapshot — a flat distribution near the dashed line is what fair, unbiased draws look like.</p>
+                published snapshot — compare observed frequencies with the uniform-draw expectation.</p>
         </header>
 
         <div id="sections"><div class="placeholder">Crunching the distribution…</div></div>
@@ -90,20 +90,22 @@
             var xlabels = sec.bars.map(function (b, i) {
                 return '<span>' + (i === 0 || i === maxBall - 1 || b.n % step === 0 ? b.n : '') + '</span>';
             }).join("");
-            // Honest qualitative read of the test (the exact chi-square + p are in the cards
-            // below). Avoid a "% of the time" framing: it reads as an absolute claim at p~1 and
-            // wrongly implies "higher p = more fair" (a very high p is just unusually uniform).
+            // A frequency test can detect a deviation, not establish fairness.
+            // Keep the decision on the unrounded p-value and format only its display.
             var p = sec.stats.p_value;
-            var plain = p > 0.05
-                ? "Looks fair — the numbers come up about equally often; the differences are within normal random variation, not bias."
-                : "Worth a closer look — some numbers came up more often than normal random variation explains.";
-            var pColor = p > 0.05 ? 'var(--accent)' : '#dc2626';
+            var plain = p === null ? "More draws needed for the approximate frequency test; the observed counts are shown below."
+                : p > 0.05
+                    ? "No statistically significant frequency deviation detected. This does not establish fairness."
+                    : "Worth a closer look — the number frequencies deviate from the uniform-draw expectation.";
+            var pColor = p === null ? 'var(--muted)' : p > 0.05 ? 'var(--accent)' : '#dc2626';
+            var pLabel = p === null ? "Not available" : p === 0 ? "< 1e-308"
+                : p < 0.0001 ? p.toExponential(2) : p.toFixed(4);
             return '<section class="panel">'
                 + '<h2>' + title + '</h2>'
                 + '<p class="plain-read">' + plain + '</p>'
                 + '<div class="stat-cards">'
                 + '<div class="card"><div class="k">Chi-square statistic</div><div class="v">' + sec.stats.chi2 + '</div></div>'
-                + '<div class="card"><div class="k">p-value</div><div class="v" style="color:' + pColor + ';">' + p + '</div></div>'
+                + '<div class="card"><div class="k">Approximate p-value</div><div class="v" style="color:' + pColor + ';">' + pLabel + '</div></div>'
                 + '</div>'
                 + '<div class="chart-row">'
                 +   '<div class="y-axis">'
@@ -118,7 +120,7 @@
                 + '</div>'
                 + '<div class="x-axis">' + xlabels + '</div>'
                 + '<p class="caption">Each bar is how often a number came up; the gray dashed line is the <strong>expected</strong> count if every number were equally likely (~'
-                + sec.expected + '). A flat row near that line is what fair, unbiased draws look like.</p>'
+                + sec.expected + '). This tests number frequencies, not every property of randomness.</p>'
                 + '</section>';
         }
         (async function () {
@@ -137,7 +139,7 @@
             }
             document.getElementById("intro").textContent =
                 "Distribution analysis over " + ov.draws + " draws, recomputed in your browser from the published "
-                + "snapshot — a flat distribution near the dashed line is what fair, unbiased draws look like.";
+                + "snapshot — compare observed frequencies with the uniform-draw expectation.";
             document.getElementById("sections").innerHTML =
                 chartSection("Front Area (1–35)", ov.front, 'front') + chartSection("Back Area (1–12)", ov.back, 'back');
         })();

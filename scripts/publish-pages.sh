@@ -28,9 +28,10 @@ if [ "$FORCE" = "--force" ]; then
   echo "WARNING: --force given -- skipping the published-history guard (anchors may be contradicted)."
 elif live_head="$(curl -fsS https://lucky2049.com/head.json 2>/dev/null)"; then
   guard_rc=0
-  printf '%s' "$live_head" | "$PY" - "$SITE/index.json" <<'PYGUARD' || guard_rc=$?
-import json, sys
-live = json.load(sys.stdin)
+  # stdin carries the Python program; pass the fetched JSON separately.
+  PUBLISHED_HEAD_JSON="$live_head" "$PY" - "$SITE/index.json" <<'PYGUARD' || guard_rc=$?
+import json, os, sys
+live = json.loads(os.environ["PUBLISHED_HEAD_JSON"])
 did, head = live.get("draw_id"), live.get("head")
 if did is None or did < 0:
     sys.exit(0)  # nothing published yet -- nothing to regress

@@ -142,6 +142,7 @@
         var V = window.Lucky2049Verify;
         var $ = function (id) { return document.getElementById(id); };
         var INDEX = null;  // cached index.json
+        var INDEX_CHAIN = null;  // full snapshot linkage result, cached with INDEX
 
         function setBadge(el, ok) { el.className = "badge " + (ok ? "pass" : "fail"); el.textContent = ok ? "PASS" : "FAIL"; }
         // The verdict hero: 'wait' | 'pass' | 'fail' | 'err'. Retry shows only on 'err'.
@@ -153,15 +154,17 @@
             $("vdRetry").style.display = state === "err" ? "" : "none";
         }
         // Pure decision: (result reproduced?, chain state 'pass'|'fail'|'unchecked', draw id) -> the
-        // verdict. Green ONLY when the numbers reproduce AND the commitment chain isn't broken. Kept
+        // verdict. Green ONLY when the numbers reproduce AND the commitment chain is verified. Kept
         // pure (no DOM) so tests/test_verify_fetch_js.py can lock the whole truth table.
         function composeVerdict(resultOk, chainState, id) {
-            if (resultOk && chainState !== "fail") {
+            if (resultOk && chainState === "pass") {
                 return { state: "pass", text: "This draw matches the Bitcoin chain.",
                     sub: "Recomputed in your browser from the 144 block hashes"
-                        + (chainState === "pass"
-                            ? (id === 0 ? " · genesis commitment verified." : " · commitment chain intact.")
-                            : " · result matches, but the commitment link couldn't be checked (not in this snapshot).") };
+                        + (id === 0 ? " · genesis commitment verified." : " · commitment chain intact.") };
+            }
+            if (resultOk && chainState === "unchecked") {
+                return { state: "err", text: "Commitment verification is incomplete.",
+                    sub: "The numbers match, but required commitment evidence is missing or invalid." };
             }
             return { state: "fail",
                 text: resultOk ? "Tamper-evidence chain is BROKEN." : "This draw does NOT match the chain.",
@@ -173,6 +176,7 @@
             (nums || []).forEach(function (n) { var d = document.createElement("div"); d.className = "white-balls" + (extra ? " " + extra : ""); d.textContent = n; c.appendChild(d); });
         }
         function eq(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+        function isCommitment(value) { return typeof value === "string" && value.length === 64 && /^[0-9a-f]{64}$/.test(value); }
 
         var INDEX_P = null;  // in-flight/resolved load promise -- dedups concurrent callers
         function loadIndex() {
@@ -187,6 +191,7 @@
                     + "  ·  chain " + (chain.ok ? "✓ intact" : "✗ BROKEN at " + chain.brokenAt);
                 $("vHead").style.color = chain.ok ? "" : "#b91c1c";
                 INDEX = idx;
+                INDEX_CHAIN = chain;
                 return idx;
             })();
             INDEX_P.catch(function () { INDEX_P = null; });  // let a failed load be retried
@@ -242,29 +247,34 @@
             }
             return false;   // no single explorer served the whole window -> per-height fallback
         }
-        async function fetchHashAt(height) {
-            var errs = [];
-            for (var i = 0; i < EXPLORERS.length; i++) {
-                try {
-                    var resp = await fetch(EXPLORERS[i].url(height));
-                    if (!resp.ok) throw new Error("HTTP " + resp.status);
-                    var hash = (await resp.text()).trim().toLowerCase();
-                    if (!/^[0-9a-f]{64}$/.test(hash)) throw new Error("unexpected response");
-                    return hash;
-                } catch (e) { errs.push(EXPLORERS[i].name + " (" + e.message + ")"); }
-            }
-            throw new Error("all explorers failed for height " + height + ": " + errs.join(", "));
+        async function fetchHashAt(height, explorer) {
+            var resp = await fetch(explorer.url(height));
+            if (!resp.ok) throw new Error("HTTP " + resp.status);
+            var hash = (await resp.text()).trim().toLowerCase();
+            if (!/^[0-9a-f]{64}$/.test(hash)) throw new Error("unexpected response");
+            return hash;
         }
         async function fetchHashesPerHeight(start, end, out) {  // fallback: concurrency 8
-            var total = end - start + 1, next = 0;
-            async function worker() {
-                while (next < total) {
-                    var idx = next++;
-                    out[idx] = await fetchHashAt(start + idx);
-                    progress(out, total);
+            var total = end - start + 1, errs = [];
+            for (var e = 0; e < EXPLORERS.length; e++) {
+                for (var k = 0; k < total; k++) out[k] = undefined;
+                var next = 0, clean = true, failure;
+                async function worker() {
+                    while (clean && next < total) {
+                        var idx = next++;
+                        try {
+                            var hash = await fetchHashAt(start + idx, EXPLORERS[e]);
+                            if (clean) { out[idx] = hash; progress(out, total); }
+                        } catch (x) { clean = false; failure = x; }
+                    }
                 }
+                // Workers catch failures so Promise.all waits for EVERY in-flight
+                // reply before the next explorer can reuse these output slots.
+                await Promise.all(Array.from({ length: 8 }, worker));
+                if (clean) return;
+                errs.push(EXPLORERS[e].name + " (" + failure + ")");
             }
-            await Promise.all(Array.from({ length: 8 }, worker));
+            throw new Error("all explorers failed for heights " + start + ".." + end + ": " + errs.join(", "));
         }
         async function fetchHashes(start, end) {
             var out = new Array(end - start + 1);
@@ -314,20 +324,19 @@
             var resultOk = eq(r.front, rec.front) && eq(r.back, rec.back);
             setBadge($("bResult"), resultOk);
             var chainState = "unchecked";   // 'pass' | 'fail' | 'unchecked' (predecessor / commitment unavailable)
-            if (rec.commitment) {
-                // Recompute from the REAL previous record's commitment (genesis for
-                // draw 0), not the record's self-declared prev -- so a rewritten
-                // neighbour is caught here instead of being silently trusted.
-                var prevRec = id === 0 ? null : (index.draws || []).find(function (d) { return d.id === id - 1; });
-                var linkedPrev = id === 0 ? V.GENESIS_PREV : (prevRec ? prevRec.commitment : null);
-                if (linkedPrev === null) { $("bChain").className = "badge wait"; $("bChain").textContent = "N/A"; }  // non-genesis, predecessor not in this snapshot
-                else {
-                    var c = V.commitmentFor(linkedPrev, id, rec.algo_version, r.seedHex, r.front, r.back, start, end);
-                    var chainOk = c === rec.commitment;
-                    setBadge($("bChain"), chainOk);
-                    chainState = chainOk ? "pass" : "fail";
-                }
-            } else { $("bChain").className = "badge wait"; $("bChain").textContent = "N/A"; }
+            // Resolve the actual predecessor, then check both the declaration and
+            // recomputed commitment. Missing evidence must never be coerced to a link.
+            var prevRec = id === 0 ? null : (index.draws || []).find(function (d) { return d.id === id - 1; });
+            var linkedPrev = id === 0 ? V.GENESIS_PREV : (prevRec ? prevRec.commitment : null);
+            if (INDEX_CHAIN && !INDEX_CHAIN.ok) {
+                chainState = "fail";  // a local match cannot override a broken snapshot
+            } else if (INDEX_CHAIN && isCommitment(rec.commitment) && isCommitment(linkedPrev)
+                       && isCommitment(rec.prev_commitment)) {
+                var c = V.commitmentFor(linkedPrev, id, rec.algo_version, r.seedHex, r.front, r.back, start, end);
+                chainState = c === rec.commitment && rec.prev_commitment === linkedPrev ? "pass" : "fail";
+            }
+            if (chainState === "unchecked") { $("bChain").className = "badge wait"; $("bChain").textContent = "N/A"; }
+            else setBadge($("bChain"), chainState === "pass");
 
             var verdict = composeVerdict(resultOk, chainState, id);
             setVerdict(verdict.state, verdict.text, verdict.sub);

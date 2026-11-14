@@ -245,6 +245,11 @@ SOURCES = {
 
 
 # ----------------------------- published site -----------------------------
+def _is_commitment(value):
+    return (isinstance(value, str) and len(value) == 64
+            and all(c in "0123456789abcdef" for c in value))
+
+
 def _fetch_published(site, draw_id):
     """Fetch draw_id's published record from a site, normalized to one shape.
 
@@ -322,8 +327,8 @@ def main():
         try:
             pub = _fetch_published(args.site, args.draw_id)
         except Exception as e:
-            print(f"WARN: could not fetch published result: {e}", file=sys.stderr)
-            return exit_code
+            print(f"ERROR: could not fetch published result: {e}", file=sys.stderr)
+            return 2
         pf, pb = pub["front"], pub["back"]
         print(f"PUBLISHED   : front {pf}  back {pb}  (via {pub['kind']})")
         result_ok = (pf == front and pb == back)
@@ -345,28 +350,35 @@ def main():
         # draw whose neighbours keep the old links would pass. Draw 0 chains from the
         # genesis sentinel.
         published_commitment = pub["commitment"]
-        if published_commitment:
-            algo = pub["algo_version"]
-            if args.draw_id == 0:
-                prev = GENESIS_PREV
-            else:
-                try:
-                    prev = _fetch_published(args.site, args.draw_id - 1)["commitment"]
-                except Exception as e:
-                    print(f"WARN: could not fetch previous commitment: {e}", file=sys.stderr)
-                    prev = None
-            if prev:
-                recomputed = commitment_for(prev, args.draw_id, algo, seed, front, back, start, end)
-                chain_ok = (recomputed == published_commitment)
-                print(f"CHAIN MATCH : {'PASS' if chain_ok else 'FAIL'} (links to draw {args.draw_id - 1})")
-                if not chain_ok:
-                    exit_code = 1
-                # Flag a self-declared prev that disagrees with the real predecessor.
-                declared = pub.get("prev_commitment")
-                if declared is not None and declared != prev:
-                    print("CHAIN MATCH : FAIL (record's prev_commitment != draw "
-                          f"{args.draw_id - 1}'s commitment -- chain tampered)")
-                    exit_code = 1
+        if not _is_commitment(published_commitment):
+            print("ERROR: published commitment is missing or invalid", file=sys.stderr)
+            return 2
+        if args.draw_id == 0:
+            prev = GENESIS_PREV
+        else:
+            try:
+                prev = _fetch_published(args.site, args.draw_id - 1)["commitment"]
+            except Exception as e:
+                print(f"ERROR: could not fetch previous commitment: {e}", file=sys.stderr)
+                return 2
+        if not _is_commitment(prev):
+            print("ERROR: previous commitment is missing or invalid", file=sys.stderr)
+            return 2
+
+        # Static records must carry their declaration; legacy manifests omit it.
+        declared = pub.get("prev_commitment")
+        if pub["kind"] == "static" and not _is_commitment(declared):
+            print("ERROR: record's prev_commitment is missing or invalid", file=sys.stderr)
+            return 2
+        recomputed = commitment_for(prev, args.draw_id, pub["algo_version"], seed, front, back, start, end)
+        chain_ok = (recomputed == published_commitment)
+        print(f"CHAIN MATCH : {'PASS' if chain_ok else 'FAIL'} (links to draw {args.draw_id - 1})")
+        if not chain_ok:
+            exit_code = 1
+        if declared is not None and declared != prev:
+            print("CHAIN MATCH : FAIL (record's prev_commitment != draw "
+                  f"{args.draw_id - 1}'s commitment -- chain tampered)")
+            exit_code = 1
 
     return exit_code
 

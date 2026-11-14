@@ -156,5 +156,98 @@ class TestFetchPublishedLiveApi(unittest.TestCase):
         self.assertIsNone(pub["prev_commitment"])  # live API: resolved separately
 
 
+class TestSiteVerificationEvidence(unittest.TestCase):
+    """A zero exit status must mean every requested site check completed."""
+
+    @staticmethod
+    def _hashes(draw_id):
+        start, end = verify.heights_for(draw_id)
+        return ["%064x" % h for h in range(start, end + 1)]
+
+    def _published(self, draw_id, kind="static"):
+        prev = verify.GENESIS_PREV if draw_id == 0 else self._published(draw_id - 1)["commitment"]
+        front, back, seed = verify.generate(self._hashes(draw_id))
+        start, end = verify.heights_for(draw_id)
+        return {
+            "front": front, "back": back, "block_hashes": [],
+            "commitment": verify.commitment_for(prev, draw_id, "v1", seed, front, back, start, end),
+            "prev_commitment": prev if kind == "static" else None,
+            "algo_version": "v1", "kind": kind,
+        }
+
+    def _run(self, records, draw_id=1, site=True):
+        def fetch_published(_site, id_):
+            rec = records[id_]
+            if isinstance(rec, Exception):
+                raise rec
+            return rec
+
+        argv = ["verify.py", str(draw_id), "--source", "mempool"]
+        if site:
+            argv += ["--site", SITE]
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(sys, "argv", argv), \
+             mock.patch.dict(verify.SOURCES, {"mempool": lambda s, e: self._hashes(draw_id)}), \
+             mock.patch.object(verify, "_fetch_published", side_effect=fetch_published) as fetch, \
+             contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = verify.main()
+        return code, out.getvalue(), err.getvalue(), fetch.call_args_list
+
+    def test_site_unavailable_is_not_success(self):
+        code, _out, err, _calls = self._run({1: OSError("site unavailable")})
+        self.assertEqual(code, 2)
+        self.assertIn("could not fetch published result", err)
+
+    def test_missing_or_malformed_commitment_is_not_success(self):
+        for value in (None, "", False, [], "invalid", "g" * 64, "A" * 64):
+            with self.subTest(value=value):
+                rec = self._published(1)
+                rec["commitment"] = value
+                code, out, _err, _calls = self._run({1: rec, 0: self._published(0)})
+                self.assertEqual(code, 2)
+                self.assertNotIn("CHAIN MATCH : PASS", out)
+
+    def test_predecessor_unavailable_is_not_success(self):
+        code, out, _err, _calls = self._run({1: self._published(1), 0: LookupError("missing draw")})
+        self.assertEqual(code, 2)
+        self.assertNotIn("CHAIN MATCH : PASS", out)
+
+    def test_missing_or_malformed_predecessor_commitment_is_not_success(self):
+        for value in (None, "", False, [], "invalid", "g" * 64):
+            with self.subTest(value=value):
+                prev = self._published(0)
+                prev["commitment"] = value
+                code, out, _err, _calls = self._run({1: self._published(1), 0: prev})
+                self.assertEqual(code, 2)
+                self.assertNotIn("CHAIN MATCH : PASS", out)
+
+    def test_static_declaration_is_required(self):
+        for value in (None, "", False, [], "invalid"):
+            with self.subTest(value=value):
+                rec = self._published(1)
+                rec["prev_commitment"] = value
+                code, _out, _err, _calls = self._run({1: rec, 0: self._published(0)})
+                self.assertNotEqual(code, 0)
+        rec = self._published(1)
+        del rec["prev_commitment"]
+        self.assertNotEqual(self._run({1: rec, 0: self._published(0)})[0], 0)
+
+    def test_complete_static_and_legacy_api_verification_still_pass(self):
+        for kind in ("static", "api"):
+            for draw_id in (0, 1):
+                with self.subTest(kind=kind, draw_id=draw_id):
+                    records = {i: self._published(i, kind) for i in range(draw_id + 1)}
+                    code, out, _err, calls = self._run(records, draw_id)
+                    self.assertEqual(code, 0)
+                    self.assertIn("CHAIN MATCH : PASS", out)
+                    self.assertEqual(len(calls), draw_id + 1)  # genesis never fetches draw -1
+
+    def test_no_site_remains_successful_recomputation(self):
+        code, out, _err, calls = self._run({}, site=False)
+        self.assertEqual(code, 0)
+        self.assertIn("RECOMPUTED", out)
+        self.assertEqual(calls, [])
+
+
 if __name__ == "__main__":
     unittest.main()
