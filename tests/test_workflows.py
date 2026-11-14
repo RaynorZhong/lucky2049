@@ -53,6 +53,14 @@ class TestAllWorkflows(unittest.TestCase):
             self.assertRegex(job(read(wf), name), r"(?m)^    timeout-minutes:\s*\d+", "%s/%s" % (wf, name))
 
 
+class TestTestWorkflowHistory(unittest.TestCase):
+    def test_checkout_fetches_the_full_history_for_anchor_upgrade_checks(self):
+        steps = code(job(read("tests.yml"), "test"))
+        checkout = re.search(r"(?ms)^      - uses: actions/checkout@[^\n]+\n(.*?)(?=^      - |\Z)", steps)
+        self.assertIsNotNone(checkout, "test job must check out the repository")
+        self.assertRegex(checkout.group(1), r"(?m)^        with:\n          fetch-depth: 0\s*$")
+
+
 class TestAnchorWorkflowIsolation(unittest.TestCase):
     def setUp(self):
         self.text = read("anchor-head.yml")
