@@ -131,13 +131,20 @@
   // isolation only proves that draw, never that the records chain together.
   // Pure, in-memory; the verifier already has the whole index.
   function verifyChain(index) {
-    var draws = (index && index.draws) || [];
-    var byId = {};
-    for (var i = 0; i < draws.length; i++) byId[draws[i].id] = draws[i];
-    for (i = 0; i < draws.length; i++) {
+    var draws = index && index.draws;
+    if (!Array.isArray(draws)) return { ok: false, brokenAt: "draws" };
+    function commitment(value) {
+      return typeof value === "string" && value.length === 64 && /^[0-9a-f]{64}$/.test(value);
+    }
+    for (var i = 0; i < draws.length; i++) {
       var d = draws[i];
-      var expected = d.id === 0 ? GENESIS_PREV : (byId[d.id - 1] ? byId[d.id - 1].commitment : null);
-      if (expected === null || d.prev_commitment !== expected) return { ok: false, brokenAt: d.id };
+      // Published history is ordered and contiguous from genesis. Check every
+      // record, so paired missing fields or duplicate/aliased IDs cannot form links.
+      if (!d || d.id !== i || !commitment(d.commitment) || !commitment(d.prev_commitment)) {
+        return { ok: false, brokenAt: i };
+      }
+      var expected = i === 0 ? GENESIS_PREV : draws[i - 1].commitment;
+      if (d.prev_commitment !== expected) return { ok: false, brokenAt: d.id };
     }
     // The head must commit to the FULL published history -- i.e. equal the last
     // (highest-id) draw's commitment. Derive the expectation from that draw, NOT from

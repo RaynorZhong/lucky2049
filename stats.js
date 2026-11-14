@@ -1,14 +1,11 @@
 /*
  * stats.js -- dependency-free distribution stats for the static lucky2049 site.
  *
- * Recomputes, in the browser, per-number frequencies + a chi-square uniformity
- * test. For the 2xk observed/expected table the chi-square reduces to the closed
- * form
- *     chi2 = sum_j (O_j - E)^2 / (O_j + E),   dof = k - 1,
- *     p    = P(X > chi2),  X ~ chi-square(dof)
- * pinned to frozen golden (chi2, p) values (computed once with scipy) plus an
- * independent pure-Python reference in tests/test_stats_js.py -- so it stays
- * authoritative without any scipy dependency in the repo.
+ * Recomputes per-number frequencies for n independent, uniform m-of-K draws.
+ * Sampling without replacement gives covariance E*(K-m)/(K-1) on the sum-zero
+ * subspace, where E=n*m/K. Thus Q=sum_j (O_j-E)^2/[E*(K-m)/(K-1)] approaches
+ * chi-square(K-1). E is a theoretical expectation, not a second observed sample.
+ * Small samples retain the frequency bars but do not report an asymptotic p-value.
  *
  * Pure computation only (no DOM), so it runs in the browser and under Node.
  */
@@ -88,13 +85,19 @@
     for (var b = 1; b <= maxBall; b++) freq.push(counts[b] || 0);
     var tallest = Math.max.apply(null, freq) || 1;
     var expected = n * picks / maxBall;
+    var variance = expected * (maxBall - picks) / (maxBall - 1);
 
     var chi2 = 0;
-    for (var j = 0; j < freq.length; j++) {
-      var diff = freq[j] - expected;
-      chi2 += diff * diff / (freq[j] + expected);
+    if (variance > 0) {
+      for (var j = 0; j < freq.length; j++) {
+        var diff = freq[j] - expected;
+        chi2 += diff * diff / variance;
+      }
     }
-    var p = chiSquareSf(chi2, maxBall - 1);
+    // Require at least five expected inclusions AND omissions per number before
+    // applying the large-sample approximation. This is not an exact small-n test.
+    var p = expected >= 5 && n - expected >= 5
+      ? Math.max(0, Math.min(1, chiSquareSf(chi2, maxBall - 1))) : null;
 
     return {
       bars: freq.map(function (c, i) {
@@ -104,10 +107,11 @@
       expected: _round(expected, 1),
       stats: {
         chi2: _round(chi2, 2),
-        p_value: _round(p, 4),
-        conclusion: p > 0.05
-          ? "No statistically significant deviation (p > 0.05)"
-          : "Statistically significant deviation (p < 0.05)"
+        // Keep full precision for decisions; format only when rendering.
+        p_value: p,
+        conclusion: p === null ? "More draws needed for the approximate frequency test"
+          : p > 0.05 ? "No statistically significant frequency deviation (p > 0.05)"
+          : "Statistically significant frequency deviation (p <= 0.05)"
       }
     };
   }
