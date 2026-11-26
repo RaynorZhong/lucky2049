@@ -160,8 +160,137 @@
     return { ok: true, brokenAt: null };
   }
 
+  // ---- OpenTimestamps detached-proof evaluator (pure JS, iterative) ----
+  var OTS_MAGIC = new Uint8Array([
+    0x00, 0x4f, 0x70, 0x65, 0x6e, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x73, 0x00,
+    0x00, 0x50, 0x72, 0x6f, 0x6f, 0x66, 0x00, 0xbf, 0x89, 0xe2, 0xe8, 0x84, 0xe8, 0x92, 0x94
+  ]);
+  var PENDING_TAG = "83dfe30d2ef90c8e";
+  var BITCOIN_TAG = "0588960d73d71901";
+
+  function bytesEq(a, b) {
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+
+  function reverseBytes(b) {
+    var out = new Uint8Array(b.length);
+    for (var i = 0; i < b.length; i++) out[i] = b[b.length - 1 - i];
+    return out;
+  }
+
+  // Evaluate a detached OpenTimestamps (.ots) proof in-browser with zero external
+  // dependencies. Returns { ok, digestHex, attestations:[{height, merkleRoot}], pending, error? }.
+  function verifyOtsProof(otsInput, expectedFileBytes) {
+    try {
+      var ots = otsInput instanceof Uint8Array ? otsInput : new Uint8Array(otsInput);
+      if (ots.length > 65536) throw new Error("OTS proof too large");
+      var pos = 0;
+      function take(n) {
+        if (pos + n > ots.length) throw new Error("truncated OTS proof");
+        var s = ots.subarray(pos, pos + n);
+        pos += n;
+        return s;
+      }
+      function readVaruint() {
+        var val = 0n, shift = 0n;
+        while (true) {
+          var c = take(1)[0];
+          val |= BigInt(c & 0x7f) << shift;
+          if (!(c & 0x80)) {
+            if (val > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("varuint overflow");
+            return Number(val);
+          }
+          shift += 7n;
+          if (shift > 63n) throw new Error("varuint too long");
+        }
+      }
+      function readVarbytes(maxLen, minLen) {
+        var n = readVaruint();
+        if (n < (minLen || 0) || n > maxLen) throw new Error("bad OTS varbytes length " + n);
+        return take(n);
+      }
+
+      if (!bytesEq(take(OTS_MAGIC.length), OTS_MAGIC)) throw new Error("bad OTS magic");
+      if (readVaruint() !== 1) throw new Error("unsupported OTS version");
+      if (take(1)[0] !== 0x08) throw new Error("OTS file hash op is not SHA-256");
+      var fileDigest = new Uint8Array(take(32));
+
+      if (expectedFileBytes != null) {
+        var exp = expectedFileBytes instanceof Uint8Array ? expectedFileBytes : new Uint8Array(expectedFileBytes);
+        if (!bytesEq(fileDigest, sha256(exp))) throw new Error("OTS digest does not match head file");
+      }
+
+      var curMsg = fileDigest, stack = [], btc = [], seenBtc = {}, pending = 0;
+      while (true) {
+        var tag = take(1)[0];
+        var itag = tag;
+        if (tag === 0xff) {
+          if (stack.length >= 64) throw new Error("too many nested OTS branches");
+          stack.push(curMsg);
+          itag = take(1)[0];
+        }
+        if (itag === 0x00) {
+          var kindHex = hex(take(8));
+          var pay = readVarbytes(8192, 0);
+          var ppos = 0;
+          function pVaruint() {
+            var v = 0n, sh = 0n;
+            while (true) {
+              if (ppos >= pay.length) throw new Error("truncated attestation");
+              var b = pay[ppos++];
+              v |= BigInt(b & 0x7f) << sh;
+              if (!(b & 0x80)) {
+                if (v > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("attestation varuint overflow");
+                return Number(v);
+              }
+              sh += 7n;
+              if (sh > 63n) throw new Error("attestation varuint too long");
+            }
+          }
+          if (kindHex === PENDING_TAG) {
+            var ulen = pVaruint();
+            if (ulen > 1000 || ppos + ulen !== pay.length) throw new Error("bad pending attestation");
+            if (++pending > 32) throw new Error("too many pending attestations");
+          } else if (kindHex === BITCOIN_TAG) {
+            var height = pVaruint();
+            if (ppos !== pay.length) throw new Error("trailing bytes in Bitcoin attestation");
+            if (curMsg.length !== 32) throw new Error("Bitcoin attestation leaf is not 32 bytes");
+            var mr = hex(reverseBytes(curMsg));
+            var key = height + ":" + mr;
+            if (!seenBtc[key]) { seenBtc[key] = true; btc.push({ height: height, merkleRoot: mr }); }
+            if (btc.length > 32) throw new Error("too many Bitcoin attestations");
+          } else {
+            throw new Error("unknown attestation tag " + kindHex);
+          }
+          if (!stack.length) break;
+          curMsg = stack.pop();
+        } else if (itag === 0xf0 || itag === 0xf1) {
+          var arg = readVarbytes(4096, 1);
+          if (curMsg.length + arg.length > 16384) throw new Error("OTS message too large");
+          curMsg = itag === 0xf0 ? concat(curMsg, arg) : concat(arg, curMsg);
+        } else if (itag === 0x08) {
+          curMsg = sha256(curMsg);
+        } else if (itag === 0xf2) {
+          curMsg = reverseBytes(curMsg);
+        } else if (itag === 0xf3) {
+          if (curMsg.length * 2 > 16384) throw new Error("OTS hexlify too large");
+          curMsg = utf8(hex(curMsg));
+        } else {
+          throw new Error("unsupported OTS op 0x" + itag.toString(16));
+        }
+      }
+      if (pos !== ots.length) throw new Error("trailing bytes after OTS proof");
+      return { ok: true, digestHex: hex(fileDigest), attestations: btc, pending: pending };
+    } catch (e) {
+      return { ok: false, error: String(e && e.message ? e.message : e), attestations: [], pending: 0 };
+    }
+  }
+
   var api = { sha256: sha256, hmacSha256: hmacSha256, hex: hex, generate: generate,
-    commitmentFor: commitmentFor, verifyChain: verifyChain, GENESIS_PREV: GENESIS_PREV };
+    commitmentFor: commitmentFor, verifyChain: verifyChain, verifyOtsProof: verifyOtsProof,
+    GENESIS_PREV: GENESIS_PREV };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.Lucky2049Verify = api;
 })(typeof window !== "undefined" ? window : globalThis);
