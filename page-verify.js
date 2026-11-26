@@ -45,7 +45,9 @@ function loadIndex(bust) {
     if (INDEX_P && bust === undefined) return INDEX_P;
     var url = bust === undefined ? "./index.json" : "./index.json?v=" + encodeURIComponent(bust);
     INDEX_P = (async function () {
-        var idx = await (await fetch(url)).json();
+        var resp = await fetch(url);
+        if (resp && resp.ok === false) throw new Error("HTTP " + resp.status);
+        var idx = await resp.json();
         var h = idx.head || {};
         var chain = V.verifyChain(idx);  // full-chain linkage scan -- runs once per loaded snapshot
         $("vHead").textContent = (h.head || "(none)") + "  ·  " + (idx.count || 0) + " draws"
@@ -199,26 +201,29 @@ async function verify(id) {
 }
 
 var ANCHOR_APIS = ["https://mempool.space/api", "https://blockstream.info/api"];
-async function fetchBlockMerkleRoot(height) {
-    for (var i = 0; i < ANCHOR_APIS.length; i++) {
-        try {
-            var hr = await fetch(ANCHOR_APIS[i] + "/block-height/" + height);
-            if (!hr.ok) continue;
-            var bhash = (await hr.text()).trim().toLowerCase();
-            if (!/^[0-9a-f]{64}$/.test(bhash)) continue;
-            var br = await fetch(ANCHOR_APIS[i] + "/block/" + bhash);
-            if (!br.ok) continue;
-            var blk = await br.json();
-            var mr = String((blk && blk.merkle_root) || "").toLowerCase();
-            if (/^[0-9a-f]{64}$/.test(mr)) return mr;
-        } catch (e) { /* try next explorer */ }
-    }
-    return null;
+async function fetchOneMerkleRoot(base, height) {
+    try {
+        var hr = await fetch(base + "/block-height/" + height);
+        if (!hr.ok) return null;
+        var bhash = (await hr.text()).trim().toLowerCase();
+        if (!/^[0-9a-f]{64}$/.test(bhash)) return null;
+        var br = await fetch(base + "/block/" + bhash);
+        if (!br.ok) return null;
+        var blk = await br.json();
+        var mr = String((blk && blk.merkle_root) || "").toLowerCase();
+        return /^[0-9a-f]{64}$/.test(mr) ? mr : null;
+    } catch (e) { return null; }
+}
+async function fetchExplorerMerkleRoots(height) {
+    var got = await Promise.all(ANCHOR_APIS.map(function (b) { return fetchOneMerkleRoot(b, height); }));
+    return got.filter(function (x) { return x !== null; });
 }
 async function verifyAnchor() {
     var bEl = $("bAnchor"), vEl = $("vAnchor");
     bEl.className = "badge wait"; bEl.textContent = "…"; vEl.textContent = "checking /anchors/…";
-    var idx = INDEX || await loadIndex();
+    var idx;
+    try { idx = INDEX || await loadIndex(); }
+    catch (e) { bEl.className = "badge wait"; bEl.textContent = "OFFLINE"; vEl.textContent = "could not load index.json"; return; }
     if (!INDEX_CHAIN || !INDEX_CHAIN.ok) {
         setBadge(bEl, false); vEl.textContent = "snapshot chain broken"; return;
     }
@@ -260,21 +265,29 @@ async function verifyAnchor() {
             if (pendingId === null) pendingId = cid;
             continue;
         }
-        var sawMismatch = false;
+        var sawMismatch = false, sawUnconfirmed = false, bestMatch = null;
         for (var a = 0; a < parsed.attestations.length; a++) {
             var att = parsed.attestations[a];
-            var chainMr = await fetchBlockMerkleRoot(att.height);
-            if (chainMr === att.merkleRoot) {
-                setBadge(bEl, true);
-                vEl.textContent = "draw #" + cid + " anchored in Bitcoin block #" + att.height
-                    + (pendingId !== null ? " (draw #" + pendingId + " awaiting confirmation)" : "");
-                return;
+            var roots = await fetchExplorerMerkleRoots(att.height);
+            for (var ri = 0; ri < roots.length; ri++) {
+                if (roots[ri] !== att.merkleRoot) { sawMismatch = true; break; }
             }
-            if (chainMr !== null) sawMismatch = true;
+            if (sawMismatch) break;
+            if (roots.length === 0) sawUnconfirmed = true;
+            else if (!bestMatch || roots.length > bestMatch.sources) {
+                bestMatch = { height: att.height, sources: roots.length };
+            }
         }
-        if (sawMismatch) {
+        if (sawMismatch || (bestMatch && sawUnconfirmed)) {
             setBadge(bEl, false);
-            vEl.textContent = "merkle_root mismatch for draw #" + cid;
+            vEl.textContent = (sawMismatch ? "merkle_root mismatch" : "unconfirmed block attestation") + " for draw #" + cid;
+            return;
+        }
+        if (bestMatch) {
+            setBadge(bEl, true);
+            vEl.textContent = "draw #" + cid + " anchored in Bitcoin block #" + bestMatch.height
+                + " (" + bestMatch.sources + "/" + ANCHOR_APIS.length + " explorers)"
+                + (pendingId !== null ? " (draw #" + pendingId + " awaiting confirmation)" : "");
             return;
         }
         bEl.className = "badge wait"; bEl.textContent = "OFFLINE";
@@ -343,4 +356,10 @@ loadIndex().then(function (idx) {
     else if (count > 0) { $("drawId").value = count - 1; verify(count - 1); }
     else $("status").textContent = "No draws published yet.";
     verifyAnchor();
-}, function () { /* loadIndex surfaces its own error in the head panel */ });
+}, function (e) {
+    $("vHead").textContent = "(unavailable)";
+    $("bAnchor").className = "badge wait";
+    $("bAnchor").textContent = "OFFLINE";
+    $("vAnchor").textContent = "could not load index.json";
+    $("status").textContent = "Could not load index.json: " + e;
+});

@@ -131,8 +131,12 @@
   // isolation only proves that draw, never that the records chain together.
   // Pure, in-memory; the verifier already has the whole index.
   function verifyChain(index) {
-    var draws = index && index.draws;
+    if (!index || typeof index !== "object") return { ok: false, brokenAt: "draws" };
+    var draws = index.draws;
     if (!Array.isArray(draws)) return { ok: false, brokenAt: "draws" };
+    if (index.count != null && (!Number.isInteger(index.count) || index.count !== draws.length)) {
+      return { ok: false, brokenAt: "count" };
+    }
     function commitment(value) {
       return typeof value === "string" && value.length === 64 && /^[0-9a-f]{64}$/.test(value);
     }
@@ -150,10 +154,16 @@
     // (highest-id) draw's commitment. Derive the expectation from that draw, NOT from
     // byId[head.draw_id], so a head that is missing, decoupled, or points at a
     // dropped / non-existent id is caught instead of silently passing.
-    var head = (index && index.head) || {};
-    if (draws.length && (head.head || head.draw_id != null)) {
+    var rawHead = index.head;
+    if (rawHead != null && (typeof rawHead !== "object" || Array.isArray(rawHead))) {
+      return { ok: false, brokenAt: "head" };
+    }
+    var head = rawHead || {};
+    if (draws.length && (head.head !== undefined || head.draw_id != null || head.count != null)) {
       var last = draws[draws.length - 1];
-      if (head.head !== last.commitment || (head.draw_id != null && head.draw_id !== last.id)) {
+      if (head.head !== last.commitment
+          || (head.draw_id != null && (!Number.isInteger(head.draw_id) || head.draw_id !== last.id))
+          || (head.count != null && (!Number.isInteger(head.count) || head.count !== draws.length))) {
         return { ok: false, brokenAt: "head" };
       }
     }
@@ -222,8 +232,9 @@
         if (!bytesEq(fileDigest, sha256(exp))) throw new Error("OTS digest does not match head file");
       }
 
-      var curMsg = fileDigest, stack = [], btc = [], seenBtc = {}, pending = 0;
+      var curMsg = fileDigest, stack = [], btc = [], seenBtc = {}, pending = 0, ops = 0, rawBtc = 0;
       while (true) {
+        if (++ops > 16384) throw new Error("too many OTS operations");
         var tag = take(1)[0];
         var itag = tag;
         if (tag === 0xff) {
@@ -251,16 +262,22 @@
           }
           if (kindHex === PENDING_TAG) {
             var ulen = pVaruint();
-            if (ulen > 1000 || ppos + ulen !== pay.length) throw new Error("bad pending attestation");
+            if (ulen < 8 || ulen > 1000 || ppos + ulen !== pay.length) throw new Error("bad pending attestation");
+            var uri = "";
+            for (var ui = ppos; ui < pay.length; ui++) {
+              if (pay[ui] <= 0x20 || pay[ui] >= 0x7f) throw new Error("non-ASCII pending URI");
+              uri += String.fromCharCode(pay[ui]);
+            }
+            if (!/^https:\/\/[a-z0-9.-]+(\/[^\s?#]*)?$/i.test(uri)) throw new Error("unsafe pending URI");
             if (++pending > 32) throw new Error("too many pending attestations");
           } else if (kindHex === BITCOIN_TAG) {
             var height = pVaruint();
             if (ppos !== pay.length) throw new Error("trailing bytes in Bitcoin attestation");
             if (curMsg.length !== 32) throw new Error("Bitcoin attestation leaf is not 32 bytes");
+            if (++rawBtc > 32) throw new Error("too many Bitcoin attestations");
             var mr = hex(reverseBytes(curMsg));
             var key = height + ":" + mr;
             if (!seenBtc[key]) { seenBtc[key] = true; btc.push({ height: height, merkleRoot: mr }); }
-            if (btc.length > 32) throw new Error("too many Bitcoin attestations");
           } else {
             throw new Error("unknown attestation tag " + kindHex);
           }
