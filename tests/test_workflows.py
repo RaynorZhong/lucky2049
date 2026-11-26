@@ -61,6 +61,25 @@ class TestTestWorkflowHistory(unittest.TestCase):
         self.assertRegex(checkout.group(1), r"(?m)^        with:\n          fetch-depth: 0\s*$")
 
 
+class TestRefreshPagesPush(unittest.TestCase):
+    """A transient GitHub 5xx on the gh-pages push (2026-11-25) must not fail the run."""
+
+    def setUp(self):
+        self.refresh = code(job(read("refresh-pages.yml"), "refresh"))
+
+    def test_gh_pages_push_is_retried_with_backoff(self):
+        self.assertIn("for attempt in 1 2 3", self.refresh)
+        self.assertRegex(self.refresh, r"if git push -q \"\$url\" HEAD:gh-pages; then exit 0; fi")
+        self.assertRegex(self.refresh, r"sleep \$\(\(attempt \* \d+\)\)")
+        self.assertIn('could not push to gh-pages after 3 attempts"; exit 1', self.refresh)
+
+    def test_retry_never_force_pushes_and_aborts_a_conflicted_rebase(self):
+        self.assertNotRegex(self.refresh, r"push[^\n]*(--force|-f\b)")
+        self.assertIn("git rebase --abort", self.refresh)
+        # rebase rewrites commits, so it needs the bot identity on a bare CI runner
+        self.assertIn('git "${ident[@]}" rebase -q FETCH_HEAD', self.refresh)
+
+
 class TestAnchorWorkflowIsolation(unittest.TestCase):
     def setUp(self):
         self.text = read("anchor-head.yml")

@@ -85,9 +85,21 @@ jobs:
           else
             msg="Refresh source health"
           fi
-          git -c user.email=pages@users.noreply.github.com -c user.name="lucky2049 pages bot" \
-            commit -q -m "$msg"
-          git push -q "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:gh-pages
+          ident=(-c user.email=pages@users.noreply.github.com -c user.name="lucky2049 pages bot")
+          git "${ident[@]}" commit -q -m "$msg"
+          url="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          # GitHub occasionally answers a push with a transient 5xx (2026-11-25: "remote: Internal
+          # Server Error"), which used to fail the whole run. Retry with backoff; if gh-pages moved
+          # meanwhile, rebase onto it (normal push only -- never force).
+          for attempt in 1 2 3; do
+            if git push -q "$url" HEAD:gh-pages; then exit 0; fi
+            echo "push to gh-pages failed (attempt $attempt) -- retrying"
+            sleep $((attempt * 10))
+            if git fetch -q "$url" gh-pages; then
+              git "${ident[@]}" rebase -q FETCH_HEAD || { git rebase --abort; echo "gh-pages moved with conflicts -- next run republishes"; exit 1; }
+            fi
+          done
+          echo "could not push to gh-pages after 3 attempts"; exit 1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
