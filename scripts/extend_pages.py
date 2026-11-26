@@ -176,22 +176,41 @@ _CRED_RE = re.compile(r"(\b[\w+.-]+://)?[^\s/@:]+:[^\s/@]+@")
 
 def _redact(e):
     """Strip credentials from an error before it reaches the PUBLIC status.json /
-    workflow logs. Covers URL userinfo (with or without a scheme) AND known secret
-    VALUES -- the CF Access service-token secret is a header (never userinfo), and a
-    BITCOIN_RPC_URL password may contain '/' or '@' that the userinfo regex can't
-    span, so blunt-replace those by value too. Secrets must never leak."""
-    s = _CRED_RE.sub(lambda m: (m.group(1) or "") + "***@", str(e))
+    workflow logs. Covers URL userinfo (with or without a scheme), token-in-path /
+    query RPC URLs, AND known secret VALUES (replaced BEFORE regex scrubbing so
+    passwords containing '@' or '/' cannot be split across regex boundaries)."""
+    s = str(e)
     secrets = [os.environ.get("CF_ACCESS_CLIENT_SECRET"), os.environ.get("BITCOIN_RPC_PASSWORD")]
     rpc = os.environ.get("BITCOIN_RPC_URL")
     if rpc:
+        # Password containing '/' or '@' before the final '@host[:port]'
+        m = re.match(r"^[\w+.-]+://[^:@]+:(.+)@[^/@]+(?::\d+)?(?:/.*)?$", rpc)
+        if m:
+            secrets.append(m.group(1))
         try:
-            secrets.append(urllib.parse.urlsplit(rpc).password)   # exact pw, special chars and all
+            parts = urllib.parse.urlsplit(rpc)
+            secrets.append(parts.password)
+            if parts.path and parts.path != "/":
+                secrets.append(parts.path)
+                stripped = parts.path.strip("/")
+                if len(stripped) >= 4:
+                    secrets.append(stripped)
+                for seg in stripped.split("/"):
+                    if len(seg) >= 8:
+                        secrets.append(seg)
+            if parts.query:
+                secrets.append(parts.query)
+                for _, v in urllib.parse.parse_qsl(parts.query):
+                    if len(v) >= 4:
+                        secrets.append(v)
+            if parts.fragment:
+                secrets.append(parts.fragment)
         except ValueError:
             pass
-    for val in secrets:
-        if val and val in s:
+    for val in sorted({v for v in secrets if v}, key=len, reverse=True):
+        if val in s:
             s = s.replace(val, "***")
-    return s
+    return _CRED_RE.sub(lambda m: (m.group(1) or "") + "***@", s)
 
 
 def _call(providers, op, *args):
@@ -333,10 +352,38 @@ def _reorg_audit_one(providers, d, confirmed_tip):
             f"NOT auto-correcting (history is append-only)")
 
 
+def _validate_snapshot(data, path):
+    """Ensure the published snapshot is structurally contiguous and chain-linked
+    before appending new draws onto it."""
+    if not isinstance(data, dict) or not isinstance(data.get("draws"), list):
+        raise RuntimeError(f"corrupt published snapshot ({path}): draws is not a list")
+    draws = data["draws"]
+    if data.get("count") is not None and (type(data["count"]) is not int or data["count"] != len(draws)):
+        raise RuntimeError(f"corrupt published snapshot ({path}): count != len(draws)")
+    for i, d in enumerate(draws):
+        if (not isinstance(d, dict) or type(d.get("id")) is not int or d["id"] != i
+                or not isinstance(d.get("commitment"), str) or not d["commitment"].strip()):
+            raise RuntimeError(f"corrupt published snapshot ({path}): broken record at index {i}")
+        expected_prev = verify.GENESIS_PREV if i == 0 else draws[i - 1]["commitment"]
+        if d.get("prev_commitment") != expected_prev:
+            raise RuntimeError(f"corrupt published snapshot ({path}): broken chain link at draw {i}")
+    head = data.get("head")
+    if head is not None and not isinstance(head, dict):
+        raise RuntimeError(f"corrupt published snapshot ({path}): head is not an object")
+    if draws and head:
+        if (head.get("head") != draws[-1]["commitment"]
+                or (head.get("draw_id") is not None
+                    and (type(head.get("draw_id")) is not int or head["draw_id"] != draws[-1]["id"]))
+                or (head.get("count") is not None
+                    and (type(head.get("count")) is not int or head["count"] != len(draws)))):
+            raise RuntimeError(f"corrupt published snapshot ({path}): head does not match last draw")
+
+
 def main():
     path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, "site", "index.json")
     with open(path) as f:
         data = json.load(f)
+    _validate_snapshot(data, path)
     draws = data["draws"]
 
     next_id = (draws[-1]["id"] + 1) if draws else 0

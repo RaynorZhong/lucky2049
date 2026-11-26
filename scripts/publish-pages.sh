@@ -14,7 +14,7 @@ cd "$REPO_ROOT"
 SITE="$REPO_ROOT/site"
 BRANCH="gh-pages"
 
-FORCE="${1:-}"
+MODE="${1:-}"
 PY="./.venv/bin/python"; [ -x "$PY" ] || PY="python3"
 echo "Building static site..."
 "$PY" scripts/export_static.py --out "$SITE"
@@ -23,8 +23,9 @@ touch "$SITE/.nojekyll"   # serve files as-is (no Jekyll processing)
 # --- Regression guard ---
 # This force-pushes a snapshot built from the LOCAL DB, which can be stale or
 # diverged from what the hourly cron has since published (and OTS-anchored).
-# Abort unless this export matches-or-extends the live history; --force overrides.
-if [ "$FORCE" = "--force" ]; then
+# Abort unless this export matches-or-extends the live history; --force overrides
+# (and --init explicitly allows bootstrap before any head.json is live).
+if [ "$MODE" = "--force" ]; then
   echo "WARNING: --force given -- skipping the published-history guard (anchors may be contradicted)."
 elif live_head="$(curl -fsS https://lucky2049.com/head.json 2>/dev/null)"; then
   guard_rc=0
@@ -48,8 +49,12 @@ PYGUARD
     exit 1
   fi
   echo "Guard OK: export matches-or-extends the published head."
+elif [ "$MODE" = "--init" ]; then
+  echo "No live head.json reachable (--init first-deploy mode) -- proceeding."
 else
-  echo "No live head.json reachable (first deploy?) -- skipping the regression guard."
+  echo "ABORT: could not reach https://lucky2049.com/head.json to verify the regression guard." >&2
+  echo "       Pass --init only on a brand-new first deploy, or --force to override." >&2
+  exit 1
 fi
 
 REMOTE="$(git remote get-url origin)"

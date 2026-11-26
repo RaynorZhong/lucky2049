@@ -208,6 +208,14 @@ class TestSelfHostedFontsAndStrictCsp(unittest.TestCase):
                 hdr = f.read(4)
             self.assertEqual(hdr, b"wOF2", "invalid WOFF2 header in " + rel)
 
+    def test_tdd_docs_reflect_externalized_page_verify_js(self):
+        for rel in ("docs/TDD.md", "docs/zh/TDD.md"):
+            with open(os.path.join(REPO_ROOT, rel)) as f:
+                doc = f.read()
+            self.assertIn("static/page-verify.js", doc, rel)
+            self.assertNotIn("verify.html's inline page logic", doc, rel)
+            self.assertNotIn("verify.html 的页面内联逻辑", doc, rel)
+
 
 if __name__ == "__main__":
     unittest.main()

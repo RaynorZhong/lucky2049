@@ -49,8 +49,17 @@ class TestAllWorkflows(unittest.TestCase):
 
     def test_jobs_that_touch_the_network_have_timeouts(self):
         for wf, name in (("refresh-pages.yml", "refresh"), ("anchor-head.yml", "stamp"),
-                         ("anchor-head.yml", "commit"), ("keepalive.yml", "keepalive")):
+                         ("anchor-head.yml", "commit"), ("keepalive.yml", "keepalive"),
+                         ("tests.yml", "test")):
             self.assertRegex(job(read(wf), name), r"(?m)^    timeout-minutes:\s*\d+", "%s/%s" % (wf, name))
+
+    def test_non_pat_checkouts_disable_persisted_credentials(self):
+        for wf in ("tests.yml", "refresh-pages.yml", "anchor-head.yml"):
+            text = code(read(wf))
+            blocks = re.findall(r"(?ms)^      - uses: actions/checkout@[^\n]+\n(.*?)(?=^      - |\Z)", text)
+            self.assertTrue(blocks, wf)
+            for b in blocks:
+                self.assertRegex(b, r"persist-credentials:\s*false", wf + " checkout missing persist-credentials: false")
 
 
 class TestTestWorkflowHistory(unittest.TestCase):
@@ -120,6 +129,7 @@ class TestAnchorWorkflowIsolation(unittest.TestCase):
     def test_push_is_retried_with_a_rebase(self):
         self.assertIn("for attempt in 1 2 3", self.commit)
         self.assertIn("rebase FETCH_HEAD", self.commit)
+        self.assertIn("git rebase --abort", self.commit)
         self.assertNotRegex(self.commit, r"push[^\n]*(--force|-f\b)")
 
 

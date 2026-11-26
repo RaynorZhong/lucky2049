@@ -172,6 +172,8 @@ class TestAccepts(_Case):
             A.load_draws = orig
         self.assertEqual(got, ["000009.head.json", "000009.head.json.ots"])
         self.assertEqual(len(calls), 3)
+        self.assertEqual(calls[0], "https://example.invalid")
+        self.assertTrue(all("?v=9-" in u for u in calls[1:]), f"expected cache-busting query on retries, got {calls}")
         self.assertEqual(slept, [A.PUBLISHED_RETRY_SLEEP_S] * 2)
 
 

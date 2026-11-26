@@ -269,11 +269,32 @@ class TestPublishSmoke(unittest.TestCase):
 
     def test_redact_password_with_special_chars(self):
         # A BITCOIN_RPC_URL password containing '/' or '@' can't be spanned by the
-        # userinfo regex; it must still be redacted by value.
+        # userinfo regex; it must still be redacted by value, with zero trailing fragment left.
         url = "http://user:p@ss/w0rd@btc-rpc.example:8332/"
         with mock.patch.dict(os.environ, {"BITCOIN_RPC_URL": url}):
             msg = extend_pages._redact("urlopen error for %s : 500" % url)
-        self.assertNotIn("p@ss/w0rd", msg)   # the whole special-char password is gone
+        self.assertNotIn("p@ss/w0rd", msg)
+        self.assertNotIn("ss/w0rd", msg)
+
+    def test_redact_token_in_rpc_path_and_query(self):
+        url = "https://rpc.provider.example/v2/tok_SecretPath99?api_key=qSecret88"
+        with mock.patch.dict(os.environ, {"BITCOIN_RPC_URL": url}):
+            msg_full = extend_pages._redact(f"HTTP 403 for {url}")
+            msg_path = extend_pages._redact("request failed on /v2/tok_SecretPath99 (query api_key=qSecret88)")
+            msg_bare = extend_pages._redact("upstream rejected key tok_SecretPath99")
+        for m in (msg_full, msg_path, msg_bare):
+            self.assertNotIn("tok_SecretPath99", m)
+            self.assertNotIn("qSecret88", m)
+
+    def test_refuses_to_extend_corrupt_snapshot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bad = [
+                {"id": 0, "start_height": 0, "end_height": 143, "front": [1, 2, 3, 4, 5],
+                 "back": [1, 2], "algo_version": "v1", "commitment": "c0", "prev_commitment": "wrong-genesis"},
+            ]
+            idx = _write_index(tmp, bad)
+            with self.assertRaisesRegex(RuntimeError, "corrupt|broken"):
+                _run(idx, _agreeing(tip=200))
 
     def test_publish_inputs_present(self):
         # Parse the cron's own `cp web/... | static/... site/` lines and assert every

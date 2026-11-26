@@ -53,6 +53,10 @@ const malformed = clone(ok); malformed.draws[0].commitment = 'invalid'; malforme
 const duplicate = clone(ok); duplicate.draws.splice(1, 0, clone(duplicate.draws[0]));
 const aliasedId = clone(ok); aliasedId.draws[1].id = '1';
 const reordered = clone(ok); reordered.draws.reverse();
+const badIndexCount = clone(ok); badIndexCount.count = 99;
+const badHeadCount  = clone(ok); badHeadCount.head.count = 99;
+const emptyHeadHash = clone(ok); emptyHeadHash.head = {head: ""};
+const arrayHead     = clone(ok); arrayHead.head = [];
 console.log(JSON.stringify({
   genesisConst: V.GENESIS_PREV,
   ok: V.verifyChain(ok),
@@ -69,6 +73,10 @@ console.log(JSON.stringify({
   duplicate: V.verifyChain(duplicate),
   aliasedId: V.verifyChain(aliasedId),
   reordered: V.verifyChain(reordered),
+  badIndexCount: V.verifyChain(badIndexCount),
+  badHeadCount: V.verifyChain(badHeadCount),
+  emptyHeadHash: V.verifyChain(emptyHeadHash),
+  arrayHead: V.verifyChain(arrayHead),
   invalidDraws: V.verifyChain({draws:{}}),
   empty: V.verifyChain({draws:[]}),
 }));
@@ -101,7 +109,9 @@ class TestVerifyJs(unittest.TestCase):
         self.assertEqual(r["truncated"], {"ok": False, "brokenAt": "head"})
         self.assertEqual(r["noHead"], {"ok": True, "brokenAt": None})    # ...but no head info at all is fine
         for name, broken_at in (("noEvidence", 0), ("malformed", 0), ("duplicate", 1),
-                                ("aliasedId", 1), ("reordered", 0), ("invalidDraws", "draws")):
+                                ("aliasedId", 1), ("reordered", 0), ("invalidDraws", "draws"),
+                                ("badIndexCount", "count"), ("badHeadCount", "head"),
+                                ("emptyHeadHash", "head"), ("arrayHead", "head")):
             with self.subTest(name=name):
                 self.assertEqual(r[name], {"ok": False, "brokenAt": broken_at})
         self.assertEqual(r["empty"], {"ok": True, "brokenAt": None})

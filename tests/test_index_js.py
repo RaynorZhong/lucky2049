@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Locks the homepage's next-draw ETA window (inline in web/index.html). The live
+Locks the homepage's next-draw ETA window (in static/page-index.js). The live
 economic-security disclosure that used to live here was removed from the homepage
 (the argument now lives only in SPEC.md §8, linked from the footer), so this just
 guards the ETA target: the last block of the next 144-block window + 6 confirmations.

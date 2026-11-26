@@ -252,6 +252,17 @@ class TestKeepAliveAndBatchRpc(_RpcServerCase):
             srv2.shutdown()
             srv2.server_close()
 
+    def test_oversized_response_raises_immediately_without_retry(self):
+        # Warm the Keep-Alive pool first, then fetch with max_bytes=2 ("pong" is 4 bytes).
+        # Must NOT retry on a fresh connection or sleep in _http_request_bytes!
+        self.assertEqual(verify._http_get(self.plain_url), "pong")
+        self.assertEqual(self.srv.accepted_connections, 1)
+        with mock.patch.object(verify.time, "sleep") as slept:
+            with self.assertRaisesRegex(verify.urllib.error.URLError, "exceeds 2 bytes"):
+                verify._http_request_bytes(self.plain_url, retries=3, max_bytes=2)
+        slept.assert_not_called()
+        self.assertEqual(self.srv.accepted_connections, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

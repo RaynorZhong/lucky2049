@@ -113,18 +113,25 @@ async function run(mutate, id=1) {
     const btcAtt = [0x00, 0x05,0x88,0x96,0x0d,0x73,0xd7,0x19,0x01, 0x01, 100];
     const otsBytes = new Uint8Array([...magic, 0x01, 0x08, ...fileDigest, 0xf0, 0x04, ...salt, 0x08, ...btcAtt]);
 
-    async function runAnchor(reportedMerkle) {
+    async function runAnchor(mempoolMr, blockstreamMr, customOts) {
       const nodes = {};
-      const element = () => ({style:{}, appendChild(){}, textContent:'', innerHTML:''});
+      const element = () => ({style:{}, appendChild(){}, textContent:'', innerHTML:'', classList:{toggle(){}}});
+      const activeOts = customOts || otsBytes;
       const context = {window:{Lucky2049Verify:V},
         document:{getElementById:key => nodes[key] || (nodes[key] = element()), createElement:element},
         fetch:async url => {
           if (url === './index.json') return {ok:true, status:200, json:async () => idx};
           if (url === './anchors/000002.head.json') return {ok:true, status:200, arrayBuffer:async () => headBytes.buffer};
-          if (url === './anchors/000002.head.json.ots') return {ok:true, status:200, arrayBuffer:async () => otsBytes.buffer};
+          if (url === './anchors/000002.head.json.ots') return {ok:true, status:200, arrayBuffer:async () => activeOts.buffer};
           if (url === 'https://mempool.space/api/block-height/100') return {ok:true, status:200, text:async () => 'bb'.repeat(32)};
-          if (url === 'https://mempool.space/api/block/' + 'bb'.repeat(32)) return {ok:true, status:200, json:async () => ({merkle_root: reportedMerkle})};
-          if (url.startsWith('https://blockstream.info/api/')) return {ok:false, status:503};
+          if (url === 'https://mempool.space/api/block/' + 'bb'.repeat(32)) return {ok:true, status:200, json:async () => ({merkle_root: mempoolMr})};
+          if (url === 'https://mempool.space/api/block-height/101') return {ok:true, status:200, text:async () => 'cc'.repeat(32)};
+          if (url === 'https://mempool.space/api/block/' + 'cc'.repeat(32)) return {ok:true, status:200, json:async () => ({merkle_root: 'dd'.repeat(32)})};
+          if (blockstreamMr === null && url.startsWith('https://blockstream.info/api/')) return {ok:false, status:503};
+          if (url === 'https://blockstream.info/api/block-height/100') return {ok:true, status:200, text:async () => 'bb'.repeat(32)};
+          if (url === 'https://blockstream.info/api/block/' + 'bb'.repeat(32)) return {ok:true, status:200, json:async () => ({merkle_root: blockstreamMr})};
+          if (url === 'https://blockstream.info/api/block-height/101') return {ok:true, status:200, text:async () => 'cc'.repeat(32)};
+          if (url === 'https://blockstream.info/api/block/' + 'cc'.repeat(32)) return {ok:true, status:200, json:async () => ({merkle_root: 'dd'.repeat(32)})};
           throw new Error('unexpected anchor url: ' + url);
         }};
       vm.createContext(context); vm.runInContext(script, context);
@@ -132,8 +139,40 @@ async function run(mutate, id=1) {
       await context.verifyAnchor();
       return {badge:nodes.bAnchor.textContent, cls:nodes.bAnchor.className, detail:nodes.vAnchor.textContent};
     }
-    out.anchorOk = await runAnchor(mrHex);
-    out.anchorBadMerkle = await runAnchor('ff'.repeat(32));
+    const btcAtt101 = [0x00, 0x05,0x88,0x96,0x0d,0x73,0xd7,0x19,0x01, 0x01, 101];
+    // Leaf 1 (height 100) valid mrHex, sibling leaf 2 (height 101) has mismatched merkle_root on chain
+    const otsWithBadSibling = new Uint8Array([
+      ...magic, 0x01, 0x08, ...fileDigest, 0xf0, 0x04, ...salt, 0x08,
+      0xff, ...btcAtt, 0x08, ...btcAtt101,
+    ]);
+    out.anchorOk = await runAnchor(mrHex, null);
+    out.anchorBothOk = await runAnchor(mrHex, mrHex);
+    out.anchorExplorerConflict = await runAnchor(mrHex, 'ee'.repeat(32));
+    out.anchorSiblingMismatch = await runAnchor(mrHex, mrHex, otsWithBadSibling);
+    out.anchorBadMerkle = await runAnchor('ff'.repeat(32), null);
+  }
+  // Initial page boot when ./index.json returns HTTP 503: must surface error in #vHead/#bAnchor/#status
+  {
+    const nodes = {};
+    const element = () => ({
+      style:{}, textContent:'…', innerHTML:'', value:'',
+      appendChild(){}, setAttribute(){}, addEventListener(){}, classList:{toggle(){}},
+      parentNode:{appendChild(){}},
+    });
+    const context = {
+      window:{Lucky2049Verify:V},
+      location:{search:''},
+      URLSearchParams,
+      navigator:{},
+      setTimeout:() => {},
+      document:{getElementById:key => nodes[key] || (nodes[key] = element()), createElement:element, body:element()},
+      fetch:async () => ({ok:false, status:503, json:async () => ({})}),
+    };
+    vm.createContext(context);
+    vm.runInContext(js, context);
+    await new Promise(r => setImmediate(r));
+    await new Promise(r => setImmediate(r));
+    out.bootFail = {head:nodes.vHead.textContent, anchor:nodes.bAnchor.textContent, status:nodes.status.textContent};
   }
   console.log(JSON.stringify(out));
 })().catch(e => { console.error(e); process.exit(1); });
@@ -192,8 +231,19 @@ class TestVerifyPageIntegration(unittest.TestCase):
         self.assertEqual(self.results["anchorOk"]["badge"], "PASS")
         self.assertIn("pass", self.results["anchorOk"]["cls"])
         self.assertIn("100", self.results["anchorOk"]["detail"])
+        self.assertIn("1/2", self.results["anchorOk"]["detail"])
+        self.assertEqual(self.results["anchorBothOk"]["badge"], "PASS")
+        self.assertIn("2/2", self.results["anchorBothOk"]["detail"])
+        self.assertEqual(self.results["anchorExplorerConflict"]["badge"], "FAIL")
+        self.assertEqual(self.results["anchorSiblingMismatch"]["badge"], "FAIL")
         self.assertEqual(self.results["anchorBadMerkle"]["badge"], "FAIL")
         self.assertIn("fail", self.results["anchorBadMerkle"]["cls"])
+
+    def test_initial_load_index_http_failure_surfaces_in_dom(self):
+        bf = self.results["bootFail"]
+        self.assertNotEqual(bf["head"], "…")
+        self.assertEqual(bf["anchor"], "OFFLINE")
+        self.assertIn("HTTP 503", bf["status"])
 
 
 if __name__ == "__main__":

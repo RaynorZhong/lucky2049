@@ -233,6 +233,63 @@ class TestPureStdlibStampingAndUpgrading(unittest.TestCase):
             # CLI --verify-chain path on unchanged directory is a clean exit 0
             self.assertEqual(A.main(["--verify-chain", incoming, anchors, site]), 0)
 
+            # 4) Multi-branch proof with 1 valid leaf + 1 forged/unconfirmed sibling leaf MUST be rejected!
+            for f in os.listdir(anchors):
+                os.remove(os.path.join(anchors, f))
+            smuggled_tree = (
+                b"\xf0" + _vb(b"salt123456789012") + b"\x08"
+                + b"\xff" + _bitcoin(900123)
+                + b"\x08" + _bitcoin(900124)
+            )
+            smuggled_ots = A.OTS_MAGIC + b"\x01\x08" + hashlib.sha256(head_bytes).digest() + smuggled_tree
+            with open(os.path.join(incoming, "000000.head.json.ots"), "wb") as f:
+                f.write(smuggled_ots)
+            with self.assertRaisesRegex(A.Rejected, "merkle_root"):
+                A.accept(
+                    incoming, anchors, site, verify_chain=True,
+                    merkle_fetcher=lambda h: {"mempool": real_mr if h == 900123 else "00" * 32,
+                                              "blockstream": real_mr if h == 900123 else "00" * 32},
+                )
+            with self.assertRaisesRegex(A.Rejected, "quorum|sources"):
+                A.accept(
+                    incoming, anchors, site, verify_chain=True,
+                    merkle_fetcher=lambda h: {"mempool": real_mr, "blockstream": real_mr} if h == 900123 else {},
+                )
+
+            # 5) Newly stamped pending proof from an unknown calendar is rejected under --verify-chain
+            untrusted_pending = A.OTS_MAGIC + b"\x01\x08" + hashlib.sha256(head_bytes).digest() + _pending("https://rogue-calendar.example")
+            with open(os.path.join(incoming, "000000.head.json.ots"), "wb") as f:
+                f.write(untrusted_pending)
+            with self.assertRaisesRegex(A.Rejected, "calendar"):
+                A.accept(incoming, anchors, site, verify_chain=True)
+
+    @unittest.skipUnless(NODE, "node not available")
+    def test_duplicate_attestation_flood_and_excessive_ops_rejected_in_python_and_js(self):
+        head_bytes = A.canonical_head(0, "ab" * 32, "v1")
+        digest = hashlib.sha256(head_bytes).digest()
+        # 33 identical Bitcoin attestations (previously collapsed to 1 by deduplication!)
+        dup_33 = A.OTS_MAGIC + b"\x01\x08" + digest + (b"\xff" + _bitcoin(100)) * 32 + _bitcoin(100)
+        # > 16384 unary SHA-256 ops within 64 KiB
+        op_flood = A.OTS_MAGIC + b"\x01\x08" + digest + (b"\x08" * 16500) + _bitcoin(100)
+        for blob in (dup_33, op_flood):
+            self.assertIsNotNone(A.proof_problem(blob, head_bytes))
+        script = r"""
+        const V = require('./static/verify.js');
+        const head = Buffer.from(process.argv[1], 'hex');
+        const dup = Buffer.from(process.argv[2], 'hex');
+        const flood = Buffer.from(process.argv[3], 'hex');
+        console.log(JSON.stringify({
+          dup: V.verifyOtsProof(new Uint8Array(dup), new Uint8Array(head)),
+          flood: V.verifyOtsProof(new Uint8Array(flood), new Uint8Array(head)),
+        }));
+        """
+        out = json.loads(subprocess.check_output(
+            [NODE, "-e", script, head_bytes.hex(), dup_33.hex(), op_flood.hex()],
+            cwd=REPO_ROOT, text=True,
+        ))
+        self.assertFalse(out["dup"]["ok"])
+        self.assertFalse(out["flood"]["ok"])
+
     def test_calendar_url_ssrf_guard_rejects_non_https_and_private_hosts(self):
         H._check_safe_calendar_url("https://alice.btc.calendar.opentimestamps.org")
         for bad in (
@@ -251,10 +308,19 @@ class TestPureStdlibStampingAndUpgrading(unittest.TestCase):
             "https://169.254.169.254/latest/meta-data",
             "https://[::1]/digest",
             "https://[::ffff:127.0.0.1]/digest",
+            "https://[::127.0.0.1]/digest",
+            "https://[64:ff9b::7f00:1]/digest",
+            "https://alice.btc.calendar.opentimestamps.org:8443/digest",
         ):
             with self.subTest(bad=bad):
                 with self.assertRaises(ValueError):
                     H._check_safe_calendar_url(bad)
+                # accept_anchors proof parser must also reject unsafe pending URIs at parse time
+                bad_ots = A.OTS_MAGIC + b"\x01\x08" + (b"\x11" * 32) + _pending(bad)
+                self.assertIsNotNone(A.proof_problem(bad_ots, b"x"))
+        # Live calendar network helpers only talk to the explicit ALLOWED_CALENDARS allowlist
+        with self.assertRaisesRegex(ValueError, "allowlist|calendar"):
+            H._default_get_timestamp("https://untrusted-calendar.example", b"\x22" * 32)
         # DNS-rebinding guard: hostname resolving to loopback / metadata IP is blocked
         with unittest.mock.patch.object(
             H.socket, "getaddrinfo",

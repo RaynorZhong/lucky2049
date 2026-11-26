@@ -18,15 +18,12 @@ Usage:  python scripts/anchor_head.py [--stamp] [--upgrade] [site-base-url-or-lo
 """
 import argparse
 import hashlib
-import ipaddress
 import json
 import os
-import socket
+import socket  # noqa: F401 — exposed for unit-test DNS mock seam
 import sys
 import tempfile
 import urllib.error
-import urllib.parse
-import urllib.request
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -38,12 +35,8 @@ import accept_anchors  # noqa: E402
 import verify  # noqa: E402
 
 DEFAULT_BASE = "https://lucky2049.com"
-DEFAULT_CALENDARS = (
-    "https://alice.btc.calendar.opentimestamps.org",
-    "https://bob.btc.calendar.opentimestamps.org",
-    "https://finney.calendar.eternitywall.com",
-    "https://btc.calendar.catallaxy.com",
-)
+DEFAULT_CALENDARS = accept_anchors.ALLOWED_CALENDARS
+ALLOWED_CALENDARS = frozenset(DEFAULT_CALENDARS)
 MIN_CALENDARS = 2
 OTS_HEADERS = {
     "Accept": "application/vnd.opentimestamps.v1",
@@ -78,55 +71,26 @@ def _atomic_write_bytes(directory, filename, payload):
         raise
 
 
-def _is_public_ip(ip):
-    if ip.version == 6 and ip.ipv4_mapped:
-        ip = ip.ipv4_mapped
-    return (
-        ip.is_global
-        and not (ip.is_private or ip.is_loopback or ip.is_link_local
-                 or ip.is_reserved or ip.is_multicast or ip.is_unspecified)
-    )
+_is_public_ip = accept_anchors.is_public_ip
 
 
 def _check_safe_calendar_url(url, resolve_dns=False):
-    """Ensure calendar URLs (especially untrusted PendingAttestation URIs) use HTTPS
-    on a public hostname, never userinfo/queries/localhost or non-global IP space."""
-    parts = urllib.parse.urlsplit(url)
-    if (parts.scheme != "https" or not parts.hostname
-            or parts.username or parts.password or parts.query or parts.fragment):
-        raise ValueError(f"unsafe calendar URI: {url!r}")
-    try:
-        port = parts.port or 443
-    except ValueError as e:
-        raise ValueError(f"invalid calendar port in {url!r}: {e}") from e
-    host = parts.hostname.rstrip(".").lower()
-    if (not host or host in ("localhost", "localhost.localdomain")
-            or host.endswith((".localhost", ".local", ".localdomain", ".internal"))):
-        raise ValueError(f"disallowed local calendar host: {host!r}")
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
-        ip = None
-    if ip is not None:
-        if not _is_public_ip(ip):
-            raise ValueError(f"disallowed non-public calendar IP: {host!r}")
-        return
-    if resolve_dns:
-        try:
-            addrs = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-        except OSError as e:
-            raise ValueError(f"unresolvable calendar host {host!r}: {e}") from e
-        if not addrs:
-            raise ValueError(f"no DNS addresses for calendar host: {host!r}")
-        for _, _, _, _, sockaddr in addrs:
-            resolved = ipaddress.ip_address(sockaddr[0].split("%", 1)[0])
-            if not _is_public_ip(resolved):
-                raise ValueError(f"disallowed non-public calendar IP {resolved} for {host!r}")
+    return accept_anchors.check_safe_calendar_url(
+        url, resolve_dns=resolve_dns, getaddrinfo=socket.getaddrinfo
+    )
+
+
+def _require_allowed_calendar(cal_url):
+    clean = cal_url.rstrip("/")
+    if clean not in ALLOWED_CALENDARS:
+        raise ValueError(f"calendar URI not in allowlist: {cal_url!r}")
+    _check_safe_calendar_url(clean, resolve_dns=True)
+    return clean
 
 
 def _default_post_digest(cal_url, digest32):
-    _check_safe_calendar_url(cal_url, resolve_dns=True)
-    url = cal_url.rstrip("/") + "/digest"
+    clean = _require_allowed_calendar(cal_url)
+    url = clean + "/digest"
     headers = {**OTS_HEADERS, "Content-Type": "application/x-www-form-urlencoded"}
     return verify._http_request_bytes(
         url, method="POST", data=digest32, headers=headers, timeout=15, retries=2,
@@ -135,8 +99,8 @@ def _default_post_digest(cal_url, digest32):
 
 
 def _default_get_timestamp(cal_url, commit_msg):
-    _check_safe_calendar_url(cal_url, resolve_dns=True)
-    url = cal_url.rstrip("/") + "/timestamp/" + commit_msg.hex()
+    clean = _require_allowed_calendar(cal_url)
+    url = clean + "/timestamp/" + commit_msg.hex()
     try:
         return verify._http_request_bytes(
             url, method="GET", headers=OTS_HEADERS, timeout=15, retries=2,
@@ -220,14 +184,9 @@ def upgrade_proof_bytes(ots_bytes, get_timestamp=None):
     if not splices:
         return ots_bytes, False
 
-    buf = bytearray(ots_bytes)
+    buf = ots_bytes
     for was_ff, item_start, item_end, sub_ts, top_items in reversed(splices):
-        candidate = bytearray(buf)
-        pending_slice = bytes(candidate[item_start:item_end])
-        if was_ff:
-            candidate[item_start - 1:item_end] = b"\xff" + pending_slice + b"".join(b"\xff" + it for it in top_items)
-        else:
-            candidate[item_start:item_end] = b"\xff" + pending_slice + sub_ts
+        candidate = _splice_single(buf, was_ff, item_start, item_end, sub_ts, top_items)
         if len(candidate) <= accept_anchors.MAX_OTS_BYTES:
             buf = candidate
 
@@ -282,10 +241,7 @@ def upgrade_anchors_dir(anchors_dir, get_timestamp=None):
 def load_head(base):
     """Return the head dict from {base}/index.json (URL or local directory)."""
     if base.startswith(("http://", "https://")):
-        url = base.rstrip("/") + "/index.json"
-        req = urllib.request.Request(url, headers={"User-Agent": "lucky2049-anchor/1.0"})
-        with urllib.request.urlopen(req, timeout=60) as r:
-            data = json.loads(r.read().decode("utf-8"))
+        data = json.loads(verify._http_get(base.rstrip("/") + "/index.json", timeout=60))
     else:
         with open(os.path.join(base, "index.json")) as f:
             data = json.load(f)

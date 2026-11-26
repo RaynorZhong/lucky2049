@@ -153,6 +153,10 @@ def _parse_http_url(url):
     return parts, (port or (443 if parts.scheme == "https" else 80))
 
 
+class _ResponseTooLargeError(urllib.error.URLError):
+    """HTTP response exceeded max_bytes; fatal (never retried on pool or backoff)."""
+
+
 def _send_pooled_once(method, url, data, headers, timeout, max_bytes=_MAX_HTTP_BYTES):
     """Send one HTTP(S) request over a thread-local Keep-Alive connection."""
     parts, port = _parse_http_url(url)
@@ -179,11 +183,18 @@ def _send_pooled_once(method, url, data, headers, timeout, max_bytes=_MAX_HTTP_B
         r = c.getresponse()
         body = r.read(max_bytes + 1)
         if len(body) > max_bytes:
-            raise urllib.error.URLError(f"HTTP response exceeds {max_bytes} bytes: {url}")
+            raise _ResponseTooLargeError(f"HTTP response exceeds {max_bytes} bytes: {url}")
         return r, body
 
     try:
         resp, raw = _roundtrip(conn)
+    except _ResponseTooLargeError:
+        conns.pop(origin, None)
+        try:
+            conn.close()
+        except OSError:
+            pass
+        raise
     except (http.client.HTTPException, OSError):
         conns.pop(origin, None)
         try:
@@ -221,7 +232,7 @@ def _exec_http(method, url, data, headers, timeout, validate_url=None,
         with urllib.request.urlopen(req, timeout=timeout) as r:
             body = r.read(max_bytes + 1)
         if len(body) > max_bytes:
-            raise urllib.error.URLError(f"HTTP response exceeds {max_bytes} bytes: {url}")
+            raise _ResponseTooLargeError(f"HTTP response exceeds {max_bytes} bytes: {url}")
         return body
     cur_url, cur_method, cur_data = url, method, data
     cur_headers = dict(headers or {})
@@ -275,6 +286,8 @@ def _http_request_bytes(url, method="GET", data=None, headers=None, timeout=30, 
             if e.code not in (429, 500, 502, 503, 504) or attempt == retries - 1:
                 raise
             time.sleep(_retry_after(e) or 0.5 * (2 ** attempt))
+        except _ResponseTooLargeError:
+            raise
         except (urllib.error.URLError, http.client.HTTPException, OSError):
             if attempt == retries - 1:
                 raise

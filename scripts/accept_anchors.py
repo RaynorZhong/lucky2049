@@ -30,13 +30,15 @@ Usage:  python scripts/accept_anchors.py [--verify-chain] <incoming-dir> [anchor
         python scripts/accept_anchors.py --check-pending [anchors-dir]
 """
 import hashlib
+import ipaddress
 import json
 import os
 import re
+import socket
 import stat
 import sys
 import time
-import urllib.request
+import urllib.parse
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO not in sys.path:
@@ -44,6 +46,17 @@ if REPO not in sys.path:
 import verify  # noqa: E402 — stdlib-only HTTP Keep-Alive + RPC helpers
 DEFAULT_ANCHORS = os.path.join(REPO, "anchors")
 DEFAULT_SITE = "https://lucky2049.com"
+ALLOWED_CALENDARS = (
+    "https://alice.btc.calendar.opentimestamps.org",
+    "https://bob.btc.calendar.opentimestamps.org",
+    "https://finney.calendar.eternitywall.com",
+    "https://btc.calendar.catallaxy.com",
+)
+_NONPUBLIC_V6_NETS = (
+    ipaddress.ip_network("::/96"),          # deprecated IPv4-compatible (e.g. ::127.0.0.1)
+    ipaddress.ip_network("64:ff9b::/96"),   # RFC 6052 well-known NAT64 prefix
+    ipaddress.ip_network("64:ff9b:1::/48"), # RFC 8215 local-use NAT64 prefix
+)
 
 NAME_RE = re.compile(r"([0-9]{6})\.head\.json(\.ots)?")     # always used with fullmatch()
 # OpenTimestamps detached-proof file: 31-byte magic, version 1, the file-hash op
@@ -55,8 +68,9 @@ _UNARY_OPS = {0x08, 0xF2, 0xF3}                           # sha256 reverse hexli
 _BINARY_OPS = {0xF0, 0xF1}                                # append / prepend <varbytes>
 MAX_HEAD_BYTES = 1024
 MAX_OTS_BYTES = 16 * 1024      # real proofs: ~0.8 KiB pending, ~5.4 KiB at most once attested
-MAX_ATTESTATIONS = 32          # bounds explorer-query fanout during --verify-chain
+MAX_ATTESTATIONS = 32          # bounds explorer-query fanout + duplicate-branch floods
 MAX_BRANCH_DEPTH = 64          # bounds simultaneous 0xFF branches in a single proof
+MAX_OTS_OPS = 16384            # bounds total hashing/transform steps per proof
 MAX_NEW_HEADS = 1              # anchor_head.py only ever writes the current head
 # ~1 draw/day and proofs upgrade within a day, so a proof this many draws behind the
 # newest anchor that STILL has no Bitcoin attestation means upgrading is broken.
@@ -121,16 +135,72 @@ def _apply_ots_op(tag, arg, msg):
     raise ValueError("unsupported op 0x%02x in evaluated proof" % tag)
 
 
+def is_public_ip(ip):
+    if ip.version == 6:
+        if ip.ipv4_mapped:
+            ip = ip.ipv4_mapped
+        elif any(ip in net for net in _NONPUBLIC_V6_NETS):
+            return False
+    return (
+        ip.is_global
+        and not (ip.is_private or ip.is_loopback or ip.is_link_local
+                 or ip.is_reserved or ip.is_multicast or ip.is_unspecified)
+    )
+
+
+def check_safe_calendar_url(url, resolve_dns=False, getaddrinfo=None):
+    """Ensure calendar URLs (especially untrusted PendingAttestation URIs) use HTTPS
+    on standard port 443 and a public hostname, never userinfo/queries/localhost or
+    non-global/NAT64 IP space."""
+    if not url or any(ord(c) <= 0x20 or ord(c) >= 0x7F for c in url):
+        raise ValueError(f"unsafe calendar URI: {url!r}")
+    parts = urllib.parse.urlsplit(url)
+    if (parts.scheme != "https" or not parts.hostname
+            or parts.username or parts.password or parts.query or parts.fragment):
+        raise ValueError(f"unsafe calendar URI: {url!r}")
+    try:
+        port = parts.port or 443
+    except ValueError as e:
+        raise ValueError(f"invalid calendar port in {url!r}: {e}") from e
+    if port != 443:
+        raise ValueError(f"disallowed non-443 calendar port in {url!r}")
+    host = parts.hostname.rstrip(".").lower()
+    if (not host or host in ("localhost", "localhost.localdomain")
+            or host.endswith((".localhost", ".local", ".localdomain", ".internal"))):
+        raise ValueError(f"disallowed local calendar host: {host!r}")
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        ip = None
+    if ip is not None:
+        if not is_public_ip(ip):
+            raise ValueError(f"disallowed non-public calendar IP: {host!r}")
+        return
+    if resolve_dns:
+        resolve = getaddrinfo or socket.getaddrinfo
+        try:
+            addrs = resolve(host, port, type=socket.SOCK_STREAM)
+        except OSError as e:
+            raise ValueError(f"unresolvable calendar host {host!r}: {e}") from e
+        if not addrs:
+            raise ValueError(f"no DNS addresses for calendar host: {host!r}")
+        for _, _, _, _, sockaddr in addrs:
+            resolved = ipaddress.ip_address(sockaddr[0].split("%", 1)[0])
+            if not is_public_ip(resolved):
+                raise ValueError(f"disallowed non-public calendar IP {resolved} for {host!r}")
+
+
 def _consume_attestation(r):
     """Read an attestation body after tag 0x00; return (kind, value)."""
     kind = r.take(8)
     payload = _Reader(r.varbytes(8192))
     if kind == PENDING_ATTESTATION:
-        raw_uri = payload.varbytes(1000)
+        raw_uri = payload.varbytes(1000, 8)
         try:
             val = raw_uri.decode("ascii")
         except UnicodeDecodeError as e:
             raise ValueError("non-ASCII pending calendar URI") from e
+        check_safe_calendar_url(val, resolve_dns=False)
     elif kind == BITCOIN_ATTESTATION:
         val = payload.varuint()
     else:
@@ -157,8 +227,12 @@ def walk_ots(ots, evaluate=False):
     cur_msg = digest
     stack = []
     btc, pending = [], []
+    ops = raw_btc = 0
 
     while True:
+        ops += 1
+        if ops > MAX_OTS_OPS:
+            raise ValueError("too many OTS operations in one proof")
         tag = r.take(1)[0]
         was_ff = (tag == 0xFF)
         if was_ff:
@@ -175,6 +249,9 @@ def walk_ots(ots, evaluate=False):
             kind, val = _consume_attestation(r)
             item_end = r.i
             if kind == BITCOIN_ATTESTATION:
+                raw_btc += 1
+                if raw_btc > MAX_ATTESTATIONS:
+                    raise ValueError("too many Bitcoin attestations in one proof")
                 if evaluate:
                     if len(cur_msg) != 32:
                         raise ValueError("Bitcoin attestation leaf digest is not 32 bytes")
@@ -183,8 +260,6 @@ def walk_ots(ots, evaluate=False):
                         btc.append(pair)
                 else:
                     btc.append(val)
-                if len(btc) > MAX_ATTESTATIONS:
-                    raise ValueError("too many Bitcoin attestations in one proof")
             else:
                 pending.append((was_ff, item_start, item_end, val, cur_msg))
                 if len(pending) > MAX_ATTESTATIONS:
@@ -282,10 +357,10 @@ def canonical_head(draw_id, commitment, algo_version):
 
 def load_draws(base):
     if base.startswith(("http://", "https://")):
-        req = urllib.request.Request(base.rstrip("/") + "/index.json",
-                                     headers={"User-Agent": "lucky2049-anchor/1.0"})
-        with urllib.request.urlopen(req, timeout=60) as r:
-            data = json.loads(r.read().decode("utf-8"))
+        parts = urllib.parse.urlsplit(base)
+        path = parts.path.rstrip("/") + "/index.json"
+        url = urllib.parse.urlunsplit((parts.scheme, parts.netloc, path, parts.query, ""))
+        data = json.loads(verify._http_get(url, timeout=60))
     else:
         with open(os.path.join(base, "index.json")) as f:
             data = json.load(f)
@@ -295,14 +370,16 @@ def load_draws(base):
 def _published_draw(site, draw_id, sleep):
     """The published draw `draw_id`, re-reading index.json a few times in case this
     job hit a staler CDN copy than the one the stamp job anchored."""
+    is_http = site.startswith(("http://", "https://"))
     for attempt in range(PUBLISHED_RETRIES):
-        draws = load_draws(site)
+        target = f"{site.rstrip('/')}?v={draw_id}-{attempt}" if (is_http and attempt > 0) else site
+        draws = load_draws(target)
         if draw_id < len(draws):
             d = draws[draw_id]
             if d.get("id") != draw_id:
                 raise Rejected(f"index.json is inconsistent at position {draw_id} -- not a published draw")
             return d
-        if attempt + 1 < PUBLISHED_RETRIES and site.startswith(("http://", "https://")):
+        if attempt + 1 < PUBLISHED_RETRIES and is_http:
             print(f"draw {draw_id} not in the published index yet (stale CDN copy?) -- retrying in "
                   f"{PUBLISHED_RETRY_SLEEP_S}s", flush=True)
             sleep(PUBLISHED_RETRY_SLEEP_S)
@@ -362,27 +439,41 @@ def _fetch_chain_merkle_roots(height):
 
 
 def verify_attestations_on_chain(name, attestations, merkle_fetcher=None, min_sources=2):
-    """Confirm at least one (height, merkle_root) attestation matches >= min_sources
-    independent Bitcoin block-header providers."""
+    """Confirm every Bitcoin leaf is valid on chain (zero merkle_root mismatches and
+    >= 1 confirming source per leaf) AND >= 1 leaf reaches >= min_sources quorum."""
     if not attestations:
         raise Rejected(f"{name}: proof claims attestation but evaluated 0 Bitcoin leaves")
     fetch = merkle_fetcher or _fetch_chain_merkle_roots
     details = []
-    saw_mismatch = False
+    confirmed = None
     for height, expected_mr in attestations:
         seen = fetch(height) or {}
         agree = [src for src, mr in seen.items() if isinstance(mr, str) and mr.lower() == expected_mr]
-        if len(agree) >= min_sources:
-            return {"height": height, "merkle_root": expected_mr, "sources": agree}
         mismatched = [f"{src}={mr[:12]}..." for src, mr in seen.items()
                       if isinstance(mr, str) and mr.lower() != expected_mr]
         if mismatched:
-            saw_mismatch = True
-            details.append(f"height {height} merkle_root mismatch (proof {expected_mr[:12]}... vs {', '.join(mismatched)})")
-        else:
-            details.append(f"height {height} reached only {len(agree)}/{min_sources} sources ({', '.join(agree) or 'none'})")
-    kind = "Bitcoin block merkle_root mismatch" if saw_mismatch else "Bitcoin header quorum not met"
-    raise Rejected(f"{name}: {kind} -> {'; '.join(details)}")
+            raise Rejected(
+                f"{name}: Bitcoin block merkle_root mismatch -> height {height} merkle_root mismatch "
+                f"(proof {expected_mr[:12]}... vs {', '.join(mismatched)})"
+            )
+        if not agree:
+            raise Rejected(
+                f"{name}: Bitcoin header quorum not met -> height {height} reached 0/{min_sources} sources"
+            )
+        if len(agree) >= min_sources and confirmed is None:
+            confirmed = {"height": height, "merkle_root": expected_mr, "sources": agree}
+        elif len(agree) < min_sources:
+            details.append(f"height {height} reached only {len(agree)}/{min_sources} sources ({', '.join(agree)})")
+    if confirmed is not None:
+        return confirmed
+    raise Rejected(f"{name}: Bitcoin header quorum not met -> {'; '.join(details)}")
+
+
+def _check_allowed_calendars(name, ots_bytes):
+    _, _, pending = walk_ots(ots_bytes, evaluate=False)
+    for _, _, _, uri, _ in pending:
+        if uri.rstrip("/") not in ALLOWED_CALENDARS:
+            raise Rejected(f"{name}: untrusted pending calendar URI {uri!r} (not in allowlist)")
 
 
 def accept(incoming, anchors_dir=DEFAULT_ANCHORS, site=DEFAULT_SITE, sleep=time.sleep,
@@ -428,12 +519,14 @@ def accept(incoming, anchors_dir=DEFAULT_ANCHORS, site=DEFAULT_SITE, sleep=time.
             raise Rejected(f"{name}: {problem}")
         existing = _read_existing(anchors_dir, name)
         if existing is None:
-            if verify_chain and is_attested(data):
-                try:
-                    atts = eval_bitcoin_attestations(data, head_bytes)
-                except ValueError as e:
-                    raise Rejected(f"{name}: invalid Bitcoin attestation path ({e})") from e
-                verify_attestations_on_chain(name, atts, merkle_fetcher=merkle_fetcher)
+            if verify_chain:
+                _check_allowed_calendars(name, data)
+                if is_attested(data):
+                    try:
+                        atts = eval_bitcoin_attestations(data, head_bytes)
+                    except ValueError as e:
+                        raise Rejected(f"{name}: invalid Bitcoin attestation path ({e})") from e
+                    verify_attestations_on_chain(name, atts, merkle_fetcher=merkle_fetcher)
             to_write[name] = data
             continue
         if existing == data:
@@ -448,6 +541,7 @@ def accept(incoming, anchors_dir=DEFAULT_ANCHORS, site=DEFAULT_SITE, sleep=time.
         if len(data) < len(existing):
             raise Rejected(f"{name} would shrink ({len(existing)} -> {len(data)} bytes)")
         if verify_chain:
+            _check_allowed_calendars(name, data)
             try:
                 atts = eval_bitcoin_attestations(data, head_bytes)
             except ValueError as e:

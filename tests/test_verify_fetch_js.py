@@ -2,7 +2,7 @@
 """
 Locks verify.html's in-browser hash-fetch/assembly path -- the code that selects the
 144 block hashes fed into V.generate(), i.e. the page's core trust claim. It lives
-inline in web/verify.html (not in static/verify.js), so it's extracted and run under
+in static/page-verify.js (not in static/verify.js), so it's extracted and run under
 Node with a stubbed fetch. Asserts: a healthy window assembles all 144 in order from
 ONE explorer; a fork/blip restarts the whole window on the next with NO cross-explorer
 mixing, including per-height fallback and late in-flight replies. Node + stdlib.

@@ -114,11 +114,15 @@ elif sys.argv[1] not in ('init', 'checkout', 'add', '-c', 'push'):
         self.assertIn("--force given", result.stdout)
         self.assertTrue(pushed)
 
-    def test_unreachable_live_head_keeps_first_deploy_behavior(self):
-        result, pushed = self._run([], "", curl_rc=22)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("No live head.json reachable", result.stdout)
-        self.assertTrue(pushed)
+    def test_unreachable_live_head_aborts_fail_closed_unless_init_or_force(self):
+        result, pushed = self._run([{"id": 0, "commitment": "c0"}], "", curl_rc=22)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("ABORT", result.stderr)
+        self.assertFalse(pushed)
+        # Explicit --init permits bootstrap when no live head.json exists yet
+        init_res, init_pushed = self._run([], "", "--init", curl_rc=22)
+        self.assertEqual(init_res.returncode, 0, init_res.stderr)
+        self.assertTrue(init_pushed)
 
 
 if __name__ == "__main__":

@@ -94,7 +94,7 @@ jobs:
             echo "push rejected (attempt $attempt) -- rebasing onto the latest main"
             sleep $((attempt * 5))
             git fetch "$url" main
-            git "${ident[@]}" rebase FETCH_HEAD
+            git "${ident[@]}" rebase FETCH_HEAD || { git rebase --abort; echo "main moved with conflicts"; exit 1; }
           done
           echo "could not push after 3 attempts"; exit 1
         env:
