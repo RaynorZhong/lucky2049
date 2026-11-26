@@ -91,7 +91,11 @@ class _Case(unittest.TestCase):
         return sorted(os.listdir(self.anchors))
 
     def snapshot(self):
-        return {n: open(os.path.join(self.anchors, n), "rb").read() for n in self.names()}
+        out = {}
+        for n in self.names():
+            with open(os.path.join(self.anchors, n), "rb") as f:
+                out[n] = f.read()
+        return out
 
 
 class TestProofParser(unittest.TestCase):

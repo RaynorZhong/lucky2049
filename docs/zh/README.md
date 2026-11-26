@@ -52,7 +52,7 @@
   运行 [`scripts/extend_pages.py`](../../scripts/extend_pages.py)：对每个**完全确认**的 144 区块新窗口，从
   **≥2 个独立源**取哈希并**要求它们一致**、用 `verify.py` 复算并接上承诺链，追加进 `index.json`，推回 `gh-pages`（各源不一致则**暂缓**该期、不发布，单个出错/分叉的浏览器无法污染历史）。纯 stdlib。由于 GitHub 会对定时工作流限流，它由一个很小的外部触发器（[`ops/trigger-worker/`](../../ops/trigger-worker/)，Cloudflare Worker 定时器）每小时触发一次；工作流自身的 schedule 保留作兜底。
 - **站点** — `web/`（`index.html`〔含下一期预计〕/ `verify.html` / `stats.html` / `trend.html`〔走势图〕/ `randomness.html`〔抛硬币/掷骰子演示〕）+ `static/`（`verify.js` / `stats.js` / `trend.js` / `randomness.js` /
-  `style.css`）。浏览器里读 `index.json`，用自带 SHA-256/HMAC 复算校验，不信任服务器、不连数据库。
+  `style.css` / `fonts/`）。浏览器里读 `index.json`，用自带 SHA-256/HMAC 复算校验，不信任服务器、不连数据库、无任何第三方字体或脚本请求。
 - **验证器** — `verify.py`：独立 stdlib 脚本，命令行复算 + 校验承诺链。
 
 > 一个窗口约 144 个区块（≈ 24 小时）才成熟；cron **每小时**跑一次，成熟的窗口一小时内就会发布（没有新开奖的运行只刷新 `status.json` 源健康心跳）。仍然无服务器。
@@ -106,8 +106,8 @@ commitment = SHA256( 上一期承诺 | 期号 | 算法版本 | 种子 | 前区 |
 于是整段历史被压缩成一个 32 字节的**链头**（`head.json`）。改动任何一期都会改变链头。**链头每日经
 [OpenTimestamps](https://opentimestamps.org) 外锚到比特币区块链**（[`anchor-head.yml`](../../.github/workflows/anchor-head.yml)，
 证明发布在 [`anchors/`](../../anchors/) 并同时服务于 `https://lucky2049.com/anchors/<id>.head.json.ots`），于是旧链头被第三方
-时间戳固定，运营方无法在事后悄悄改写历史。关键在于 `verify.py` 与 `verify.html` 都能**独立重算**这条
-链，承诺并非运营方自说自话；任何人可 `ots verify anchors/<id>.head.json.ots` 复核锚点。
+时间戳固定，运营方无法在事后悄悄改写历史。关键在于 `verify.py` 与 `verify.html` 都能**独立重算**整条
+承诺链，且 `verify.html`（以及 CI 中的 `accept_anchors.py --verify-chain`）会直接把 `.ots` 证明求值并核对到比特币区块头 `merkle_root`；任何人也可用第三方 `ots verify anchors/<id>.head.json.ots` 复核锚点。
 同一个 Cloudflare Worker 每日 02:35 UTC（北京时间 10:35）触发 `anchor-head.yml`，
 工作流自身 02:40 UTC 的 GitHub schedule 保留作兜底。
 
@@ -117,15 +117,14 @@ commitment = SHA256( 上一期承诺 | 期号 | 算法版本 | 种子 | 前区 |
 verify.py       独立引擎(标准库,单文件可复制):算法 generate、承诺链 commitment_for、
                 区块哈希抓取(Core RPC / mempool / blockstream / sqlite)、--site CLI 验证器
 scripts/
-  extend_pages.py  cron 开奖+发布:从链上扩展 index.json(stdlib,复用 verify.py,无 DB)
-  export_static.py 从本地 SQLite 缓存(stdlib sqlite3)重建整个 index.json + 站点(初建/灾备)
-  artifacts.py     下游信标产物(latest.json / feed.json / status.json 源健康);两个发布器都会写
-  anchor_head.py   为已发布的链头打 OpenTimestamps 锚点(由 anchor-head.yml 每日运行)
-  accept_anchors.py anchor-head 两个 job 之间的闸门:提交前只放行合法的锚点/证明
-  publish-pages.sh 手动发布(调 export_static + 推 gh-pages);常态用 cron,二选一
+  extend_pages.py   cron 开奖+发布:从链上扩展 index.json(stdlib,复用 verify.py,无 DB)
+  export_static.py  从本地 SQLite 缓存(stdlib sqlite3)重建整个 index.json + 站点(初建/灾备)
+  artifacts.py      下游信标产物(latest.json / feed.json / status.json 源健康);两个发布器都会写
+  anchor_head.py    纯标准库 OpenTimestamps 链头生成、多日历盖戳与幂等升级(由 anchor-head.yml 每日运行)
+  accept_anchors.py anchor-head 两个 job 之间的闸门:校验锚点/证明并在多独立源上核对比特币 merkle_root
+  publish-pages.sh  手动发布(调 export_static + 推 gh-pages);常态用 cron,二选一
 web/            index.html(首页+下一期预计)/ verify.html / stats.html / trend.html(走势图)/ randomness.html(抛硬币/掷骰子演示)+ og.png + CNAME
-static/         verify.js(验证器)、stats.js(频率+卡方)、trend.js(走势图)、randomness.js(抛硬币/掷骰子演示)、style.css、favicon.svg —— 自带算法、无外部脚本
-ops/anchor-requirements.txt  OpenTimestamps 客户端的哈希锁定安装清单(anchor-head 的 stamp job 用)
+static/         verify.js(验证器+OTS 求值)、stats.js(频率+卡方)、trend.js(走势图)、randomness.js(抛硬币/掷骰子演示)、page-*.js(各页前端脚本,严格 script-src 'self' CSP)、style.css、fonts/(本地化 WOFF2 字体)、favicon.svg
 ops/trigger-worker/ Cloudflare Worker 定时器:每小时触发 refresh-pages.yml、每日触发 anchor-head.yml;GitHub schedule 保留兜底—— 见 docs/DEPLOY.md
 .github/workflows/  refresh-pages.yml(cron 发布)、tests.yml(算法/承诺/JS 锁)、anchor-head.yml(OpenTimestamps 头部锚定)、keepalive.yml(防止 cron 自动停用)
 SPEC.md         冻结算法规范 v1        docs/DEPLOY.md 部署   docs/TDD.md TDD 工作流

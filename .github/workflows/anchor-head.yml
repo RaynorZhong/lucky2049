@@ -8,15 +8,13 @@ name: anchor-head
 # this workflow daily at 02:35 UTC; the schedule below remains the fallback.
 # Commits proofs to main; refresh-pages then serves them at /anchors/.
 #
-# Two jobs, on purpose. Stamping needs third-party code from PyPI (the OTS client
-# and 8 dependencies); committing needs a token that can push to main -- i.e. write
-# verify.py / the drawer, exactly the tamper class this project exists to prevent.
-# They never meet:
-#   stamp   read-only token; hash-locked install; produces anchors/ as an artifact.
+# Two jobs, on purpose, preserving strict privilege separation:
+#   stamp   read-only token; talks to untrusted external OTS calendar servers using
+#           100% Python stdlib (zero PyPI installs); produces anchors/ as an artifact.
 #   commit  write token; runs NO third-party code; admits the artifact only through
-#           scripts/accept_anchors.py (names, sizes, at most one new head and it must be
-#           the PUBLISHED one, each proof must parse as an OTS proof of that file, an
-#           attested proof never changes). It does not check proofs against the chain.
+#           scripts/accept_anchors.py --verify-chain (names, sizes, at most one new
+#           head matching the PUBLISHED history, full OTS parse, immutability once
+#           attested, AND cryptographic merkle_root check against >= 2 chain sources).
 on:
   schedule:
     - cron: "40 2 * * *"   # daily ~02:40 UTC fallback; Worker dispatches at 02:35
@@ -43,24 +41,9 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: "3.13"
-      - name: Install the OpenTimestamps client (hash-locked; see ops/anchor-requirements.txt)
-        run: |
-          pip install --require-hashes --only-binary=:all: -r ops/anchor-requirements.txt
 
-      - name: Stamp the current published head (skips draws already anchored)
-        run: |
-          python scripts/anchor_head.py
-          for f in anchors/*.head.json; do
-            [ -f "$f.ots" ] || ots stamp "$f"
-          done
-
-      - name: Upgrade earlier pending proofs to full Bitcoin attestations
-        # Best-effort here (a calendar may be briefly down); the commit job's last step
-        # turns the run red if proofs STAY pending, so a broken upgrade can't hide.
-        run: |
-          for f in anchors/*.ots; do ots upgrade "$f" || true; done
-          rm -f anchors/*.ots.bak   # ots upgrade leaves .bak backups -- don't hand them over
-        continue-on-error: true
+      - name: Stamp the current published head and upgrade pending proofs (stdlib)
+        run: python scripts/anchor_head.py --stamp --upgrade
 
       - name: Hand the anchors over to the commit job
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
@@ -92,8 +75,8 @@ jobs:
           name: anchors
           path: ${{ runner.temp }}/incoming
 
-      - name: Admit only valid anchors (stdlib; rejects the whole batch on any violation)
-        run: python scripts/accept_anchors.py "$RUNNER_TEMP/incoming"
+      - name: Admit only valid anchors and verify Bitcoin Merkle roots (stdlib)
+        run: python scripts/accept_anchors.py --verify-chain "$RUNNER_TEMP/incoming"
 
       - name: Commit new / upgraded proofs to main
         run: |

@@ -40,6 +40,11 @@ def _export(db, out):
         export_static.main()
 
 
+def _load_json(path):
+    with open(path) as f:
+        return json.load(f)
+
+
 class TestExportStatic(unittest.TestCase):
     def test_builds_chained_index_head_and_artifacts(self):
         c0, c1 = "a" * 64, "b" * 64
@@ -53,7 +58,7 @@ class TestExportStatic(unittest.TestCase):
             ])
             _export(db, out)
 
-            idx = json.load(open(os.path.join(out, "index.json")))
+            idx = _load_json(os.path.join(out, "index.json"))
             self.assertEqual(idx["count"], 2)
             # prev_commitment is re-threaded by row order: genesis, then each prior commitment.
             self.assertEqual(idx["draws"][0]["prev_commitment"], verify.GENESIS_PREV)
@@ -61,25 +66,27 @@ class TestExportStatic(unittest.TestCase):
             self.assertEqual(idx["draws"][1]["prev_commitment"], c0)
             self.assertEqual(idx["draws"][1]["commitment"], c1)
 
-            head = json.load(open(os.path.join(out, "head.json")))
+            head = _load_json(os.path.join(out, "head.json"))
             self.assertEqual(head, {"head": c1, "draw_id": 1, "count": 2, "algo_version": "v1"})
 
-            latest = json.load(open(os.path.join(out, "latest.json")))
+            latest = _load_json(os.path.join(out, "latest.json"))
             self.assertEqual(latest["latest"]["id"], 1)
-            feed = json.load(open(os.path.join(out, "feed.json")))
+            feed = _load_json(os.path.join(out, "feed.json"))
             self.assertEqual(feed["items"][0]["id"], "1")  # newest first
-            st = json.load(open(os.path.join(out, "status.json")))
+            st = _load_json(os.path.join(out, "status.json"))
             self.assertEqual(st["sources"], [])           # offline rebuild probes nothing
             self.assertIn("note", st)
+            self.assertTrue(os.path.isfile(os.path.join(out, "fonts", "inter-latin.woff2")))
+            self.assertTrue(os.path.isfile(os.path.join(out, "fonts", "source-serif-4-latin.woff2")))
 
     def test_empty_db_writes_genesis_sentinel_head(self):
         with tempfile.TemporaryDirectory() as tmp:
             db, out = os.path.join(tmp, "db.sqlite"), os.path.join(tmp, "site")
             _make_db(db, [])
             _export(db, out)
-            head = json.load(open(os.path.join(out, "head.json")))
+            head = _load_json(os.path.join(out, "head.json"))
             self.assertEqual(head, {"head": verify.GENESIS_PREV, "draw_id": -1, "count": 0, "algo_version": "v1"})
-            self.assertEqual(json.load(open(os.path.join(out, "index.json")))["count"], 0)
+            self.assertEqual(_load_json(os.path.join(out, "index.json"))["count"], 0)
 
 
 if __name__ == "__main__":

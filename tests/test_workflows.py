@@ -4,10 +4,10 @@ Structural locks on the GitHub workflows (parsed as text; no YAML dependency).
 
 These pin the security shape that is easy to erode in a later edit:
   - every action is pinned to a full commit SHA;
-  - the anchor workflow keeps third-party code (the PyPI-installed OpenTimestamps
-    client) and the token that can push to main in SEPARATE jobs, with the hand-over
-    going through scripts/accept_anchors.py;
-  - that client is installed from a hash-locked requirements file;
+  - the anchor workflow keeps untrusted external calendar I/O (`stamp`, read-only token)
+    and the token that can push to main (`commit`, write token) in SEPARATE jobs, with
+    both jobs running zero PyPI/third-party packages and the hand-over gated through
+    `scripts/accept_anchors.py --verify-chain`;
   - long-running jobs have timeouts, and the heartbeat steps stay optional no-ops.
 Stdlib only.
 """
@@ -79,12 +79,10 @@ class TestAnchorWorkflowIsolation(unittest.TestCase):
         self.assertNotIn("git push", self.stamp)
         self.assertRegex(self.stamp, r"persist-credentials:\s*false")
 
-    def test_stamp_job_installs_only_the_hash_locked_set(self):
-        installs = re.findall(r"pip install[^\n]*", self.stamp)
-        self.assertEqual(len(installs), 1)
-        self.assertIn("--require-hashes", installs[0])
-        self.assertIn("--only-binary=:all:", installs[0])
-        self.assertIn("-r ops/anchor-requirements.txt", installs[0])
+    def test_stamp_job_runs_pure_stdlib_without_pip_or_external_cli(self):
+        for forbidden in ("pip install", "pip3 install", "ots stamp", "ots upgrade", "npm ", "curl -o", "| sh", "| bash"):
+            self.assertNotIn(forbidden, self.stamp, "stamp job must not run: " + forbidden)
+        self.assertIn("python scripts/anchor_head.py --stamp --upgrade", self.stamp)
 
     def test_commit_job_runs_no_third_party_code(self):
         for forbidden in ("pip install", "pip3 install", "ots stamp", "ots upgrade", "npm ", "curl -o", "| sh", "| bash"):
@@ -93,7 +91,7 @@ class TestAnchorWorkflowIsolation(unittest.TestCase):
         self.assertRegex(self.commit, r"persist-credentials:\s*false")
 
     def test_artifact_is_admitted_through_the_gate_before_any_commit(self):
-        gate = self.commit.index("python scripts/accept_anchors.py \"$RUNNER_TEMP/incoming\"")
+        gate = self.commit.index("python scripts/accept_anchors.py --verify-chain \"$RUNNER_TEMP/incoming\"")
         self.assertLess(self.commit.index("download-artifact"), gate)
         self.assertLess(gate, self.commit.index("git add anchors"))
         self.assertLess(self.commit.index("git push"), self.commit.index("accept_anchors.py --check-pending"))
@@ -106,17 +104,12 @@ class TestAnchorWorkflowIsolation(unittest.TestCase):
         self.assertNotRegex(self.commit, r"push[^\n]*(--force|-f\b)")
 
 
-class TestAnchorRequirementsLock(unittest.TestCase):
-    def test_every_requirement_is_an_exact_pin_with_a_sha256(self):
-        with open(os.path.join(REPO_ROOT, "ops", "anchor-requirements.txt")) as f:
-            body = "\n".join(l for l in f.read().splitlines() if l.strip() and not l.lstrip().startswith("#"))
-        reqs = re.findall(r"(?m)^(\S+)==(\S+) \\\n    --hash=sha256:([0-9a-f]{64})$", body)
-        names = [r[0] for r in reqs]
-        self.assertIn("opentimestamps-client", names)
-        self.assertEqual(len(names), len(set(names)))
-        # nothing else in the file: no unpinned line, no extra index, no editable/VCS install
-        self.assertEqual(len(body.splitlines()), 2 * len(reqs))
-        self.assertGreaterEqual(len(reqs), 9)
+class TestZeroAnchorThirdPartyRequirements(unittest.TestCase):
+    def test_anchor_requirements_file_is_removed(self):
+        self.assertFalse(
+            os.path.exists(os.path.join(REPO_ROOT, "ops", "anchor-requirements.txt")),
+            "ops/anchor-requirements.txt should be deleted once stamping is 100% Python stdlib",
+        )
 
 
 class TestHeartbeats(unittest.TestCase):

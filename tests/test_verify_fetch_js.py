@@ -15,7 +15,7 @@ import unittest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NODE = shutil.which("node")
-VERIFY_HTML = os.path.join(REPO_ROOT, "web", "verify.html")
+VERIFY_PAGE_JS = os.path.join(REPO_ROOT, "static", "page-verify.js")
 
 # Extract the contiguous fetch-helper block (var BATCH_APIS ... end of fetchHashes,
 # just before `var RUN`) and run it with stubbed fetch / $ (progress writes to $()).
@@ -108,7 +108,7 @@ const perHeight = handler => async u => {
 @unittest.skipUnless(NODE, "node not available")
 class TestVerifyFetchJs(unittest.TestCase):
     def test_fetch_assembly_and_anti_mixing(self):
-        got = json.loads(subprocess.check_output([NODE, "-e", NODE_SCRIPT, VERIFY_HTML], text=True))
+        got = json.loads(subprocess.check_output([NODE, "-e", NODE_SCRIPT, VERIFY_PAGE_JS], text=True))
         self.assertEqual(got["len1"], 144)
         self.assertTrue(got["c1"], "healthy window must assemble 144 in order from one explorer")
         self.assertTrue(got["c2"], "a blip must restart the window on the other explorer with no mixing")
@@ -120,7 +120,7 @@ class TestVerifyFetchJs(unittest.TestCase):
 
     def test_verdict_composition_truth_table(self):
         # Lock the /verify page's whole PASS/FAIL/genesis/unchecked verdict (its core trust output).
-        out = subprocess.check_output([NODE, "-e", NODE_SCRIPT_VERDICT, VERIFY_HTML], text=True)
+        out = subprocess.check_output([NODE, "-e", NODE_SCRIPT_VERDICT, VERIFY_PAGE_JS], text=True)
         v = json.loads(out)
         # result reproduces + chain intact -> green PASS
         self.assertEqual(v["genesis"]["state"], "pass"); self.assertIn("genesis commitment verified", v["genesis"]["sub"])

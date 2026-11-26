@@ -28,7 +28,8 @@ def _draw(i):
 def _feed(draws):
     with tempfile.TemporaryDirectory() as tmp:
         artifacts.write_feed(tmp, draws)
-        return json.load(open(os.path.join(tmp, "feed.json")))
+        with open(os.path.join(tmp, "feed.json")) as f:
+            return json.load(f)
 
 
 class TestWriteFeed(unittest.TestCase):

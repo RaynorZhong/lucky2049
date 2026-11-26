@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://mempool.space https://blockstream.info; base-uri 'self'; form-action 'self'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://mempool.space https://blockstream.info; object-src 'none'; base-uri 'self'; form-action 'self'">
     <title>Verify a Draw — lucky2049</title>
     <meta name="description" content="Recompute any lucky2049 draw in your browser from the 144 Bitcoin block hashes and check it against the published result and tamper-evidence chain — no server trust.">
     <meta name="theme-color" content="#f4f5f7">
@@ -18,9 +18,6 @@
     <meta property="og:image" content="https://lucky2049.com/og.png">
     <meta name="twitter:image" content="https://lucky2049.com/og.png">
     <link rel="canonical" href="https://lucky2049.com/verify.html">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:wght@500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./style.css">
     <style>
         .row { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
@@ -129,6 +126,7 @@
 
             <div class="panel" style="margin-top:1rem;">
                 <div class="kv"><span class="k">History head (commits to all draws)</span><span class="v"><span id="vHead" class="mono">…</span></span></div>
+                <div class="kv"><span class="k">Bitcoin anchor (.ots proof)</span><span class="v"><span id="bAnchor" class="badge wait">…</span><span id="vAnchor" class="mono"></span></span></div>
                 <p class="note" style="margin-top:0.5rem;">
                     Prefer a terminal? <span class="mono">python verify.py &lt;id&gt; --source mempool</span> does the same check.
                 </p>
@@ -138,270 +136,7 @@
     </div>
 
     <script src="./verify.js"></script>
-    <script>
-        var V = window.Lucky2049Verify;
-        var $ = function (id) { return document.getElementById(id); };
-        var INDEX = null;  // cached index.json
-        var INDEX_CHAIN = null;  // full snapshot linkage result, cached with INDEX
-
-        function setBadge(el, ok) { el.className = "badge " + (ok ? "pass" : "fail"); el.textContent = ok ? "PASS" : "FAIL"; }
-        // The verdict hero: 'wait' | 'pass' | 'fail' | 'err'. Retry shows only on 'err'.
-        function setVerdict(state, text, sub) {
-            $("verdict").className = "verdict " + state;
-            $("vdIcon").textContent = state === "pass" ? "✓" : state === "fail" ? "✗" : state === "err" ? "!" : "…";
-            $("vdText").textContent = text;
-            $("vdSub").textContent = sub || "";
-            $("vdRetry").style.display = state === "err" ? "" : "none";
-        }
-        // Pure decision: (result reproduced?, chain state 'pass'|'fail'|'unchecked', draw id) -> the
-        // verdict. Green ONLY when the numbers reproduce AND the commitment chain is verified. Kept
-        // pure (no DOM) so tests/test_verify_fetch_js.py can lock the whole truth table.
-        function composeVerdict(resultOk, chainState, id) {
-            if (resultOk && chainState === "pass") {
-                return { state: "pass", text: "This draw matches the Bitcoin chain.",
-                    sub: "Recomputed in your browser from the 144 block hashes"
-                        + (id === 0 ? " · genesis commitment verified." : " · commitment chain intact.") };
-            }
-            if (resultOk && chainState === "unchecked") {
-                return { state: "err", text: "Commitment verification is incomplete.",
-                    sub: "The numbers match, but required commitment evidence is missing or invalid." };
-            }
-            return { state: "fail",
-                text: resultOk ? "Tamper-evidence chain is BROKEN." : "This draw does NOT match the chain.",
-                sub: resultOk ? "the numbers match, but the commitment doesn't link to the previous draw."
-                              : "the recomputed numbers differ from the published result." };
-        }
-        function balls(c, nums, extra) {
-            c.innerHTML = "";
-            (nums || []).forEach(function (n) { var d = document.createElement("div"); d.className = "white-balls" + (extra ? " " + extra : ""); d.textContent = n; c.appendChild(d); });
-        }
-        function eq(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
-        function isCommitment(value) { return typeof value === "string" && value.length === 64 && /^[0-9a-f]{64}$/.test(value); }
-
-        var INDEX_P = null;  // in-flight/resolved load promise -- dedups concurrent callers
-        function loadIndex() {
-            // Promise-memoized: the eager call on page load and verify()'s own call
-            // race otherwise, each fetching index.json AND running the O(n) chain scan.
-            if (INDEX_P) return INDEX_P;
-            INDEX_P = (async function () {
-                var idx = await (await fetch("./index.json")).json();
-                var h = idx.head || {};
-                var chain = V.verifyChain(idx);  // full-chain linkage scan -- runs once
-                $("vHead").textContent = (h.head || "(none)") + "  ·  " + (idx.count || 0) + " draws"
-                    + "  ·  chain " + (chain.ok ? "✓ intact" : "✗ BROKEN at " + chain.brokenAt);
-                $("vHead").style.color = chain.ok ? "" : "#b91c1c";
-                INDEX = idx;
-                INDEX_CHAIN = chain;
-                return idx;
-            })();
-            INDEX_P.catch(function () { INDEX_P = null; });  // let a failed load be retried
-            return INDEX_P;
-        }
-
-        // Fetch the 144 block hashes for a height range from a public explorer
-        // (mempool.space then blockstream.info, both CORS-enabled).
-        // Fast path: GET /api/blocks/{h} returns 10 blocks descending from h, so a
-        // 144-block window is ~15 requests instead of 144. If a batch page fails or
-        // returns an unexpected shape, we fall back to one-request-per-height, so an
-        // explorer API change can never break verification (only slow it down).
-        var BATCH_APIS = [
-            { name: "mempool.space", url: function (h) { return "https://mempool.space/api/blocks/" + h; } },
-            { name: "blockstream.info", url: function (h) { return "https://blockstream.info/api/blocks/" + h; } }
-        ];
-        var EXPLORERS = [
-            { name: "mempool.space", url: function (h) { return "https://mempool.space/api/block-height/" + h; } },
-            { name: "blockstream.info", url: function (h) { return "https://blockstream.info/api/block-height/" + h; } }
-        ];
-        function progress(out, total) {
-            var done = 0; for (var i = 0; i < out.length; i++) if (out[i]) done++;
-            $("status").textContent = "Fetching block hashes from the chain… " + done + "/" + total;
-        }
-        // Pin ONE explorer for the whole 144-block window -- pages must not be mixed
-        // across explorers (during a fork that would assemble a Frankenstein hash
-        // list). If one explorer can't serve every page cleanly, restart the window
-        // on the next; only when none can do we fall back to per-height fetching.
-        async function fetchHashesBatched(start, end, out) {
-            var total = end - start + 1;
-            for (var e = 0; e < BATCH_APIS.length; e++) {
-                for (var k = 0; k < total; k++) out[k] = undefined;   // fresh slots per explorer
-                var clean = true;
-                for (var top = end; top >= start && clean; top -= 10) {   // /blocks/{top} -> [top .. top-9]
-                    try {
-                        var resp = await fetch(BATCH_APIS[e].url(top));
-                        if (!resp.ok) throw new Error("HTTP " + resp.status);
-                        var page = await resp.json();
-                        if (!Array.isArray(page) || !page.length) throw new Error("bad shape");
-                        for (var j = 0; j < page.length; j++) {
-                            var hgt = page[j].height, id = (page[j].id || "").toLowerCase();
-                            if (typeof hgt !== "number" || !/^[0-9a-f]{64}$/.test(id)) { clean = false; break; }
-                            if (hgt >= start && hgt <= end) out[hgt - start] = id;
-                        }
-                        progress(out, total);
-                    } catch (x) { clean = false; }   // this explorer can't serve the window cleanly
-                }
-                if (clean) {
-                    var allFilled = true;
-                    for (var m = 0; m < total; m++) if (!out[m]) { allFilled = false; break; }
-                    if (allFilled) return true;       // one explorer served every slot
-                }
-            }
-            return false;   // no single explorer served the whole window -> per-height fallback
-        }
-        async function fetchHashAt(height, explorer) {
-            var resp = await fetch(explorer.url(height));
-            if (!resp.ok) throw new Error("HTTP " + resp.status);
-            var hash = (await resp.text()).trim().toLowerCase();
-            if (!/^[0-9a-f]{64}$/.test(hash)) throw new Error("unexpected response");
-            return hash;
-        }
-        async function fetchHashesPerHeight(start, end, out) {  // fallback: concurrency 8
-            var total = end - start + 1, errs = [];
-            for (var e = 0; e < EXPLORERS.length; e++) {
-                for (var k = 0; k < total; k++) out[k] = undefined;
-                var next = 0, clean = true, failure;
-                async function worker() {
-                    while (clean && next < total) {
-                        var idx = next++;
-                        try {
-                            var hash = await fetchHashAt(start + idx, EXPLORERS[e]);
-                            if (clean) { out[idx] = hash; progress(out, total); }
-                        } catch (x) { clean = false; failure = x; }
-                    }
-                }
-                // Workers catch failures so Promise.all waits for EVERY in-flight
-                // reply before the next explorer can reuse these output slots.
-                await Promise.all(Array.from({ length: 8 }, worker));
-                if (clean) return;
-                errs.push(EXPLORERS[e].name + " (" + failure + ")");
-            }
-            throw new Error("all explorers failed for heights " + start + ".." + end + ": " + errs.join(", "));
-        }
-        async function fetchHashes(start, end) {
-            var out = new Array(end - start + 1);
-            if (await fetchHashesBatched(start, end, out)) return out;
-            for (var i = 0; i < out.length; i++) out[i] = undefined;  // drop partials, refetch cleanly
-            await fetchHashesPerHeight(start, end, out);
-            return out;
-        }
-
-        var RUN = 0;  // run token: a slow fetch from an earlier verify() must not write stale badges
-        async function verify(id) {
-            var myRun = ++RUN;
-            $("panel").style.display = "none";
-            $("status").textContent = "Loading…";
-            var index;
-            try { index = await loadIndex(); } catch (e) { $("status").textContent = "Could not load index.json: " + e; return; }
-            var rec = (index.draws || []).find(function (d) { return d.id === id; });
-            if (!rec) { $("status").textContent = "Draw " + id + " not found (have 0.." + (index.count - 1) + ")."; return; }
-
-            var start = id * 144, end = id * 144 + 143;
-            $("vId").textContent = id;
-            $("vAlgo").textContent = rec.algo_version;
-            $("vHeights").textContent = start + " … " + end + " (144 blocks)";
-            balls($("vFront"), rec.front);
-            balls($("vBack"), rec.back, "powerball");
-            $("vCommit").textContent = rec.commitment || "(none)";
-            $("vPrev").textContent = rec.prev_commitment || "(none)";
-            $("vSeed").textContent = "(recomputing…)";
-            ["bResult", "bChain"].forEach(function (b) { $(b).className = "badge wait"; $(b).textContent = "…"; });
-            setVerdict("wait", "Recomputing from the Bitcoin chain…", "fetching the 144 block hashes…");
-            $("panel").style.display = "block";
-
-            var hashes;
-            try { hashes = await fetchHashes(start, end); }
-            catch (e) {
-                if (myRun !== RUN) return;
-                $("vSeed").textContent = "—";
-                $("status").textContent = "Or run: python verify.py " + id + " --source mempool";
-                setVerdict("err", "Couldn't reach the chain.",
-                    "the public explorers didn't answer (" + e + ") — check your connection and retry.");
-                return;
-            }
-            if (myRun !== RUN) return;  // a newer verify() superseded this run -- don't write stale badges
-
-            var r = V.generate(hashes);
-            $("vSeed").textContent = r.seedHex;
-            var resultOk = eq(r.front, rec.front) && eq(r.back, rec.back);
-            setBadge($("bResult"), resultOk);
-            var chainState = "unchecked";   // 'pass' | 'fail' | 'unchecked' (predecessor / commitment unavailable)
-            // Resolve the actual predecessor, then check both the declaration and
-            // recomputed commitment. Missing evidence must never be coerced to a link.
-            var prevRec = id === 0 ? null : (index.draws || []).find(function (d) { return d.id === id - 1; });
-            var linkedPrev = id === 0 ? V.GENESIS_PREV : (prevRec ? prevRec.commitment : null);
-            if (INDEX_CHAIN && !INDEX_CHAIN.ok) {
-                chainState = "fail";  // a local match cannot override a broken snapshot
-            } else if (INDEX_CHAIN && isCommitment(rec.commitment) && isCommitment(linkedPrev)
-                       && isCommitment(rec.prev_commitment)) {
-                var c = V.commitmentFor(linkedPrev, id, rec.algo_version, r.seedHex, r.front, r.back, start, end);
-                chainState = c === rec.commitment && rec.prev_commitment === linkedPrev ? "pass" : "fail";
-            }
-            if (chainState === "unchecked") { $("bChain").className = "badge wait"; $("bChain").textContent = "N/A"; }
-            else setBadge($("bChain"), chainState === "pass");
-
-            var verdict = composeVerdict(resultOk, chainState, id);
-            setVerdict(verdict.state, verdict.text, verdict.sub);
-            $("status").textContent = "Recomputed locally — no server trust.";
-        }
-
-        function currentId() {
-            var v = parseInt($("drawId").value, 10);
-            if (!isNaN(v)) return v;
-            return (INDEX && INDEX.count) ? INDEX.count - 1 : 0;   // empty box -> latest (matches the placeholder)
-        }
-        $("verifyForm").addEventListener("submit", function (e) { e.preventDefault(); history.replaceState(null, "", "?draw=" + currentId()); verify(currentId()); });
-        $("vdRetry").addEventListener("click", function () { verify(currentId()); });
-        var CLIP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>';
-        var CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg>';
-        // Copy-to-clipboard for the hex fields a verifier cross-checks against the CLI.
-        // navigator.clipboard needs a secure context (the verifier also targets plain
-        // HTTP), so fall back to a hidden-textarea execCommand copy when it's absent.
-        function fallbackCopy(text) {
-            try {
-                var ta = document.createElement("textarea");
-                ta.value = text; ta.setAttribute("readonly", "");
-                ta.style.position = "fixed"; ta.style.opacity = "0";
-                document.body.appendChild(ta); ta.select();
-                var ok = document.execCommand("copy");
-                document.body.removeChild(ta);
-                return ok;
-            } catch (e) { return false; }
-        }
-        function copyText(text) {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return fallbackCopy(text); });
-            }
-            return Promise.resolve(fallbackCopy(text));
-        }
-        ["vSeed", "vCommit", "vPrev", "vHead"].forEach(function (id) {
-            var span = $(id);
-            var btn = document.createElement("button");
-            btn.type = "button"; btn.className = "copy-btn"; btn.innerHTML = CLIP;
-            btn.setAttribute("aria-label", "Copy " + id.slice(1).toLowerCase());
-            btn.addEventListener("click", function () {
-                var t = (span.textContent || "").trim();
-                if (id === "vHead") t = t.split("  ·  ")[0];   // copy just the head hash, not the meta
-                if (!t || t === "(none)" || t === "(recomputing…)" || t === "—" || t === "…") return;
-                copyText(t).then(function (ok) {
-                    btn.innerHTML = ok ? CHECK : CLIP; btn.classList.toggle("done", ok);
-                    setTimeout(function () { btn.innerHTML = CLIP; btn.classList.remove("done"); }, 1200);
-                });
-            });
-            span.parentNode.appendChild(btn);
-        });
-
-        var q = new URLSearchParams(location.search).get("draw");
-        if (q !== null) $("drawId").value = q;
-        // Resolve which draw to show ONLY after the index is loaded, so a blank or
-        // garbled ?draw= falls back to the latest (not draw 0 before count is known).
-        loadIndex().then(function (idx) {
-            var count = (idx && idx.count) || 0;
-            if (count > 0) $("drawId").max = count - 1;
-            var v = parseInt($("drawId").value, 10);
-            if (!isNaN(v) && v >= 0) verify(v);                              // an explicit, valid draw
-            else if (count > 0) { $("drawId").value = count - 1; verify(count - 1); }   // blank/garbled -> latest
-            else $("status").textContent = "No draws published yet.";
-        }, function () { /* loadIndex surfaces its own error in the head panel */ });
-    </script>
+    <script src="./page-verify.js"></script>
 </body>
 
 </html>

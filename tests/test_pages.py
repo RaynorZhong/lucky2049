@@ -21,6 +21,11 @@ def read(page):
         return f.read()
 
 
+def read_page_js(page):
+    with open(os.path.join(REPO_ROOT, "static", "page-" + page + ".js")) as f:
+        return f.read()
+
+
 def nav_block(html):
     m = re.search(r'<div class="tn-links">(.*?)</div>', html, re.S)
     return m.group(1) if m else ""
@@ -48,7 +53,7 @@ class TestNavConsistency(unittest.TestCase):
 
 class TestPageStructure(unittest.TestCase):
     def test_stats_plain_read_threshold_and_direction(self):
-        m = re.search(r'p > 0\.05\s*\?\s*"([^"]*)"\s*:\s*"([^"]*)"', read("stats"))
+        m = re.search(r'p > 0\.05\s*\?\s*"([^"]*)"\s*:\s*"([^"]*)"', read_page_js("stats"))
         self.assertIsNotNone(m, "stats plain-language read ternary not found")
         self.assertTrue(m.group(1).startswith("No statistically significant frequency deviation"),
                         "p>0.05 must not claim that fairness has been established")
@@ -56,29 +61,31 @@ class TestPageStructure(unittest.TestCase):
 
     def test_homepage_earlier_draws_dedup_filter(self):
         # the list below the hero must drop the featured latest by NUMERIC id (whitespace-tolerant)
-        self.assertRegex(read("index"),
+        self.assertRegex(read_page_js("index"),
                          r'\.filter\(\s*function\s*\(\s*it\s*\)\s*\{\s*return\s+Number\(\s*it\.id\s*\)\s*!==\s*latestId\s*;?\s*\}')
 
     def test_randomness_die_caption_serial_and_block_range(self):
         # each die carries a caption: a stable serial (the window index #k) over the block range it
         # was derived from -- a handle for locating a die. Lock both the CSS hooks and the JS wiring.
         html = read("randomness")
+        js = read_page_js("randomness")
         for cls in (".die-cell", ".die-cap", ".die-no", ".die-blk"):
             self.assertIn(cls + " ", html, "missing caption style " + cls)
         # lockDie writes the serial and the block range into the caption
-        self.assertRegex(html, r'\.die-no"\)\.textContent\s*=\s*"#"\s*\+\s*k')
-        self.assertRegex(html, r'\.die-blk"\)\.textContent\s*=\s*"#"\s*\+\s*lo\s*\+\s*"–#"\s*\+\s*hi')
+        self.assertRegex(js, r'\.die-no"\)\.textContent\s*=\s*"#"\s*\+\s*k')
+        self.assertRegex(js, r'\.die-blk"\)\.textContent\s*=\s*"#"\s*\+\s*lo\s*\+\s*"–#"\s*\+\s*hi')
         # the serial is also in the per-die aria-label (for screen-reader locating) and the summary line
-        self.assertRegex(html, r'aria-label",\s*"Die #"\s*\+\s*k')
-        self.assertRegex(html, r'newest die #"\s*\+\s*k0')
+        self.assertRegex(js, r'aria-label",\s*"Die #"\s*\+\s*k')
+        self.assertRegex(js, r'newest die #"\s*\+\s*k0')
 
     def test_randomness_coin_caption_block_number(self):
         # each coin carries its block number as a caption (a handle for locating it).
         html = read("randomness")
+        js = read_page_js("randomness")
         for cls in (".coin-cell", ".coin-cap", ".coin-no"):
             self.assertIn(cls + " ", html, "missing caption style " + cls)
         # lockCoin writes the block number into the caption
-        self.assertRegex(html, r'\.coin-no"\)\.textContent\s*=\s*"#"\s*\+\s*h')
+        self.assertRegex(js, r'\.coin-no"\)\.textContent\s*=\s*"#"\s*\+\s*h')
         # perspective must live on .coin-cell, NOT on .coins -- on .coins it skips the coin
         # (now a grandchild) and flattens the 3-D flip. Lock both halves of that fix.
         cell_rule = re.search(r'\.coin-cell\s*\{([^}]*)\}', html)
@@ -148,9 +155,9 @@ class TestAudit5Guards(unittest.TestCase):
         # a long-hidden tab pauses the rAF drain while the poll keeps trimming blocks; the trim
         # must also purge queue entries whose blocks were evicted or tick() derives from
         # undefined on re-focus and the reveal loop dies.
-        html = read("randomness")
-        self.assertRegex(html, r'coinQ\s*=\s*coinQ\.filter\(\s*function\s*\(\s*h\s*\)\s*\{\s*return\s+blocks\[h\]\s*;?\s*\}\s*\)')
-        self.assertRegex(html, r'dieQ\s*=\s*dieQ\.filter\(\s*windowComplete\s*\)')
+        js = read_page_js("randomness")
+        self.assertRegex(js, r'coinQ\s*=\s*coinQ\.filter\(\s*function\s*\(\s*h\s*\)\s*\{\s*return\s+blocks\[h\]\s*;?\s*\}\s*\)')
+        self.assertRegex(js, r'dieQ\s*=\s*dieQ\.filter\(\s*windowComplete\s*\)')
 
     def test_note_class_defined_once_in_shared_css(self):
         # .note is used by verify AND randomness header leads; the single definition lives in
@@ -158,6 +165,48 @@ class TestAudit5Guards(unittest.TestCase):
         self.assertRegex(read_css(), r'\.note \{[^}]*font-size: 0\.9rem')
         for p in ("verify", "randomness"):
             self.assertIsNone(re.search(r'\.note \{', read(p)), "local .note rule on " + p + ".html")
+
+
+class TestSelfHostedFontsAndStrictCsp(unittest.TestCase):
+    EXPECTED_CSP = (
+        "default-src 'self'; script-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; font-src 'self'; "
+        "img-src 'self' data:; connect-src 'self' https://mempool.space https://blockstream.info; "
+        "object-src 'none'; base-uri 'self'; form-action 'self'"
+    )
+
+    def test_all_pages_enforce_strict_csp_with_no_inline_scripts_or_google_fonts(self):
+        for p in PAGES:
+            html = read(p)
+            self.assertNotIn("fonts.googleapis.com", html, p + ".html still references fonts.googleapis.com")
+            self.assertNotIn("fonts.gstatic.com", html, p + ".html still references fonts.gstatic.com")
+            m = re.search(r'<meta\s+http-equiv="Content-Security-Policy"\s+content="([^"]+)"', html)
+            self.assertIsNotNone(m, "CSP meta tag missing on " + p + ".html")
+            self.assertEqual(m.group(1), self.EXPECTED_CSP, "CSP drifted on " + p + ".html")
+            # Zero inline <script> blocks: every <script> tag must have a local ./src and empty body
+            inline_scripts = re.findall(r"<script(?![^>]*\bsrc=)", html, re.I)
+            self.assertEqual(inline_scripts, [], "inline <script> found on " + p + ".html")
+            srcs = re.findall(r'<script\s+src="([^"]+)"\s*></script>', html)
+            self.assertTrue(srcs, "expected external <script src=...> on " + p + ".html")
+            for s in srcs:
+                self.assertRegex(s, r"^\./[a-z0-9._-]+\.js$")
+                self.assertTrue(os.path.isfile(os.path.join(REPO_ROOT, "static", s[2:])),
+                                f"missing script {s} referenced by {p}.html")
+
+    def test_style_css_declares_local_woff2_font_faces_present_on_disk(self):
+        css = read_css()
+        self.assertNotIn("fonts.googleapis.com", css)
+        self.assertNotIn("fonts.gstatic.com", css)
+        for family in ("Inter", "Source Serif 4"):
+            self.assertIn(f"font-family: '{family}'", css)
+        urls = re.findall(r'url\(["\']?\./(fonts/[a-z0-9._-]+\.woff2)["\']?\)\s*format\(["\']woff2["\']\)', css)
+        self.assertGreaterEqual(len(urls), 2, "expected local woff2 @font-face urls in style.css")
+        for rel in urls:
+            full = os.path.join(REPO_ROOT, "static", rel)
+            self.assertTrue(os.path.isfile(full), "missing font file: " + full)
+            with open(full, "rb") as f:
+                hdr = f.read(4)
+            self.assertEqual(hdr, b"wOF2", "invalid WOFF2 header in " + rel)
 
 
 if __name__ == "__main__":

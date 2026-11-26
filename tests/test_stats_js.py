@@ -140,8 +140,8 @@ class TestStatsJs(unittest.TestCase):
     def test_page_renders_small_samples_and_honest_frequency_conclusions(self):
         script = r"""
 const fs=require('fs'),S=require('./static/stats.js');
-const html=fs.readFileSync('./web/stats.html','utf8');
-const block=html.slice(html.indexOf('function chartSection'),html.indexOf('(async function ()'));
+const js=fs.readFileSync('./static/page-stats.js','utf8');
+const block=js.slice(js.indexOf('function chartSection'),js.indexOf('(async function ()'));
 const chart=new Function(block+';return chartSection;')();
 const sec=S.computeStats([{front:[1,2,3,4,5],back:[1,2]}]).front;
 const render=p=>{const s=JSON.parse(JSON.stringify(sec));s.stats.p_value=p;return chart('Front',s,'front');};

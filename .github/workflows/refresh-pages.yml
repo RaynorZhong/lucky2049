@@ -56,7 +56,8 @@ jobs:
           python scripts/extend_pages.py site/index.json
           cp web/index.html web/verify.html web/stats.html web/trend.html web/randomness.html web/og.png site/
           cp web/CNAME site/                 # custom domain -- keep across republishes
-          cp static/verify.js static/stats.js static/trend.js static/randomness.js static/style.css static/favicon.svg site/
+          cp static/verify.js static/stats.js static/trend.js static/randomness.js static/page-index.js static/page-verify.js static/page-stats.js static/page-trend.js static/page-randomness.js static/style.css static/favicon.svg site/
+          cp -r static/fonts site/           # self-hosted WOFF2 fonts (strict 'self' CSP)
           cp -r anchors site/anchors 2>/dev/null || true   # serve OpenTimestamps proofs at /anchors/
           touch site/.nojekyll
 
@@ -97,7 +98,8 @@ jobs:
           import json, os, sys
           sys.path.insert(0, "scripts")
           import artifacts                       # status_problems is unit-tested in tests/test_artifacts.py
-          st = json.load(open("site/status.json"))
+          with open("site/status.json") as f:
+              st = json.load(f)
           need = int(os.environ.get("MIN_SOURCE_AGREEMENT") or "2")
           problems = artifacts.status_problems(st, need)
           if problems:

@@ -79,7 +79,8 @@ verifier (`test_verify_site`), and the in-browser JS run under Node
   Consumer contract: `docs/SCHEMA.md`.
 - `web/` — `index.html` (+ next-draw ETA) / `verify.html` / `stats.html` /
   `trend.html` (走势图 trend chart) / `randomness.html` + `CNAME`. `static/` — `verify.js`,
-  `stats.js`, `trend.js`, `randomness.js`, `style.css`, `favicon.svg`. Light/minimal theme;
+  `stats.js`, `trend.js`, `randomness.js`, `page-*.js` (per-page scripts, no inline `<script>`),
+  `style.css`, `favicon.svg`, `fonts/` (self-hosted WOFF2; strict `script-src 'self'` + `font-src 'self'` CSP). Light/minimal theme;
   front balls = blue, back = orange (don't surface "Litecoin"/"Bitcoin" as ball labels in the UI).
 - `randomness.py` + `static/randomness.js` — an **informative, non-frozen** demo of verifiable
   randomness (coin/dice from one block hash via the same HMAC-stream + rejection-sampling machinery);
@@ -103,13 +104,14 @@ verifier (`test_verify_site`), and the in-browser JS run under Node
 - `data/database.db` is an **optional local cache** (gitignored, ~170MB, NOT in the
   repo), only read by `export_static.py` for a local rebuild. The cron never uses it.
 - `head.json` is anchored **automatically**: `.github/workflows/anchor-head.yml` (daily
-  cron) runs `scripts/anchor_head.py` + OpenTimestamps (`ots stamp`) and commits proofs
+  cron) runs pure-stdlib `scripts/anchor_head.py --stamp --upgrade` and commits proofs
   to `anchors/` on `main`; `refresh-pages.yml` serves them at `/anchors/` and excludes
   that dir from its rsync `--delete`. Don't break this path — the commitment chain alone
   isn't tamper-evident without the external anchor. It is **two jobs by design**: `stamp`
-  (read-only token, hash-locked `ops/anchor-requirements.txt`) runs the PyPI code; `commit`
-  (write token) runs none and admits files only via `scripts/accept_anchors.py`. Never
-  merge them back or add a `pip install` to `commit` (`tests/test_workflows.py` locks this).
+  (read-only token, zero PyPI installs) talks to untrusted external OTS calendars and skips
+  already-attested `.ots` files; `commit` (write token) admits files only via
+  `scripts/accept_anchors.py --verify-chain` (verifying Bitcoin `merkle_root` across ≥2
+  independent sources). Never merge them or add `pip install` (`tests/test_workflows.py` locks this).
 - **Monitoring**: optional dead-man pings from both workflows (`HEARTBEAT_URL`,
   `ANCHOR_HEARTBEAT_URL` secrets; no-ops when unset) — see `docs/DEPLOY.md` "Monitoring".
 - **External trigger**: `ops/trigger-worker/` holds no draw logic and no secret in git —

@@ -153,7 +153,7 @@ def _core_provider():
     return {
         "name": "core",
         "tip": _tip,
-        "hashes": lambda start, end: [verify._normalize(rpc("getblockhash", [h])) for h in range(start, end + 1)],
+        "hashes": lambda start, end: verify._fetch_core_hashes(rpc_url, start, end),
         # getblockheader (not getblock) so a pruned node can answer for any height.
         "timestamp": lambda block_hash: _fmt_ts(rpc("getblockheader", [block_hash])["time"]),
     }

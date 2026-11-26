@@ -53,10 +53,10 @@ The site is static, so the tests pin the two things that matter:
 stubbed `fetch`: exactly one authenticated dispatch, one retry on transient errors only, loud
 failures that never contain the token, and no dispatch over HTTP.
 
-`tests/test_accept_anchors.py` pins the gate between the anchor workflow's two jobs (only valid,
-published heads and genuine proofs get committed; upgrades only add), and `tests/test_workflows.py`
-locks the workflows' security shape as text: SHA-pinned actions, the stamp/commit job split, the
-hash-locked install, timeouts, optional heartbeats.
+`tests/test_accept_anchors.py` and `tests/test_ots_protocol.py` pin the pure-stdlib OpenTimestamps
+stamper, idempotent upgrader, on-chain Bitcoin `merkle_root` gate, and Python↔JS `.ots` proof parity;
+`tests/test_workflows.py` locks the workflows' security shape as text: SHA-pinned actions, the
+stamp/commit job split, zero `pip install` across both jobs, timeouts, optional heartbeats.
 
 `tests/test_verify_site.py` covers the `verify.py --site` plumbing (live API +
 static `index.json` fallback) with mocked HTTP — no network.

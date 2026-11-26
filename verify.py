@@ -31,9 +31,12 @@ import argparse
 import base64
 import hashlib
 import hmac
+import http.client
+import io
 import json
 import os
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -114,6 +117,142 @@ def _normalize(h):
 
 
 # ----------------------------- hash sources -----------------------------
+_HTTP_POOL = threading.local()
+_ORIG_URLOPEN = urllib.request.urlopen
+
+
+def close_http_pool():
+    """Close any persistent HTTP(S) connections cached on the current thread."""
+    conns = getattr(_HTTP_POOL, "conns", None)
+    if not conns:
+        return
+    for conn in list(conns.values()):
+        try:
+            conn.close()
+        except OSError:
+            pass
+    conns.clear()
+
+
+def _open_http_conn(scheme, host, port, timeout):
+    cls = http.client.HTTPSConnection if scheme == "https" else http.client.HTTPConnection
+    return cls(host, port, timeout=timeout)
+
+
+_MAX_HTTP_BYTES = 32 * 1024 * 1024  # 32 MiB safety ceiling against unbounded HTTP bodies
+
+
+def _parse_http_url(url):
+    try:
+        parts = urllib.parse.urlsplit(url)
+        port = parts.port
+    except ValueError as e:
+        raise urllib.error.URLError(f"malformed URL {url!r}: {e}") from e
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        raise urllib.error.URLError(f"unsupported URL: {url!r}")
+    return parts, (port or (443 if parts.scheme == "https" else 80))
+
+
+def _send_pooled_once(method, url, data, headers, timeout, max_bytes=_MAX_HTTP_BYTES):
+    """Send one HTTP(S) request over a thread-local Keep-Alive connection."""
+    parts, port = _parse_http_url(url)
+    origin = (parts.scheme, parts.hostname, port)
+    target = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
+    req_headers = {"Connection": "keep-alive", **(headers or {})}
+
+    conns = getattr(_HTTP_POOL, "conns", None)
+    if conns is None:
+        conns = {}
+        _HTTP_POOL.conns = conns
+    conn = conns.get(origin)
+    reused = conn is not None and conn.sock is not None
+    if conn is None:
+        conn = _open_http_conn(*origin, timeout)
+        conns[origin] = conn
+    else:
+        conn.timeout = timeout
+        if conn.sock is not None:
+            conn.sock.settimeout(timeout)
+
+    def _roundtrip(c):
+        c.request(method, target, body=data, headers=req_headers)
+        r = c.getresponse()
+        body = r.read(max_bytes + 1)
+        if len(body) > max_bytes:
+            raise urllib.error.URLError(f"HTTP response exceeds {max_bytes} bytes: {url}")
+        return r, body
+
+    try:
+        resp, raw = _roundtrip(conn)
+    except (http.client.HTTPException, OSError):
+        conns.pop(origin, None)
+        try:
+            conn.close()
+        except OSError:
+            pass
+        if not reused:
+            raise
+        conn = _open_http_conn(*origin, timeout)
+        conns[origin] = conn
+        try:
+            resp, raw = _roundtrip(conn)
+        except (http.client.HTTPException, OSError):
+            conns.pop(origin, None)
+            try:
+                conn.close()
+            except OSError:
+                pass
+            raise
+
+    if resp.will_close:
+        conns.pop(origin, None)
+        conn.close()
+    return resp.status, resp.reason, resp.headers, raw, origin
+
+
+def _exec_http(method, url, data, headers, timeout, validate_url=None,
+               allow_redirects=True, max_bytes=_MAX_HTTP_BYTES):
+    """Execute one HTTP exchange (following up to 5 redirects) using Keep-Alive,
+    or fall back to urllib.request.urlopen when patched in unit tests."""
+    if validate_url is not None:
+        validate_url(url)
+    if urllib.request.urlopen is not _ORIG_URLOPEN:
+        req = urllib.request.Request(url, data=data, headers=dict(headers or {}), method=method)
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            body = r.read(max_bytes + 1)
+        if len(body) > max_bytes:
+            raise urllib.error.URLError(f"HTTP response exceeds {max_bytes} bytes: {url}")
+        return body
+    cur_url, cur_method, cur_data = url, method, data
+    cur_headers = dict(headers or {})
+    hops = 6 if allow_redirects else 1
+    for _ in range(hops):
+        status, reason, resp_headers, raw, origin = _send_pooled_once(
+            cur_method, cur_url, cur_data, cur_headers, timeout, max_bytes=max_bytes
+        )
+        loc = resp_headers.get("Location") if (allow_redirects and resp_headers) else None
+        if status in (301, 302, 303, 307, 308) and loc:
+            nxt = urllib.parse.urljoin(cur_url, loc)
+            if validate_url is not None:
+                validate_url(nxt)
+            np, nport = _parse_http_url(nxt)
+            if origin[0] == "https" and np.scheme != "https":
+                raise urllib.error.URLError(f"refused HTTPS->HTTP downgrade redirect: {nxt!r}")
+            if (np.scheme, np.hostname, nport) != origin:
+                cur_headers = {
+                    k: v for k, v in cur_headers.items()
+                    if k.lower() not in ("authorization", "cf-access-client-id", "cf-access-client-secret")
+                }
+            if status in (301, 302, 303) and cur_method != "GET":
+                cur_method, cur_data = "GET", None
+            cur_url = nxt
+            continue
+        if status >= 400:
+            raise urllib.error.HTTPError(cur_url, status, reason, resp_headers, io.BytesIO(raw))
+        return raw
+    raise urllib.error.URLError(f"too many redirects: {url}")
+
+
 def _retry_after(http_error):
     """Numeric Retry-After header (seconds) from an HTTPError, capped; None if absent/odd."""
     try:
@@ -123,44 +262,42 @@ def _retry_after(http_error):
         return None
 
 
-def _http_get(url, timeout=30, retries=3):
-    """GET with a small bounded retry/backoff. A single transient blip -- an HTTP
-    429 (rate-limit), a 5xx, or a dropped connection -- anywhere in a 144-request
-    window would otherwise cost a whole source its vote and force a needless HOLD;
-    retrying recovers it. Honors a numeric Retry-After on 429/503."""
-    req = urllib.request.Request(url, headers={"User-Agent": "lucky2049-verify/1.0"})
+def _http_request_bytes(url, method="GET", data=None, headers=None, timeout=30, retries=3,
+                        validate_url=None, allow_redirects=True, max_bytes=_MAX_HTTP_BYTES):
+    """HTTP(S) request returning raw bytes with bounded retry/backoff and Keep-Alive."""
     for attempt in range(retries):
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                return r.read().decode("utf-8")
+            return _exec_http(
+                method, url, data, headers, timeout,
+                validate_url=validate_url, allow_redirects=allow_redirects, max_bytes=max_bytes,
+            )
         except urllib.error.HTTPError as e:
             if e.code not in (429, 500, 502, 503, 504) or attempt == retries - 1:
                 raise
             time.sleep(_retry_after(e) or 0.5 * (2 ** attempt))
-        except (urllib.error.URLError, OSError):  # DNS / connection reset / timeout
+        except (urllib.error.URLError, http.client.HTTPException, OSError):
             if attempt == retries - 1:
                 raise
             time.sleep(0.5 * (2 ** attempt))
-    raise RuntimeError("unreachable")  # the loop always returns or raises
+    raise RuntimeError("unreachable")
 
 
-def _rpc_call(rpc_url, method, params, timeout=30, retries=3):
-    """One Bitcoin Core JSON-RPC POST.
+def _http_get(url, timeout=30, retries=3):
+    """GET with bounded retry/backoff and persistent Keep-Alive pooling."""
+    raw = _http_request_bytes(
+        url, headers={"User-Agent": "lucky2049-verify/1.0"}, timeout=timeout, retries=retries
+    )
+    return raw.decode("utf-8")
 
-    Sends an explicit HTTP Basic-Auth header parsed from the URL's `user:pass@`:
-    urllib does NOT authenticate from URL userinfo on its own, and would even try
-    to resolve `user:pass@host` as a hostname -- so we strip the userinfo and add
-    the Authorization header ourselves, then connect to the clean host.
 
-    Retries transient HTTP 429/5xx and connection blips with backoff, exactly like
-    _http_get: the Core node is an agreement voter across a 144-call window, so one
-    flap shouldn't cost its whole vote. A JSON-level RPC error is final (not retried)."""
+class _BatchUnsupportedError(RuntimeError):
+    """Raised when an RPC endpoint/proxy does not support JSON-RPC batch arrays."""
+
+
+def _rpc_endpoint(rpc_url):
+    """Parse Basic-Auth userinfo + optional Cloudflare Access headers for Core RPC."""
     parts = urllib.parse.urlsplit(rpc_url)
-    # Real User-Agent like _http_get's: urllib's default ("Python-urllib/3.x")
-    # gets 403'd by bot protection on proxied endpoints (e.g. Cloudflare).
     headers = {"Content-Type": "text/plain", "User-Agent": "lucky2049-verify/1.0"}
-    # Optional Cloudflare Access service token, for a node published through
-    # Zero Trust (the edge rejects requests without these headers).
     cf_id = os.environ.get("CF_ACCESS_CLIENT_ID")
     cf_secret = os.environ.get("CF_ACCESS_CLIENT_SECRET")
     if cf_id and cf_secret:
@@ -170,58 +307,139 @@ def _rpc_call(rpc_url, method, params, timeout=30, retries=3):
     if parts.username is not None:
         token = base64.b64encode(f"{parts.username}:{parts.password or ''}".encode()).decode()
         headers["Authorization"] = "Basic " + token
-        netloc = parts.hostname + (f":{parts.port}" if parts.port else "")
+        host_fmt = f"[{parts.hostname}]" if parts.hostname and ":" in parts.hostname else (parts.hostname or "")
+        netloc = host_fmt + (f":{parts.port}" if parts.port else "")
         url = urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
-    payload = json.dumps({"jsonrpc": "1.0", "id": "lucky2049", "method": method, "params": params})
-    req = urllib.request.Request(url, data=payload.encode(), headers=headers)
-    for attempt in range(retries):
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                res = json.loads(r.read().decode())
-            break
-        except urllib.error.HTTPError as e:
-            if e.code not in (429, 500, 502, 503, 504) or attempt == retries - 1:
-                raise
-            time.sleep(_retry_after(e) or 0.5 * (2 ** attempt))
-        except (urllib.error.URLError, OSError):  # DNS / connection reset / timeout
-            if attempt == retries - 1:
-                raise
-            time.sleep(0.5 * (2 ** attempt))
+    return url, headers
+
+
+def _rpc_call(rpc_url, method, params, timeout=30, retries=3):
+    """One Bitcoin Core JSON-RPC POST with Basic-Auth, CF-Access, Keep-Alive, and retry."""
+    url, headers = _rpc_endpoint(rpc_url)
+    payload = json.dumps({"jsonrpc": "1.0", "id": "lucky2049", "method": method, "params": params}).encode()
+    raw = _http_request_bytes(url, method="POST", data=payload, headers=headers, timeout=timeout, retries=retries)
+    res = json.loads(raw.decode("utf-8"))
     if res.get("error"):
         raise RuntimeError(f"RPC error: {res['error']}")
     return res["result"]
 
 
+def _rpc_batch_call(rpc_url, calls, timeout=30, retries=3):
+    """Batch multiple JSON-RPC calls into a single HTTP POST and reassemble by id."""
+    if not calls:
+        return []
+    url, headers = _rpc_endpoint(rpc_url)
+    payload = json.dumps([
+        {"jsonrpc": "1.0", "id": req_id, "method": method, "params": params}
+        for req_id, method, params in calls
+    ]).encode()
+    try:
+        raw = _http_request_bytes(url, method="POST", data=payload, headers=headers, timeout=timeout, retries=retries)
+    except urllib.error.HTTPError as e:
+        if e.code in (400, 404, 405, 501):
+            raise _BatchUnsupportedError(f"HTTP {e.code}") from e
+        raise
+    try:
+        res = json.loads(raw.decode("utf-8"))
+    except json.JSONDecodeError as e:
+        raise _BatchUnsupportedError("non-JSON batch response") from e
+    if not isinstance(res, list) or len(res) != len(calls):
+        raise _BatchUnsupportedError("endpoint did not return a matching JSON-RPC batch list")
+    by_id = {}
+    for item in res:
+        if not isinstance(item, dict):
+            raise _BatchUnsupportedError("non-object item in JSON-RPC batch")
+        if item.get("error"):
+            raise RuntimeError(f"RPC error: {item['error']}")
+        by_id[item.get("id")] = item.get("result")
+    expected_ids = [req_id for req_id, _, _ in calls]
+    if any(req_id not in by_id for req_id in expected_ids):
+        raise _BatchUnsupportedError("missing request id in JSON-RPC batch response")
+    return [by_id[req_id] for req_id in expected_ids]
+
+
+def _core_rpc_url_from_env():
+    rpc_url = os.environ.get("BITCOIN_RPC_URL")
+    if rpc_url:
+        return rpc_url
+    user = os.environ.get("BITCOIN_RPC_USER", "")
+    pw = os.environ.get("BITCOIN_RPC_PASSWORD", "")
+    host = os.environ.get("BITCOIN_RPC_HOST", "127.0.0.1")
+    port = os.environ.get("BITCOIN_RPC_PORT", "8332")
+    if not user:
+        raise RuntimeError("Set BITCOIN_RPC_URL or BITCOIN_RPC_USER/PASSWORD/HOST/PORT")
+    return f"http://{user}:{pw}@{host}:{port}"
+
+
+def _fetch_core_hashes(rpc_url, start, end):
+    """Fetch [start..end] hashes via JSON-RPC batch POST, falling back to single calls
+    only if an intermediary proxy rejects JSON-RPC batch arrays."""
+    calls = [(h, "getblockhash", [h]) for h in range(start, end + 1)]
+    try:
+        results = _rpc_batch_call(rpc_url, calls)
+        return [_normalize(h) for h in results]
+    except _BatchUnsupportedError:
+        return [_normalize(_rpc_call(rpc_url, "getblockhash", [h])) for h in range(start, end + 1)]
+
+
 def fetch_from_core(start, end):
     """Bitcoin Core JSON-RPC: getblockhash(height). Source of truth."""
-    rpc_url = os.environ.get("BITCOIN_RPC_URL")
-    if not rpc_url:
-        user = os.environ.get("BITCOIN_RPC_USER", "")
-        pw = os.environ.get("BITCOIN_RPC_PASSWORD", "")
-        host = os.environ.get("BITCOIN_RPC_HOST", "127.0.0.1")
-        port = os.environ.get("BITCOIN_RPC_PORT", "8332")
-        if not user:
-            raise RuntimeError("Set BITCOIN_RPC_URL or BITCOIN_RPC_USER/PASSWORD/HOST/PORT")
-        rpc_url = f"http://{user}:{pw}@{host}:{port}"
-    return [_normalize(_rpc_call(rpc_url, "getblockhash", [h])) for h in range(start, end + 1)]
+    return _fetch_core_hashes(_core_rpc_url_from_env(), start, end)
+
+
+def _fetch_esplora_pages(base_url, start, end):
+    """Fast path for Esplora APIs: walk descending /blocks/{height} pages (10-15 blocks/call)."""
+    slots = [None] * (end - start + 1)
+    cursor = end
+    while cursor >= start:
+        items = json.loads(_http_get(f"{base_url}/blocks/{cursor}"))
+        if not isinstance(items, list) or not items:
+            raise ValueError("empty Esplora blocks page")
+        min_seen = None
+        for item in items:
+            if not isinstance(item, dict):
+                raise ValueError("invalid Esplora block entry")
+            h, bh = item.get("height"), item.get("id")
+            if type(h) is not int or not isinstance(bh, str):
+                raise ValueError("invalid Esplora height/id")
+            norm = _normalize(bh)
+            if start <= h <= end:
+                if slots[h - start] is not None and slots[h - start] != norm:
+                    raise ValueError(f"conflicting hash at height {h}")
+                slots[h - start] = norm
+            min_seen = h if min_seen is None else min(min_seen, h)
+        low = max(start, min_seen)
+        if min_seen > cursor or any(slots[h - start] is None for h in range(low, cursor + 1)):
+            raise ValueError(f"incomplete Esplora blocks page at {cursor}")
+        cursor = min_seen - 1
+        if cursor >= start:
+            time.sleep(0.02)
+    return slots
+
+
+def _fetch_esplora_window(base_url, start, end):
+    """Fetch [start..end] block hashes from an Esplora API via paged /blocks/{height},
+    falling back to per-height /block-height/{h} if paging is unsupported or gapped."""
+    if end < start:
+        return []
+    try:
+        return _fetch_esplora_pages(base_url, start, end)
+    except (ValueError, KeyError, urllib.error.URLError, http.client.HTTPException, OSError):
+        out = []
+        for h in range(start, end + 1):
+            out.append(_normalize(_http_get(f"{base_url}/block-height/{h}")))
+            time.sleep(0.05)
+        return out
 
 
 def fetch_from_mempool(start, end):
-    """mempool.space: GET /api/block-height/{h} -> block hash (text)."""
-    out = []
-    for h in range(start, end + 1):
-        out.append(_normalize(_http_get(f"https://mempool.space/api/block-height/{h}")))
-        time.sleep(0.05)
-    return out
+    """mempool.space Esplora API: paged /api/blocks/{h} with /api/block-height/{h} fallback."""
+    return _fetch_esplora_window("https://mempool.space/api", start, end)
 
 
 def fetch_from_blockstream(start, end):
-    """blockstream.info: GET /api/block-height/{h} -> block hash (text)."""
-    out = []
-    for h in range(start, end + 1):
-        out.append(_normalize(_http_get(f"https://blockstream.info/api/block-height/{h}")))
-        time.sleep(0.05)
-    return out
+    """blockstream.info Esplora API: paged /api/blocks/{h} with /api/block-height/{h} fallback."""
+    return _fetch_esplora_window("https://blockstream.info/api", start, end)
 
 
 def fetch_from_db(start, end, db_path):
@@ -245,9 +463,46 @@ SOURCES = {
 
 
 # ----------------------------- published site -----------------------------
+_SITE_CACHE_TLS = threading.local()
+
+
 def _is_commitment(value):
     return (isinstance(value, str) and len(value) == 64
             and all(c in "0123456789abcdef" for c in value))
+
+
+def _is_int(value):
+    return type(value) is int
+
+
+def verify_chain(index):
+    """Full linkage scan over a published static index ({draws:[...], head:{...}}).
+    Mirrors static/verify.js verifyChain(): every draw 0..n-1 must be contiguous,
+    carry valid 64-hex commitment + prev_commitment, link to its predecessor (or
+    GENESIS_PREV for draw 0), and match index.head."""
+    if not isinstance(index, dict) or not isinstance(index.get("draws"), list):
+        return {"ok": False, "broken_at": "draws"}
+    draws = index["draws"]
+    if index.get("count") is not None and (not _is_int(index.get("count")) or index["count"] != len(draws)):
+        return {"ok": False, "broken_at": "count"}
+    for i, d in enumerate(draws):
+        if (not isinstance(d, dict) or not _is_int(d.get("id")) or d["id"] != i
+                or not _is_commitment(d.get("commitment"))
+                or not _is_commitment(d.get("prev_commitment"))):
+            return {"ok": False, "broken_at": i}
+        expected = GENESIS_PREV if i == 0 else draws[i - 1]["commitment"]
+        if d["prev_commitment"] != expected:
+            return {"ok": False, "broken_at": i}
+    head = index.get("head")
+    if draws:
+        if not isinstance(head, dict):
+            return {"ok": False, "broken_at": "head"}
+        last = draws[-1]
+        if (head.get("head") != last["commitment"]
+                or (head.get("draw_id") is not None and (not _is_int(head.get("draw_id")) or head["draw_id"] != last["id"]))
+                or (head.get("count") is not None and (not _is_int(head.get("count")) or head["count"] != len(draws)))):
+            return {"ok": False, "broken_at": "head"}
+    return {"ok": True, "broken_at": None}
 
 
 def _fetch_published(site, draw_id):
@@ -255,29 +510,39 @@ def _fetch_published(site, draw_id):
 
     Tries the live server's manifest API first; if it is unavailable (the
     public deployment is the static GitHub Pages snapshot, which has no API),
-    falls back to the static index.json. The slim static record inlines
-    prev_commitment, so the chain check needs no extra request there; the live
-    API does not, so prev_commitment is left None for the caller to resolve.
-
-    Returns {front, back, block_hashes, commitment, prev_commitment,
-    algo_version, kind} or raises if neither source is reachable.
+    falls back to the static index.json. Within a verify.main() run, the parsed
+    static snapshot + its full-chain scan are memoized per site so resolving N
+    and N-1 downloads index.json only once.
     """
     base = site.rstrip("/")
-    try:
-        m = json.loads(_http_get(f"{base}/api/draw/{draw_id}/manifest"))
-        res = m.get("result", {})
-        return {
-            "front": res.get("front"), "back": res.get("back"),
-            "block_hashes": [_normalize(h) for h in m.get("block_hashes", [])],
-            "commitment": m.get("commitment"),
-            "prev_commitment": None,  # live API: previous draw fetched separately
-            "algo_version": m.get("algo_version", ALGO_VERSION),
-            "kind": "api",
-        }
-    except Exception:
-        pass  # no live API -- fall back to the static snapshot
-    idx = json.loads(_http_get(f"{base}/index.json"))
-    rec = next((d for d in idx.get("draws", []) if d.get("id") == draw_id), None)
+    run_cache = getattr(_SITE_CACHE_TLS, "sites", None)
+    cached = run_cache.get(base) if run_cache is not None else None
+    if cached is None or cached.get("mode") != "static":
+        try:
+            m = json.loads(_http_get(f"{base}/api/draw/{draw_id}/manifest"))
+            if run_cache is not None:
+                run_cache[base] = {"mode": "api"}
+            res = m.get("result", {})
+            return {
+                "front": res.get("front"), "back": res.get("back"),
+                "block_hashes": [_normalize(h) for h in m.get("block_hashes", [])],
+                "commitment": m.get("commitment"),
+                "prev_commitment": None,  # live API: previous draw fetched separately
+                "algo_version": m.get("algo_version", ALGO_VERSION),
+                "kind": "api",
+            }
+        except Exception:
+            pass  # no live API -- fall back to the static snapshot
+
+    if cached is not None and cached.get("mode") == "static":
+        idx, snap_chain = cached["index"], cached["chain"]
+    else:
+        idx = json.loads(_http_get(f"{base}/index.json"))
+        snap_chain = verify_chain(idx)
+        if run_cache is not None:
+            run_cache[base] = {"mode": "static", "index": idx, "chain": snap_chain}
+
+    rec = next((d for d in idx.get("draws", []) if isinstance(d, dict) and d.get("id") == draw_id), None)
     if rec is None:
         raise LookupError(f"draw {draw_id} not found in {base}/index.json")
     return {
@@ -287,6 +552,7 @@ def _fetch_published(site, draw_id):
         "prev_commitment": rec.get("prev_commitment"),
         "algo_version": rec.get("algo_version", idx.get("algo_version", ALGO_VERSION)),
         "kind": "static",
+        "snapshot_chain": snap_chain,
     }
 
 
@@ -324,61 +590,72 @@ def main():
 
     exit_code = 0
     if args.site:
+        _SITE_CACHE_TLS.sites = {}
         try:
-            pub = _fetch_published(args.site, args.draw_id)
-        except Exception as e:
-            print(f"ERROR: could not fetch published result: {e}", file=sys.stderr)
-            return 2
-        pf, pb = pub["front"], pub["back"]
-        print(f"PUBLISHED   : front {pf}  back {pb}  (via {pub['kind']})")
-        result_ok = (pf == front and pb == back)
-        print(f"RESULT MATCH: {'PASS' if result_ok else 'FAIL'}")
-        if not result_ok:
-            exit_code = 1
-
-        # Cross-check the site's stored hashes against the independent source,
-        # when exposed (live API only; the static snapshot omits them on purpose).
-        if pub["block_hashes"]:
-            hashes_ok = (pub["block_hashes"] == hashes)
-            print(f"HASHES MATCH: {'PASS' if hashes_ok else 'FAIL'} (site DB vs {args.source})")
-            if not hashes_ok:
+            try:
+                pub = _fetch_published(args.site, args.draw_id)
+            except Exception as e:
+                print(f"ERROR: could not fetch published result: {e}", file=sys.stderr)
+                return 2
+            pf, pb = pub["front"], pub["back"]
+            print(f"PUBLISHED   : front {pf}  back {pb}  (via {pub['kind']})")
+            result_ok = (pf == front and pb == back)
+            print(f"RESULT MATCH: {'PASS' if result_ok else 'FAIL'}")
+            if not result_ok:
                 exit_code = 1
 
-        # Tamper-evidence: recompute this draw's commitment from the PREVIOUS
-        # DRAW'S commitment -- resolved from draw N-1's own record, never from this
-        # record's self-declared prev_commitment field. Otherwise a rewritten middle
-        # draw whose neighbours keep the old links would pass. Draw 0 chains from the
-        # genesis sentinel.
-        published_commitment = pub["commitment"]
-        if not _is_commitment(published_commitment):
-            print("ERROR: published commitment is missing or invalid", file=sys.stderr)
-            return 2
-        if args.draw_id == 0:
-            prev = GENESIS_PREV
-        else:
-            try:
-                prev = _fetch_published(args.site, args.draw_id - 1)["commitment"]
-            except Exception as e:
-                print(f"ERROR: could not fetch previous commitment: {e}", file=sys.stderr)
-                return 2
-        if not _is_commitment(prev):
-            print("ERROR: previous commitment is missing or invalid", file=sys.stderr)
-            return 2
+            # Cross-check the site's stored hashes against the independent source,
+            # when exposed (live API only; the static snapshot omits them on purpose).
+            if pub["block_hashes"]:
+                hashes_ok = (pub["block_hashes"] == hashes)
+                print(f"HASHES MATCH: {'PASS' if hashes_ok else 'FAIL'} (site DB vs {args.source})")
+                if not hashes_ok:
+                    exit_code = 1
 
-        # Static records must carry their declaration; legacy manifests omit it.
-        declared = pub.get("prev_commitment")
-        if pub["kind"] == "static" and not _is_commitment(declared):
-            print("ERROR: record's prev_commitment is missing or invalid", file=sys.stderr)
-            return 2
-        recomputed = commitment_for(prev, args.draw_id, pub["algo_version"], seed, front, back, start, end)
-        chain_ok = (recomputed == published_commitment)
-        print(f"CHAIN MATCH : {'PASS' if chain_ok else 'FAIL'} (links to draw {args.draw_id - 1})")
-        if not chain_ok:
-            exit_code = 1
-        if declared is not None and declared != prev:
-            print("CHAIN MATCH : FAIL (record's prev_commitment != draw "
-                  f"{args.draw_id - 1}'s commitment -- chain tampered)")
-            exit_code = 1
+            # Tamper-evidence: recompute this draw's commitment from the PREVIOUS
+            # DRAW'S commitment -- resolved from draw N-1's own record, never from this
+            # record's self-declared prev_commitment field -- AND verify the entire
+            # published static snapshot chain (0..count-1 + head) when available.
+            published_commitment = pub["commitment"]
+            if not _is_commitment(published_commitment):
+                print("ERROR: published commitment is missing or invalid", file=sys.stderr)
+                return 2
+            if args.draw_id == 0:
+                prev = GENESIS_PREV
+            else:
+                try:
+                    prev = _fetch_published(args.site, args.draw_id - 1)["commitment"]
+                except Exception as e:
+                    print(f"ERROR: could not fetch previous commitment: {e}", file=sys.stderr)
+                    return 2
+            if not _is_commitment(prev):
+                print("ERROR: previous commitment is missing or invalid", file=sys.stderr)
+                return 2
+
+            declared = pub.get("prev_commitment")
+            if pub["kind"] == "static" and not _is_commitment(declared):
+                print("ERROR: record's prev_commitment is missing or invalid", file=sys.stderr)
+                return 2
+            recomputed = commitment_for(prev, args.draw_id, pub["algo_version"], seed, front, back, start, end)
+            chain_ok = (recomputed == published_commitment)
+            snap_chain = pub.get("snapshot_chain")
+            snap_ok = (snap_chain is None or snap_chain.get("ok", False))
+            decl_ok = (declared is None or declared == prev)
+            if chain_ok and decl_ok and snap_ok:
+                suffix = ", full chain intact" if snap_chain is not None else ""
+                print(f"CHAIN MATCH : PASS (links to draw {args.draw_id - 1}{suffix})")
+            else:
+                exit_code = 1
+                if not chain_ok:
+                    print(f"CHAIN MATCH : FAIL (links to draw {args.draw_id - 1})")
+                if not decl_ok:
+                    print("CHAIN MATCH : FAIL (record's prev_commitment != draw "
+                          f"{args.draw_id - 1}'s commitment -- chain tampered)")
+                if not snap_ok:
+                    print("CHAIN MATCH : FAIL (full snapshot chain broken at "
+                          f"{snap_chain.get('broken_at')} -- chain tampered)")
+        finally:
+            _SITE_CACHE_TLS.sites = None
 
     return exit_code
 

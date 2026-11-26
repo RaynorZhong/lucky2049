@@ -145,6 +145,65 @@ class TestStaticChainLinkage(unittest.TestCase):
         self.assertIn("chain tampered", log)
         self.assertEqual(code, 1)
 
+    def test_full_snapshot_scan_catches_earlier_break_and_fetches_index_once(self):
+        hashes2 = ["%064x" % h for h in range(288, 432)]
+        front1, back1, seed1 = verify.generate(self.HASHES)
+        c1 = verify.commitment_for(DRAW0_COMMITMENT, 1, "v1", seed1, front1, back1, 144, 287)
+        front2, back2, seed2 = verify.generate(hashes2)
+        c2 = verify.commitment_for(c1, 2, "v1", seed2, front2, back2, 288, 431)
+
+        base_idx = {
+            "count": 3, "algo_version": "v1",
+            "head": {"head": c2, "draw_id": 2, "count": 3, "algo_version": "v1"},
+            "draws": [
+                {"id": 0, "start_height": 0, "end_height": 143, "front": DRAW0_FRONT,
+                 "back": DRAW0_BACK, "algo_version": "v1", "commitment": DRAW0_COMMITMENT,
+                 "prev_commitment": verify.GENESIS_PREV, "timestamp": "t"},
+                {"id": 1, "start_height": 144, "end_height": 287, "front": front1,
+                 "back": back1, "algo_version": "v1", "commitment": c1,
+                 "prev_commitment": DRAW0_COMMITMENT, "timestamp": "t"},
+                {"id": 2, "start_height": 288, "end_height": 431, "front": front2,
+                 "back": back2, "algo_version": "v1", "commitment": c2,
+                 "prev_commitment": c1, "timestamp": "t"},
+            ],
+        }
+
+        def run_draw2(mutator=None):
+            idx = json.loads(json.dumps(base_idx))
+            if mutator:
+                mutator(idx)
+            fetches = []
+
+            def http_get(url, timeout=30):
+                fetches.append(url)
+                if url.endswith("/index.json"):
+                    return json.dumps(idx)
+                raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+
+            out = io.StringIO()
+            with mock.patch.object(sys, "argv", ["verify.py", "2", "--source", "mempool", "--site", SITE]), \
+                 mock.patch.object(verify, "_http_get", http_get), \
+                 mock.patch.dict(verify.SOURCES, {"mempool": lambda s, e: hashes2}), \
+                 contextlib.redirect_stdout(out):
+                code = verify.main()
+            return code, out.getvalue(), fetches
+
+        # Honest 3-draw snapshot: index.json downloaded ONLY ONCE (not twice for N and N-1)
+        code_ok, log_ok, fetches_ok = run_draw2()
+        self.assertEqual(code_ok, 0)
+        self.assertEqual([u for u in fetches_ok if u.endswith("/index.json")], [f"{SITE}/index.json"])
+        self.assertIn("CHAIN MATCH : PASS", log_ok)
+
+        # Tamper draw 0's prev_commitment while verifying draw 2 (whose local link to draw 1 is intact):
+        code_anc, log_anc, _ = run_draw2(lambda x: x["draws"][0].update({"prev_commitment": "f" * 64}))
+        self.assertEqual(code_anc, 1)
+        self.assertIn("CHAIN MATCH : FAIL", log_anc)
+
+        # Tamper head.head while draws 0..2 local links are intact:
+        code_hd, log_hd, _ = run_draw2(lambda x: x["head"].update({"head": "e" * 64}))
+        self.assertEqual(code_hd, 1)
+        self.assertIn("CHAIN MATCH : FAIL", log_hd)
+
 
 class TestFetchPublishedLiveApi(unittest.TestCase):
     def test_prefers_manifest_api(self):

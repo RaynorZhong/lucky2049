@@ -9,14 +9,14 @@ import os
 import unittest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-INDEX = os.path.join(REPO_ROOT, "web", "index.html")
+INDEX_JS = os.path.join(REPO_ROOT, "static", "page-index.js")
 
 
 class TestIndexEta(unittest.TestCase):
     def test_next_draw_eta_targets_window_end_plus_6_confirmations(self):
-        with open(INDEX) as f:
-            html = f.read()
-        self.assertRegex(html, r"nextId \* 144 \+ 143 \+ 6")
+        with open(INDEX_JS) as f:
+            js = f.read()
+        self.assertRegex(js, r"nextId \* 144 \+ 143 \+ 6")
 
 
 if __name__ == "__main__":

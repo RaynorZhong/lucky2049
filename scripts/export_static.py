@@ -98,8 +98,13 @@ def main():
         # Custom domain marker -- must ride along every publish or GitHub Pages
         # drops the domain on the next (force-pushed) republish.
         shutil.copy(cname_src, os.path.join(args.out, "CNAME"))
-    for name in ("verify.js", "stats.js", "trend.js", "randomness.js", "style.css", "favicon.svg"):
+    for name in ("verify.js", "stats.js", "trend.js", "randomness.js",
+                 "page-index.js", "page-verify.js", "page-stats.js", "page-trend.js", "page-randomness.js",
+                 "style.css", "favicon.svg"):
         shutil.copy(os.path.join(REPO, "static", name), os.path.join(args.out, name))
+    fonts_src = os.path.join(REPO, "static", "fonts")
+    if os.path.isdir(fonts_src):
+        shutil.copytree(fonts_src, os.path.join(args.out, "fonts"), dirs_exist_ok=True)
     anchors_src = os.path.join(REPO, "anchors")
     if os.path.isdir(anchors_src):  # serve the OpenTimestamps head proofs at /anchors/
         shutil.copytree(anchors_src, os.path.join(args.out, "anchors"), dirs_exist_ok=True)

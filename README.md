@@ -66,9 +66,9 @@ The whole "draw + publish + verify" loop runs on GitHub, with **no server and no
   schedule remains as the fallback.
 - **Site** — `web/` (`index.html` [+ next-draw ETA] / `verify.html` / `stats.html` /
   `trend.html` [trend chart] / `randomness.html` [coin/dice demo]) + `static/`
-  (`verify.js` / `stats.js` / `trend.js` / `randomness.js` / `style.css`).
+  (`verify.js` / `stats.js` / `trend.js` / `randomness.js` / `style.css` / `fonts/`).
   The browser reads `index.json` and recomputes with its own SHA-256/HMAC — trusting no server,
-  touching no database.
+  touching no database, and making zero third-party font/script requests.
 - **Verifier** — `verify.py`: a standalone stdlib script that recomputes a draw + checks the
   commitment chain on the command line.
 
@@ -135,10 +135,12 @@ changes the head. **The head is anchored daily to the Bitcoin blockchain via
 ([`.github/workflows/anchor-head.yml`](.github/workflows/anchor-head.yml); proofs are published
 under [`anchors/`](anchors/) and also served at `https://lucky2049.com/anchors/<id>.head.json.ots`), so an old head
 is fixed by a third-party timestamp and the operator can't quietly rewrite history after the
-fact. The key point: both `verify.py` and `verify.html` **independently recompute** this chain —
-the commitment isn't the operator's word; anyone can `ots verify anchors/<id>.head.json.ots` to
-check an anchor. The same Cloudflare Worker dispatches `anchor-head.yml` daily at 02:35 UTC
-(10:35 Beijing time); its GitHub schedule at 02:40 UTC remains the fallback.
+fact. The key point: both `verify.py` and `verify.html` **independently recompute** the full
+commitment chain, and `verify.html` (as well as `accept_anchors.py --verify-chain` in CI)
+evaluates the `.ots` proof right up to the Bitcoin block header `merkle_root` — anyone can also
+run `ots verify anchors/<id>.head.json.ots` as an independent third-party check. The same
+Cloudflare Worker dispatches `anchor-head.yml` daily at 02:35 UTC (10:35 Beijing time); its
+GitHub schedule at 02:40 UTC remains the fallback.
 
 ## Structure
 
@@ -147,15 +149,14 @@ verify.py       standalone engine (stdlib, single copyable file): the `generate`
                 commitment chain `commitment_for`, block-hash fetch (Core RPC / mempool /
                 blockstream / sqlite), and the `--site` CLI verifier
 scripts/
-  extend_pages.py  cron drawer/publisher: extend index.json from the chain (stdlib, reuses verify.py, no DB)
-  export_static.py rebuild the whole index.json + site from a local SQLite cache (stdlib sqlite3) — initial build / disaster recovery
-  artifacts.py     downstream beacon artifacts (latest.json / feed.json / status.json source-health); written by both publishers
-  anchor_head.py   stamps the published head for OpenTimestamps anchoring (run daily by anchor-head.yml)
-  accept_anchors.py gate between anchor-head's two jobs: admits only valid anchors/proofs before the commit
-  publish-pages.sh manual publish (export_static + push gh-pages); use the cron normally, pick one
+  extend_pages.py   cron drawer/publisher: extend index.json from the chain (stdlib, reuses verify.py, no DB)
+  export_static.py  rebuild the whole index.json + site from a local SQLite cache (stdlib sqlite3) — initial build / disaster recovery
+  artifacts.py      downstream beacon artifacts (latest.json / feed.json / status.json source-health); written by both publishers
+  anchor_head.py    pure-stdlib OpenTimestamps head writer, multi-calendar stamper, and idempotent upgrader (run daily by anchor-head.yml)
+  accept_anchors.py gate between anchor-head's two jobs: admits only valid anchors/proofs and verifies Bitcoin merkle_root quorum
+  publish-pages.sh  manual publish (export_static + push gh-pages); use the cron normally, pick one
 web/            index.html (home + next-draw ETA) / verify.html / stats.html / trend.html (trend chart) / randomness.html (coin/dice demo) + og.png + CNAME
-static/         verify.js (verifier), stats.js (frequency + chi-square), trend.js (trend chart), randomness.js (coin/dice demo), style.css, favicon.svg — own algorithm, no external scripts
-ops/anchor-requirements.txt  hash-locked install set for the OpenTimestamps client (anchor-head's stamp job)
+static/         verify.js (verifier + OTS evaluator), stats.js (frequency + chi-square), trend.js (trend chart), randomness.js (coin/dice demo), page-*.js (per-page UI scripts; strict script-src 'self' CSP), style.css, fonts/ (self-hosted WOFF2), favicon.svg
 ops/trigger-worker/ Cloudflare Worker crons: hourly refresh-pages.yml + daily anchor-head.yml; GitHub schedules stay as fallbacks — docs/DEPLOY.md
 .github/workflows/  refresh-pages.yml (cron publish), tests.yml (algorithm / commitment / JS locks), anchor-head.yml (OpenTimestamps head anchor), keepalive.yml (keep the cron from auto-disabling)
 SPEC.md         frozen algorithm spec v1        docs/DEPLOY.md deployment   docs/TDD.md TDD workflow

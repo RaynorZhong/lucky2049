@@ -2,12 +2,11 @@
 """
 Gate between the two jobs of .github/workflows/anchor-head.yml.
 
-The `stamp` job installs and runs third-party code (the OpenTimestamps client and
-its dependencies, from PyPI). It is therefore treated as UNTRUSTED: it gets a
-read-only token and hands its `anchors/` output over as a build artifact. The
-`commit` job holds the token that can push to main and runs no third-party code;
-before committing it passes the artifact through this script, which copies a file
-into anchors/ only if ALL of these hold for the whole batch:
+The `stamp` job talks to untrusted external OpenTimestamps calendar servers using
+a read-only token and hands its `anchors/` output over as a build artifact. The
+`commit` job holds the token that can push to main; before committing it passes
+the artifact through this script, which copies a file into anchors/ only if ALL
+of these hold for the whole batch:
 
   - every name is exactly NNNNNN.head.json or NNNNNN.head.json.ots (ASCII digits),
     a small regular file;
@@ -19,17 +18,15 @@ into anchors/ only if ALL of these hold for the whole batch:
   - every proof parses, start to end, as an OpenTimestamps proof (known ops, only
     pending/Bitcoin attestations, no trailing bytes) of the SHA-256 of its head file;
   - a proof that already carries a Bitcoin attestation never changes again; a pending
-    one may only be replaced by an attested one that is not smaller.
+    one may only be replaced by an attested one that is not smaller;
+  - when `--verify-chain` is passed, every new or freshly upgraded Bitcoin attestation
+    must evaluate to the exact 32-byte block header `merkle_root` confirmed by >= 2
+    independent Bitcoin mainnet sources.
 
 One violation rejects the entire batch and changes nothing (exit 1): the stamper is
-either broken or compromised, and a human should look.
+either broken or compromised, and a human should look. Stdlib only.
 
-What the gate does NOT do: check a proof's attestation against the Bitcoin chain. It
-confines the stamper to anchors/ and binds each proof to its published head, but a new
-or freshly upgraded proof is only as honest as the stamp job until someone runs
-`ots verify` on it (see anchors/README.md). Stdlib only.
-
-Usage:  python scripts/accept_anchors.py <incoming-dir> [anchors-dir] [site-base-url-or-dir]
+Usage:  python scripts/accept_anchors.py [--verify-chain] <incoming-dir> [anchors-dir] [site-base-url-or-dir]
         python scripts/accept_anchors.py --check-pending [anchors-dir]
 """
 import hashlib
@@ -42,6 +39,9 @@ import time
 import urllib.request
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if REPO not in sys.path:
+    sys.path.insert(0, REPO)
+import verify  # noqa: E402 — stdlib-only HTTP Keep-Alive + RPC helpers
 DEFAULT_ANCHORS = os.path.join(REPO, "anchors")
 DEFAULT_SITE = "https://lucky2049.com"
 
@@ -51,10 +51,12 @@ NAME_RE = re.compile(r"([0-9]{6})\.head\.json(\.ots)?")     # always used with f
 OTS_MAGIC = b"\x00OpenTimestamps\x00\x00Proof\x00\xbf\x89\xe2\xe8\x84\xe8\x92\x94"
 PENDING_ATTESTATION = bytes.fromhex("83dfe30d2ef90c8e")
 BITCOIN_ATTESTATION = bytes.fromhex("0588960d73d71901")   # BitcoinBlockHeaderAttestation tag
-_UNARY_OPS = {0x02, 0x03, 0x08, 0x67, 0xf2, 0xf3}        # sha1 ripemd160 sha256 keccak256 reverse hexlify
-_BINARY_OPS = {0xf0, 0xf1}                               # append / prepend <varbytes>
+_UNARY_OPS = {0x08, 0xF2, 0xF3}                           # sha256 reverse hexlify (matches static/verify.js)
+_BINARY_OPS = {0xF0, 0xF1}                                # append / prepend <varbytes>
 MAX_HEAD_BYTES = 1024
 MAX_OTS_BYTES = 16 * 1024      # real proofs: ~0.8 KiB pending, ~5.4 KiB at most once attested
+MAX_ATTESTATIONS = 32          # bounds explorer-query fanout during --verify-chain
+MAX_BRANCH_DEPTH = 64          # bounds simultaneous 0xFF branches in a single proof
 MAX_NEW_HEADS = 1              # anchor_head.py only ever writes the current head
 # ~1 draw/day and proofs upgrade within a day, so a proof this many draws behind the
 # newest anchor that STILL has no Bitcoin attestation means upgrading is broken.
@@ -98,10 +100,52 @@ class _Reader:
         return self.take(n)
 
 
-def parse_proof(ots):
-    """Strictly parse a detached OpenTimestamps proof. Returns (file_digest, attested)
-    where `attested` is True if it carries at least one Bitcoin block attestation.
-    Raises ValueError on anything that is not a complete, well-formed proof."""
+def _apply_ots_op(tag, arg, msg):
+    """Evaluate one OpenTimestamps unary/binary operation with bounded message size."""
+    if tag == 0x08:
+        return hashlib.sha256(msg).digest()
+    if tag == 0xF0:
+        if len(msg) + len(arg) > 16384:
+            raise ValueError("OTS message exceeds maximum length")
+        return msg + arg
+    if tag == 0xF1:
+        if len(msg) + len(arg) > 16384:
+            raise ValueError("OTS message exceeds maximum length")
+        return arg + msg
+    if tag == 0xF2:
+        return msg[::-1]
+    if tag == 0xF3:
+        if len(msg) * 2 > 16384:
+            raise ValueError("OTS hexlify exceeds maximum length")
+        return msg.hex().encode("ascii")
+    raise ValueError("unsupported op 0x%02x in evaluated proof" % tag)
+
+
+def _consume_attestation(r):
+    """Read an attestation body after tag 0x00; return (kind, value)."""
+    kind = r.take(8)
+    payload = _Reader(r.varbytes(8192))
+    if kind == PENDING_ATTESTATION:
+        raw_uri = payload.varbytes(1000)
+        try:
+            val = raw_uri.decode("ascii")
+        except UnicodeDecodeError as e:
+            raise ValueError("non-ASCII pending calendar URI") from e
+    elif kind == BITCOIN_ATTESTATION:
+        val = payload.varuint()
+    else:
+        raise ValueError("unknown attestation type " + kind.hex())
+    if payload.i != len(payload.b):
+        raise ValueError("trailing bytes in an attestation")
+    return kind, val
+
+
+def walk_ots(ots, evaluate=False):
+    """Iteratively parse (and optionally evaluate) a detached OpenTimestamps proof.
+    Returns (file_digest, bitcoin_attestations, pending_leaves):
+      - bitcoin_attestations: [(height, merkle_root_hex)] when evaluate=True, else [height]
+      - pending_leaves: [(was_ff, item_start, item_end, uri, commit_msg)]
+    Uses O(branches) stack space so 5000-op linear hash chains never recurse."""
     r = _Reader(ots)
     if r.take(len(OTS_MAGIC)) != OTS_MAGIC:
         raise ValueError("bad magic")
@@ -110,43 +154,106 @@ def parse_proof(ots):
     if r.take(1) != b"\x08":
         raise ValueError("file hash is not SHA-256")
     digest = r.take(32)
-    kinds = []
+    cur_msg = digest
+    stack = []
+    btc, pending = [], []
 
-    def item(tag):
-        """Consume one item; True if it was an op (a nested timestamp follows)."""
-        if tag == 0x00:
-            kind = r.take(8)
-            payload = _Reader(r.varbytes(8192))
-            if kind == PENDING_ATTESTATION:
-                payload.varbytes(1000)                      # calendar URI
-            elif kind == BITCOIN_ATTESTATION:
-                payload.varuint()                           # block height
-            else:
-                raise ValueError("unknown attestation type " + kind.hex())
-            if payload.i != len(payload.b):
-                raise ValueError("trailing bytes in an attestation")
-            kinds.append(kind)
-            return False
-        if tag in _BINARY_OPS:
-            r.varbytes(4096, 1)
-            return True
-        if tag in _UNARY_OPS:
-            return True
-        raise ValueError("unknown op 0x%02x" % tag)
-
-    # timestamp := (0xff item)* item ;  item := attestation | op timestamp
-    # Iterative on purpose: real proofs are hash chains hundreds of ops deep.
-    need = 1
-    while need:
+    while True:
         tag = r.take(1)[0]
-        if tag == 0xFF:
-            if item(r.take(1)[0]):
-                need += 1          # a branch: its nested timestamp comes first
-        elif not item(tag):
-            need -= 1              # an attestation closes this timestamp
+        was_ff = (tag == 0xFF)
+        if was_ff:
+            if len(stack) >= MAX_BRANCH_DEPTH:
+                raise ValueError("too many nested OTS branches")
+            stack.append(cur_msg)
+            item_start = r.i
+            itag = r.take(1)[0]
+        else:
+            item_start = r.i - 1
+            itag = tag
+
+        if itag == 0x00:
+            kind, val = _consume_attestation(r)
+            item_end = r.i
+            if kind == BITCOIN_ATTESTATION:
+                if evaluate:
+                    if len(cur_msg) != 32:
+                        raise ValueError("Bitcoin attestation leaf digest is not 32 bytes")
+                    pair = (val, cur_msg[::-1].hex())
+                    if pair not in btc:
+                        btc.append(pair)
+                else:
+                    btc.append(val)
+                if len(btc) > MAX_ATTESTATIONS:
+                    raise ValueError("too many Bitcoin attestations in one proof")
+            else:
+                pending.append((was_ff, item_start, item_end, val, cur_msg))
+                if len(pending) > MAX_ATTESTATIONS:
+                    raise ValueError("too many pending attestations in one proof")
+            if not stack:
+                break
+            cur_msg = stack.pop()
+        elif itag in _BINARY_OPS:
+            arg = r.varbytes(4096, 1)
+            if evaluate:
+                cur_msg = _apply_ots_op(itag, arg, cur_msg)
+        elif itag in _UNARY_OPS:
+            if evaluate:
+                cur_msg = _apply_ots_op(itag, None, cur_msg)
+        else:
+            raise ValueError("unknown op 0x%02x" % itag)
+
     if r.i != len(ots):
         raise ValueError("trailing bytes after the proof")
-    return digest, BITCOIN_ATTESTATION in kinds
+    return digest, btc, pending
+
+
+def split_timestamp_items(ts_bytes):
+    """Validate a raw Timestamp subtree and return its top-level item byte slices
+    (each without a leading 0xFF branch marker)."""
+    parse_proof(OTS_MAGIC + b"\x01\x08" + (b"\x00" * 32) + ts_bytes)
+    r = _Reader(ts_bytes)
+    items = []
+    while r.i < len(ts_bytes) and ts_bytes[r.i] == 0xFF:
+        r.take(1)
+        start = r.i
+        need = 1
+        while need:
+            tag = r.take(1)[0]
+            itag = r.take(1)[0] if tag == 0xFF else tag
+            if itag == 0x00:
+                _consume_attestation(r)
+                if tag != 0xFF:
+                    need -= 1
+            elif itag in _BINARY_OPS:
+                r.varbytes(4096, 1)
+                if tag == 0xFF:
+                    need += 1
+            elif itag in _UNARY_OPS:
+                if tag == 0xFF:
+                    need += 1
+            else:
+                raise ValueError("unknown op 0x%02x" % itag)
+        items.append(ts_bytes[start:r.i])
+    items.append(ts_bytes[r.i:])
+    return items
+
+
+def parse_proof(ots):
+    """Strictly parse and evaluate a detached OpenTimestamps proof. Returns
+    (file_digest, attested) where `attested` is True if it carries >= 1 valid
+    32-byte Bitcoin block attestation."""
+    digest, btc, _ = walk_ots(ots, evaluate=True)
+    return digest, bool(btc)
+
+
+def eval_bitcoin_attestations(ots, head_bytes=None):
+    """Evaluate a detached OpenTimestamps proof and return [(height, merkle_root_hex)]
+    for every BitcoinBlockHeaderAttestation leaf. If `head_bytes` is provided, also
+    verifies the proof header commits to SHA256(head_bytes)."""
+    digest, btc, _ = walk_ots(ots, evaluate=True)
+    if head_bytes is not None and digest != hashlib.sha256(head_bytes).digest():
+        raise ValueError("proof digest is not the SHA-256 of its head file")
+    return btc
 
 
 def proof_problem(ots, head_bytes):
@@ -232,7 +339,54 @@ def _read_existing(anchors_dir, name):
         return None
 
 
-def accept(incoming, anchors_dir=DEFAULT_ANCHORS, site=DEFAULT_SITE, sleep=time.sleep):
+def _fetch_chain_merkle_roots(height):
+    """Query independent Bitcoin sources for block `height`'s header merkle_root."""
+    seen = {}
+    if os.environ.get("BITCOIN_RPC_URL") or os.environ.get("BITCOIN_RPC_USER"):
+        try:
+            rpc_url = verify._core_rpc_url_from_env()
+            bh = verify._normalize(verify._rpc_call(rpc_url, "getblockhash", [height]))
+            hdr = verify._rpc_call(rpc_url, "getblockheader", [bh])
+            seen["core"] = verify._normalize(hdr["merkleroot"])
+        except Exception:
+            pass
+    for name, base in (("mempool", "https://mempool.space/api"),
+                       ("blockstream", "https://blockstream.info/api")):
+        try:
+            bh = verify._normalize(verify._http_get(f"{base}/block-height/{height}"))
+            blk = json.loads(verify._http_get(f"{base}/block/{bh}"))
+            seen[name] = verify._normalize(blk["merkle_root"])
+        except Exception:
+            pass
+    return seen
+
+
+def verify_attestations_on_chain(name, attestations, merkle_fetcher=None, min_sources=2):
+    """Confirm at least one (height, merkle_root) attestation matches >= min_sources
+    independent Bitcoin block-header providers."""
+    if not attestations:
+        raise Rejected(f"{name}: proof claims attestation but evaluated 0 Bitcoin leaves")
+    fetch = merkle_fetcher or _fetch_chain_merkle_roots
+    details = []
+    saw_mismatch = False
+    for height, expected_mr in attestations:
+        seen = fetch(height) or {}
+        agree = [src for src, mr in seen.items() if isinstance(mr, str) and mr.lower() == expected_mr]
+        if len(agree) >= min_sources:
+            return {"height": height, "merkle_root": expected_mr, "sources": agree}
+        mismatched = [f"{src}={mr[:12]}..." for src, mr in seen.items()
+                      if isinstance(mr, str) and mr.lower() != expected_mr]
+        if mismatched:
+            saw_mismatch = True
+            details.append(f"height {height} merkle_root mismatch (proof {expected_mr[:12]}... vs {', '.join(mismatched)})")
+        else:
+            details.append(f"height {height} reached only {len(agree)}/{min_sources} sources ({', '.join(agree) or 'none'})")
+    kind = "Bitcoin block merkle_root mismatch" if saw_mismatch else "Bitcoin header quorum not met"
+    raise Rejected(f"{name}: {kind} -> {'; '.join(details)}")
+
+
+def accept(incoming, anchors_dir=DEFAULT_ANCHORS, site=DEFAULT_SITE, sleep=time.sleep,
+           verify_chain=False, merkle_fetcher=None):
     """Validate the whole batch, then copy what is new or upgraded. Returns the list
     of file names written. Raises Rejected (having changed nothing) on any violation."""
     files = _read_incoming(incoming)
@@ -274,6 +428,12 @@ def accept(incoming, anchors_dir=DEFAULT_ANCHORS, site=DEFAULT_SITE, sleep=time.
             raise Rejected(f"{name}: {problem}")
         existing = _read_existing(anchors_dir, name)
         if existing is None:
+            if verify_chain and is_attested(data):
+                try:
+                    atts = eval_bitcoin_attestations(data, head_bytes)
+                except ValueError as e:
+                    raise Rejected(f"{name}: invalid Bitcoin attestation path ({e})") from e
+                verify_attestations_on_chain(name, atts, merkle_fetcher=merkle_fetcher)
             to_write[name] = data
             continue
         if existing == data:
@@ -287,6 +447,12 @@ def accept(incoming, anchors_dir=DEFAULT_ANCHORS, site=DEFAULT_SITE, sleep=time.
             continue
         if len(data) < len(existing):
             raise Rejected(f"{name} would shrink ({len(existing)} -> {len(data)} bytes)")
+        if verify_chain:
+            try:
+                atts = eval_bitcoin_attestations(data, head_bytes)
+            except ValueError as e:
+                raise Rejected(f"{name}: invalid Bitcoin attestation path ({e})") from e
+            verify_attestations_on_chain(name, atts, merkle_fetcher=merkle_fetcher)
         to_write[name] = data
 
     for name, data in sorted(to_write.items()):
@@ -314,16 +480,20 @@ def stale_pending(anchors_dir=DEFAULT_ANCHORS, max_behind=MAX_PENDING_BEHIND):
 
 
 def main(argv=None):
-    argv = sys.argv[1:] if argv is None else argv
+    argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "--check-pending":
         anchors_dir = argv[1] if len(argv) > 1 else DEFAULT_ANCHORS
         stale = stale_pending(anchors_dir)
         if stale:
             print(f"ERROR: {len(stale)} proof(s) more than {MAX_PENDING_BEHIND} draws old still have no "
-                  f"Bitcoin attestation -- `ots upgrade` is not working: {', '.join(stale[:10])}")
+                  f"Bitcoin attestation -- OTS upgrade is not working: {', '.join(stale[:10])}")
             return 1
         print("all proofs older than the last few draws carry a Bitcoin attestation")
         return 0
+    verify_chain = False
+    if argv and argv[0] == "--verify-chain":
+        verify_chain = True
+        argv = argv[1:]
     if not argv:
         print(__doc__)
         return 2
@@ -331,7 +501,7 @@ def main(argv=None):
     anchors_dir = argv[1] if len(argv) > 1 else DEFAULT_ANCHORS
     site = argv[2] if len(argv) > 2 else DEFAULT_SITE
     try:
-        written = accept(incoming, anchors_dir, site)
+        written = accept(incoming, anchors_dir, site, verify_chain=verify_chain)
     except Rejected as e:
         print(f"REJECTED the stamp job's output, nothing committed: {e}")
         return 1

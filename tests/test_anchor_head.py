@@ -31,7 +31,8 @@ class TestAnchorHead(unittest.TestCase):
         with tempfile.TemporaryDirectory() as site, tempfile.TemporaryDirectory() as anchors:
             _site(site, {"head": head, "draws": [], "count": 6619})
             self.assertEqual(anchor_head.main(base=site, anchors_dir=anchors), 0)
-            rec = json.load(open(os.path.join(anchors, "006618.head.json")))
+            with open(os.path.join(anchors, "006618.head.json")) as f:
+                rec = json.load(f)
             self.assertEqual(rec, head)  # exactly head/draw_id/count/algo_version, zero-padded filename
 
     def test_skips_already_anchored(self):
@@ -41,7 +42,8 @@ class TestAnchorHead(unittest.TestCase):
             with open(already, "w") as f:
                 f.write("ORIGINAL")
             anchor_head.main(base=site, anchors_dir=anchors)
-            self.assertEqual(open(already).read(), "ORIGINAL")  # left untouched (don't re-stamp)
+            with open(already) as f:
+                self.assertEqual(f.read(), "ORIGINAL")  # left untouched (don't re-stamp)
 
     def test_no_head_is_a_clean_noop(self):
         # The silent-failure guard: a missing/odd head must be an explicit no-op

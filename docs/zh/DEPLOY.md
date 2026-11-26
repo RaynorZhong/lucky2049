@@ -22,10 +22,10 @@ lucky2049 是**纯静态、无服务器**的开奖引擎:出号、发布、验�
 - **链头外锚** — [`.github/workflows/anchor-head.yml`](../../.github/workflows/anchor-head.yml) 每日用
   OpenTimestamps 把当前链头(`head.json`)盖时间戳到比特币链上;证明提交进 `anchors/`,并服务于
   `/anchors/<id>.head.json(.ots)`(没有目录列表;已锚定的期号清单见 GitHub 上的
-  [`anchors/`](../../anchors/) 目录)。该工作流特意拆成两个 job:`stamp` 用只读令牌、按哈希锁定安装
-  ([`ops/anchor-requirements.txt`](../../ops/anchor-requirements.txt))来运行从 PyPI 装的 OpenTimestamps
-  客户端;`commit` 持有写令牌、不运行任何第三方代码,只通过
-  [`scripts/accept_anchors.py`](../../scripts/accept_anchors.py) 放行盖好戳的文件。
+  [`anchors/`](../../anchors/) 目录)。该工作流特意拆成两个 job:`stamp` 用只读令牌运行纯标准库的
+  [`scripts/anchor_head.py`](../../scripts/anchor_head.py)(`--stamp --upgrade`,零 PyPI 依赖);
+  `commit` 持有写令牌、不运行任何第三方代码,只通过
+  [`scripts/accept_anchors.py`](../../scripts/accept_anchors.py) `--verify-chain`(在 ≥2 个独立链源上核对比特币区块头 `merkle_root`)放行盖好戳的文件。
 
 > 一个窗口约 144 个区块(≈24h)才成熟;`refresh-pages.yml` 的设计是**每小时**跑一次,成熟的窗口
 > 一小时内就会发布(没有新开奖的运行只刷新 `status.json` 源健康心跳,提交信息为
@@ -73,9 +73,9 @@ lucky2049 是**纯静态、无服务器**的开奖引擎:出号、发布、验�
 - **`anchor-head` 运行变红并显示 `REJECTED the stamp job's output`**:commit job 拒收了盖戳产物,
   什么都没提交。若是刚开奖几分钟后出现 `… is not a published draw`,那只是 `index.json` 的 CDN
   旧副本(它会先重试几分钟),下一次每日运行自愈。其他原因则说明 stamp job 产出了不该有的东西:
-  先看日志再决定是否重跑。闸门把盖戳方限制在 `anchors/` 内、并把每份证明绑定到已发布的链头,
-  但不会拿证明去对照比特币链——请不时对最近的证明跑一次 `ots verify`
-  (见 [`anchors/README.md`](../../anchors/README.md))。
+  先看日志再决定是否重跑。`accept_anchors.py --verify-chain` 把盖戳方限制在 `anchors/` 内、把每份证明绑定到已发布的链头,
+  并在 ≥2 个独立区块头信源上核验已升级证明的比特币 `merkle_root`(本地也可随时跑 `ots verify`,
+  见 [`anchors/README.md`](../../anchors/README.md))。
 
 ---
 

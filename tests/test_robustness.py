@@ -145,6 +145,68 @@ class TestRpcRetry(unittest.TestCase):
         self.assertEqual(len(calls), 1)  # an RPC-level error is final, not retried
 
 
+# ----------------------------- Esplora batch window -----------------------------
+class TestEsploraBatchFetch(unittest.TestCase):
+    def test_mempool_fetches_144_hashes_in_10_pages_of_15(self):
+        urls = []
+
+        def fake_get(url, *a, **kw):
+            urls.append(url)
+            if "/api/blocks/" in url:
+                top = int(url.rsplit("/", 1)[1])
+                page = [{"height": h, "id": "%064x" % (h + 1000)}
+                        for h in range(top, max(-1, top - 15), -1)]
+                return json.dumps(page)
+            raise AssertionError(f"unexpected per-height fallback call: {url}")
+
+        with mock.patch.object(verify, "_http_get", side_effect=fake_get), \
+             mock.patch.object(verify.time, "sleep"):
+            hashes = verify.fetch_from_mempool(144, 287)
+        self.assertEqual(hashes, ["%064x" % (h + 1000) for h in range(144, 288)])
+        self.assertEqual(len(urls), 10)  # ceil(144 / 15) == 10 pages instead of 144 calls
+
+    def test_blockstream_fetches_144_hashes_in_15_pages_of_10(self):
+        urls = []
+
+        def fake_get(url, *a, **kw):
+            urls.append(url)
+            if "/api/blocks/" in url:
+                top = int(url.rsplit("/", 1)[1])
+                page = [{"height": h, "id": "%064x" % (h + 2000)}
+                        for h in range(top, max(-1, top - 10), -1)]
+                return json.dumps(page)
+            raise AssertionError(f"unexpected per-height fallback call: {url}")
+
+        with mock.patch.object(verify, "_http_get", side_effect=fake_get), \
+             mock.patch.object(verify.time, "sleep"):
+            hashes = verify.fetch_from_blockstream(0, 143)
+        self.assertEqual(hashes, ["%064x" % (h + 2000) for h in range(0, 144)])
+        self.assertEqual(len(urls), 15)  # ceil(144 / 10) == 15 pages instead of 144 calls
+
+    def test_falls_back_to_per_height_on_gap_or_endpoint_error(self):
+        urls = []
+
+        def fake_get(url, *a, **kw):
+            urls.append(url)
+            if "/api/blocks/" in url:
+                top = int(url.rsplit("/", 1)[1])
+                # Deliberate height gap (omits `top - 1`) -> must trigger fallback!
+                return json.dumps([
+                    {"height": top, "id": "%064x" % top},
+                    {"height": top - 2, "id": "%064x" % (top - 2)},
+                ])
+            if "/api/block-height/" in url:
+                h = int(url.rsplit("/", 1)[1])
+                return "%064x" % h
+            raise AssertionError(url)
+
+        with mock.patch.object(verify, "_http_get", side_effect=fake_get), \
+             mock.patch.object(verify.time, "sleep"):
+            hashes = verify.fetch_from_mempool(10, 14)
+        self.assertEqual(hashes, ["%064x" % h for h in range(10, 15)])
+        self.assertTrue(any("/api/block-height/10" in u for u in urls))
+
+
 # ----------------------------- timestamp fallback -----------------------------
 class TestSafeTimestamp(unittest.TestCase):
     def test_timestamp_outage_commits_draw_with_null_ts(self):
@@ -154,7 +216,8 @@ class TestSafeTimestamp(unittest.TestCase):
             idx = _write_index(tmp, [])
             provs = _providers(tip=200, hashes=FAKE, ts=RuntimeError("block detail down"))
             self.assertEqual(_run(idx, provs), 0)
-            draws = json.load(open(idx))["draws"]
+            with open(idx) as f:
+                draws = json.load(f)["draws"]
             self.assertEqual(len(draws), 1)             # draw 0 committed despite the outage
             self.assertIsNone(draws[0]["timestamp"])    # cosmetic field falls back to null
 
@@ -183,7 +246,8 @@ class TestReorgAudit(unittest.TestCase):
             st = _status(tmp)
             self.assertIn("note", st)
             self.assertIn("REORG/MISMATCH", st["note"])  # alarms via note
-            kept = json.load(open(idx))["draws"][0]
+            with open(idx) as f:
+                kept = json.load(f)["draws"][0]
             self.assertEqual((kept["front"], kept["back"]), ([1, 2, 3, 4, 5], [1, 2]))  # never rewritten
 
     def test_buried_draw_is_not_refetched(self):
@@ -224,11 +288,13 @@ class TestTipRegressionGuard(unittest.TestCase):
         f, b = verify.generate(FAKE(0, 143))[0], verify.generate(FAKE(0, 143))[1]
         with tempfile.TemporaryDirectory() as tmp:
             idx = _write_index(tmp, [_draw(0, 143, f, b)])
-            before = open(idx).read()
+            with open(idx) as fh:
+                before = fh.read()
             # Two sources agree on tip 100, below the last committed window (end 143):
             # impossible for a real chain -> no draw, alarm note, index untouched.
             self.assertEqual(_run(idx, _providers(tip=100, hashes=None)), 0)
-            self.assertEqual(open(idx).read(), before)
+            with open(idx) as fh:
+                self.assertEqual(fh.read(), before)
             st = _status(tmp)
             self.assertIn("note", st)
             self.assertIn("regressed", st["note"])

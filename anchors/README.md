@@ -18,6 +18,12 @@ directory listing — this directory on GitHub is the list of anchored draws.
 
 ## Verify an anchor
 
+Both the CI gate (`python scripts/accept_anchors.py --verify-chain`) and the browser
+verifier (`https://lucky2049.com/verify.html`) evaluate `.ots` proofs directly to their
+32-byte Bitcoin block header `merkle_root` using zero third-party packages.
+
+You can also verify any proof with the upstream OpenTimestamps CLI:
+
 ```shell
 pip install opentimestamps-client
 ots verify anchors/006612.head.json.ots   # confirms the head existed by a Bitcoin block time
@@ -27,9 +33,6 @@ ots info   anchors/006612.head.json.ots   # inspect the proof
 `ots verify` checks that the `.head.json` next to the `.ots` is the file that was
 stamped, then reports the Bitcoin block (and time) the timestamp is anchored to.
 
-The workflow's own checks stop at "this is a well-formed proof of this exact file" — only
-`ots verify` (above) ties a proof to the Bitcoin chain, so spot-check a recent one now and then.
-
 A freshly created proof is **pending** (committed to the OTS calendars) until it
-is confirmed in a Bitcoin block (~a few hours); `ots upgrade <file>.ots` then
-fills in the full attestation. The workflow upgrades pending proofs on each run.
+is confirmed in a Bitcoin block (~a few hours); `python scripts/anchor_head.py --upgrade`
+upgrades pending proofs once on the next daily run and skips already-attested files.

@@ -279,14 +279,14 @@ class TestPublishSmoke(unittest.TestCase):
         # Parse the cron's own `cp web/... | static/... site/` lines and assert every
         # source it copies exists -- so a new published asset (or a typo) is guarded
         # automatically here instead of 404-ing in production, with no hand-kept list.
-        wf = open(os.path.join(REPO_ROOT, ".github/workflows/refresh-pages.yml")).read()
+        wf = _read(os.path.join(REPO_ROOT, ".github/workflows/refresh-pages.yml"))
         srcs = []
         for m in re.finditer(r"\bcp (?:-r )?((?:web|static)/[^\n]*?) site/", wf):
             srcs += [t for t in m.group(1).split() if t.startswith(("web/", "static/"))]
         self.assertTrue(srcs, "found no `cp web/|static/ ... site/` lines in refresh-pages.yml")
         for rel in srcs:
             self.assertTrue(os.path.exists(os.path.join(REPO_ROOT, rel)), "publish input missing on disk: " + rel)
-        for must in ("web/CNAME", "web/randomness.html", "static/randomness.js"):   # sanity anchors
+        for must in ("web/CNAME", "web/randomness.html", "static/randomness.js", "static/fonts"):   # sanity anchors
             self.assertIn(must, srcs, "cron no longer copies " + must)
 
 

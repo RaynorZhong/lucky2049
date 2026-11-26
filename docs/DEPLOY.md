@@ -26,10 +26,11 @@ run on GitHub — no standing backend, no database on the critical path.
   daily timestamps the current head (`head.json`) onto the Bitcoin chain via OpenTimestamps; proofs
   are committed under `anchors/` and served at `/anchors/<id>.head.json(.ots)` (no directory
   listing; the list of anchored ids is the [`anchors/`](../anchors/) directory on GitHub). The
-  workflow is two jobs on purpose: `stamp` runs the PyPI-installed OpenTimestamps client with a
-  read-only token and a hash-locked install ([`ops/anchor-requirements.txt`](../ops/anchor-requirements.txt));
-  `commit` holds the write token, runs no third-party code, and admits the stamped files only
-  through [`scripts/accept_anchors.py`](../scripts/accept_anchors.py).
+  workflow is two jobs on purpose: `stamp` runs pure-stdlib [`scripts/anchor_head.py`](../scripts/anchor_head.py)
+  (`--stamp --upgrade`, zero PyPI packages) with a read-only token; `commit` holds the write token,
+  runs no third-party code, and admits the stamped files only through
+  [`scripts/accept_anchors.py`](../scripts/accept_anchors.py) `--verify-chain` (verifying Bitcoin
+  block header `merkle_root` agreement across ≥2 independent sources).
 
 > A window takes ~144 blocks (≈24h) to mature; `refresh-pages.yml` is meant to run **hourly**, so a
 > matured window publishes within the hour (runs without a new draw just refresh the `status.json`
@@ -88,9 +89,10 @@ the next refresh and the site falls back to 404.
   stamped files and committed nothing. `… is not a published draw` minutes after a fresh draw is
   just a stale CDN copy of `index.json` (it retries for a few minutes first) — the next daily run
   heals it. Any other reason means the stamp job produced something it should not have: read the
-  log before re-running. The gate confines the stamper to `anchors/` and binds each proof to its
-  published head, but it does not check a proof against the Bitcoin chain — run `ots verify` on a
-  recent proof now and then (see [`anchors/README.md`](../anchors/README.md)).
+  log before re-running. `accept_anchors.py --verify-chain` confines the stamper to `anchors/`,
+  binds each proof to its published head, and verifies upgraded Bitcoin attestations against ≥2
+  independent block-header sources (you can also run `ots verify` locally — see
+  [`anchors/README.md`](../anchors/README.md)).
 
 ---
 
